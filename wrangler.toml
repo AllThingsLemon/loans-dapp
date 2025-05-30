@@ -1,0 +1,6 @@
+name = "dao-dashboard"
+compatibility_date = "2024-07-29"
+
+
+[vars]
+# This section is intentionally left empty
