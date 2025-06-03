@@ -1,107 +1,132 @@
-import { useState, useEffect } from "react"
-import { Address } from "viem"
-import { ethers } from 'ethers'
-import {
-  useAccount,
-  useBalance,
-  useBlockNumber,
-  useWriteContract,
-  useWaitForTransactionReceipt,
-  useReadContract
-} from 'wagmi'
+import { useEffect, useState } from 'react'
+import { useAccount, useBalance, useReadContracts } from 'wagmi'
+import { Address, zeroAddress, erc20Abi } from 'viem'
+import { useReadPaymentsGetAllPaymentTokenSymbols } from '../generated'
 
-const ERC20_ABI = ['function balanceOf(address owner) view returns (uint256)']
+import oracleAbi from '@/src/abis/OracleAbi.json'
+import paymentsAbi from '@/src/abis/Payments.json'
 
 export interface PaymentToken {
   symbol: string
   address: Address
+  priceFeed: Address
+  price: bigint
   decimals: number
-  balance: bigint
+  balance: string
   isNative: boolean
 }
 
-const fetchBalances = async (
-  address: `0x${string}`,
-  setBalances: (balances: any) => void,
-  tokenSymbolList: string[],
-  tokenAddressList: string[]
-) => {
-  try {
-    const provider = new ethers.BrowserProvider(window.ethereum)
-
-    const balanceResult = await Promise.all([
-      provider.getBalance(address),
-      ...[tokenAddressList.map((tokenAddress) => new ethers.Contract(tokenAddress, ERC20_ABI, provider).balanceOf(address))]
-    ])
-
-    const balance: any = {
-      native: balanceResult[0]
-    }
-    for (let i =0; i< tokenSymbolList.length;i++) {
-      balance[
-        tokenSymbolList[i]
-      ] = balanceResult[i - 1];
-
-    }
-
-
-    setBalances(balance)
-  } catch (error) {
-    console.error('Error fetching balances:', error)
-  }
-}
-
 export const usePaymentTokens = () => {
-  const [
-    paymentTokenSymbols,
-    setPaymentTokenSymbols
-] = useState<string[]>(['USDT'])
-  const [
-    paymentTokenAddresses,
-    setPaymentTokenAddresses
-  ] = useState<string[]>([
-    '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'
-  ])
-  const [
-    paymentTokens,
-    setPaymentTokens
-  ] = useState<PaymentToken[]>([{
-    symbol: 'tBNB',
-  address: '0x',
-  decimals: 16,
-  balance: 0n,
-  isNative: true
-  }])
-  const [
-    paymentToken,
-    setPaymentToken
-  ] = useState<PaymentToken>({
-    symbol: 'tBNB',
-  address: '0x',
-  decimals: 16,
-  balance: 0n,
-  isNative: true
-  } as PaymentToken)
-
-  // paymentToken: PaymentToken | null
-  // setPaymentToken: (token: PaymentToken) => void
-
-  // TODO: need real contract integration
   const { address } = useAccount()
-  const [balances, setBalances] = useState()
+  const { data: nativeBalanceData } = useBalance({ address })
+  const { data: symbols } = useReadPaymentsGetAllPaymentTokenSymbols()
 
-    // Fetch balances
-    useEffect(() => {
-      if (address) {
-        fetchBalances(address, setBalances, paymentTokenSymbols, paymentTokenAddresses)
+  const enabled = !!symbols?.length
+  const PAYMENTS_ADDRESS = zeroAddress as `0x${string}` // replace with actual contract address
+
+  // Read paymentTokens (tokenAddress, oracle) from contract
+  const contracts =
+    symbols?.map((symbol) => ({
+      address: PAYMENTS_ADDRESS,
+      abi: paymentsAbi,
+      functionName: 'paymentTokens',
+      args: [symbol]
+    })) ?? []
+
+  const { data: paymentTokensData } = useReadContracts({
+    contracts,
+    enabled,
+    watch: true
+  })
+
+  // Parse payment token info
+  const baseTokens: PaymentToken[] =
+    symbols?.map((symbol, idx) => {
+      const result = paymentTokensData?.[idx]?.result as any
+      const tokenAddress = result?.tokenAddress as Address
+      const isNative = tokenAddress === zeroAddress
+      return {
+        symbol,
+        address: tokenAddress,
+        priceFeed: result?.chainlinkFeed as Address,
+        decimals: 0,
+        balance: '0',
+        price: 0n,
+        isNative
       }
-    }, [address, paymentTokenSymbols, paymentTokenAddresses])
+    }) ?? []
 
-    return {
-      paymentTokens,
-    // setPaymentTokens,
+  // Generate list of ERC20 addresses
+  const erc20Addresses = baseTokens
+    .filter((t) => !t.isNative)
+    .map((t) => t.address)
+
+  const erc20Contracts = erc20Addresses.flatMap((token) => [
+    { address: token, abi: erc20Abi, functionName: 'decimals' },
+    {
+      address: token,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [address!]
+    }
+  ])
+
+  const { data: erc20Data } = useReadContracts({
+    contracts: erc20Contracts,
+    enabled: !!address && erc20Contracts.length > 0,
+    watch: true
+  })
+
+  const priceFeedContracts = baseTokens.map((token) => [
+    {
+      address: token.priceFeed,
+      abi: oracleAbi,
+      functionName: 'latestAnswer'
+    }
+  ])
+
+  const { data: priceFeedData } = useReadContracts({
+    contracts: priceFeedContracts,
+    enabled: !!address && erc20Contracts.length > 0,
+    watch: true
+  })
+
+  // Merge balance/decimals into baseTokens
+  let tokenIndex = 0
+  const tokensWithBalances = baseTokens.map((token, i) => {
+    if (token.isNative) {
+      return {
+        ...token,
+        decimals: nativeBalanceData?.decimals ?? 18,
+        balance: nativeBalanceData?.value?.toString() ?? '0',
+        price: priceFeedData?.[i]?.result as bigint
+      }
+    } else {
+      const decimals = erc20Data?.[tokenIndex * 2]?.result as number
+      const balance = erc20Data?.[tokenIndex * 2 + 1]?.result as bigint
+      tokenIndex++
+      return {
+        ...token,
+        decimals: decimals ?? 0,
+        balance: balance?.toString() ?? '0',
+        price: priceFeedData?.[i]?.result as bigint
+      }
+    }
+  })
+
+  const [paymentTokens, setPaymentTokens] = useState<PaymentToken[]>([])
+  const [paymentToken, setPaymentToken] = useState<PaymentToken>(
+    {} as PaymentToken
+  )
+
+  useEffect(() => {
+    setPaymentTokens(tokensWithBalances)
+    setPaymentToken(tokensWithBalances[0])
+  }, [tokensWithBalances])
+
+  return {
+    paymentTokens,
     paymentToken,
     setPaymentToken
-    }
-
+  }
 }
