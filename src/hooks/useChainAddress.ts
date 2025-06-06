@@ -1,21 +1,11 @@
 import { useChainId } from 'wagmi'
 import { useMemo } from 'react'
-import {
-  nftConfig,
-  tokenConfig,
-  rewardDistributorConfig,
-  usdtConfig,
-  usdcConfig
-} from '../generated'
+import { paymentsConfig } from '../generated'
 
-type ContractName = 'nft' | 'token' | 'rewardDistributor' | 'usdt' | 'usdc'
+type ContractName = 'payments'
 
 const contractConfigs = {
-  nft: nftConfig,
-  token: tokenConfig,
-  rewardDistributor: rewardDistributorConfig,
-  usdt: usdtConfig,
-  usdc: usdcConfig
+  payments: paymentsConfig
 }
 
 export function useChainAddress(contractName: ContractName) {

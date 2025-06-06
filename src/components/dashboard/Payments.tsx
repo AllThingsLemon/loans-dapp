@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Address, zeroAddress } from 'viem'
+import React from 'react'
+import { parseEther } from 'viem'
 
 import { Card, CardContent, CardFooter } from '@/src/components/ui/card'
 import { Input } from '@/src/components/ui/input'
@@ -17,7 +17,6 @@ import {
 } from '@/src/components/ui/Select'
 import { formatAtomicUnits } from '@/src/utils/format'
 import { usePaymentProcess } from '@/src/hooks/usePaymentProcess'
-// import { useTokenPrice } from '@/src/hooks/useTokenPrice'
 
 export const Payments = () => {
   const searchParams = useSearchParams()
@@ -33,23 +32,33 @@ export const Payments = () => {
     receiverId !== '' &&
     callbackURL !== ''
 
-  const { paymentTokens, paymentToken, setPaymentToken } = usePaymentTokens()
-  const necessaryTokenAmounts =
-    BigInt(paymentToken?.price || '0') * BigInt(usdAmount || '0')
+  const {
+    paymentTokens,
+    paymentToken,
+    setPaymentToken,
+    refetchBalanceQueries
+  } = usePaymentTokens()
+
+  const parsedUSDAmount = parseEther(usdAmount)
+  console.log('====>parsedUSDAmount', parsedUSDAmount)
+  const consumingTokenAmounts =
+    (BigInt(paymentToken?.price || '0') * parsedUSDAmount) / BigInt(10 ** 18)
 
   const {
     isTokenApproved,
     isApproveLoading,
-    approveTokens,
+    increaseAllowance,
     isProcessLoading,
-    processPayment
+    processButtonClicked,
+    approveButtonClicked
   } = usePaymentProcess(
     paramsLoaded,
     paymentToken,
-    necessaryTokenAmounts,
+    consumingTokenAmounts,
     orderId,
-    usdAmount,
-    receiverId
+    parsedUSDAmount,
+    receiverId,
+    refetchBalanceQueries
   )
 
   return (
@@ -118,8 +127,8 @@ export const Payments = () => {
                 <div>
                   Your {paymentToken.symbol} Balance:{' '}
                   {formatAtomicUnits(
-                    BigInt(paymentToken.balance),
-                    BigInt(paymentToken.decimals),
+                    BigInt(paymentToken?.balance),
+                    BigInt(paymentToken?.decimals),
                     paymentToken.symbol
                   )}
                 </div>
@@ -127,7 +136,7 @@ export const Payments = () => {
                 <div>
                   Consuming {paymentToken.symbol} Balance:{' '}
                   {formatAtomicUnits(
-                    BigInt(paymentToken.balance),
+                    BigInt(consumingTokenAmounts),
                     BigInt(paymentToken.decimals),
                     paymentToken.symbol
                   )}
@@ -136,25 +145,41 @@ export const Payments = () => {
             )}
           </CardContent>
           <CardFooter className="flex-col">
-            <div className="flex space-x-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                disabled={isTokenApproved || !paymentToken}
-                onClick={approveTokens}
-              >
-                {isApproveLoading ? 'Approving' : 'Approve'}
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 bg-blue-500 hover:bg-blue-600"
-                disabled={!isTokenApproved || !paymentToken}
-                onClick={processPayment}
-              >
-                {isProcessLoading ? 'Confirming' : 'Confirm'}
-              </Button>
-            </div>
+            {paymentToken && paymentToken.symbol && (
+              <div className="flex space-x-4">
+                {BigInt(paymentToken?.balance) >= consumingTokenAmounts ? (
+                  <>
+                    {!paymentToken.isNative && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        disabled={
+                          isTokenApproved || !paymentToken || !increaseAllowance
+                        }
+                        onClick={approveButtonClicked}
+                      >
+                        {isApproveLoading ? 'Approving' : 'Approve'}
+                      </Button>
+                    )}
+
+                    <Button
+                      type="submit"
+                      className="flex-1 bg-blue-500 hover:bg-blue-600"
+                      disabled={!isTokenApproved || !paymentToken}
+                      onClick={processButtonClicked}
+                    >
+                      {isProcessLoading ? 'Confirming' : 'Confirm'}
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-center p-5">
+                    You have not enough token balance. <br />
+                    Please prepare more tokens to process payment.
+                  </p>
+                )}
+              </div>
+            )}
           </CardFooter>
         </>
       ) : (

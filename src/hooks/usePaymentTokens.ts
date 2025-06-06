@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useAccount, useBalance, useReadContracts } from 'wagmi'
-import { Address, zeroAddress, erc20Abi } from 'viem'
+import { Address, zeroAddress, erc20Abi, Abi } from 'viem'
 import { useReadPaymentsGetAllPaymentTokenSymbols } from '../generated'
 
-import oracleAbi from '@/src/abis/OracleAbi.json'
-import paymentsAbi from '@/src/abis/Payments.json'
+import { useChainAddress } from '@/src/hooks/useChainAddress'
+import ChainlinkFeed from '@/src/abis/ChainlinkFeed.json'
+import PaymentsAbi from '@/src/abis/Payments.json'
 
 export interface PaymentToken {
   symbol: string
   address: Address
   priceFeed: Address
-  price: bigint
+  price: string
   decimals: number
   balance: string
   isNative: boolean
@@ -18,40 +19,42 @@ export interface PaymentToken {
 
 export const usePaymentTokens = () => {
   const { address } = useAccount()
-  const { data: nativeBalanceData } = useBalance({ address })
+
+  const { data: nativeBalanceData, refetch: refetchNativeBalanceQuery } =
+    useBalance({ address })
   const { data: symbols } = useReadPaymentsGetAllPaymentTokenSymbols()
 
-  const enabled = !!symbols?.length
-  const PAYMENTS_ADDRESS = zeroAddress as `0x${string}` // replace with actual contract address
+  let enabled = !!symbols?.length
+  const PAYMENTS_ADDRESS = useChainAddress('payments')
 
-  // Read paymentTokens (tokenAddress, oracle) from contract
   const contracts =
     symbols?.map((symbol) => ({
       address: PAYMENTS_ADDRESS,
-      abi: paymentsAbi,
+      abi: PaymentsAbi as Abi,
       functionName: 'paymentTokens',
       args: [symbol]
     })) ?? []
 
   const { data: paymentTokensData } = useReadContracts({
     contracts,
-    enabled,
-    watch: true
+    query: {
+      enabled
+    }
   })
 
   // Parse payment token info
   const baseTokens: PaymentToken[] =
     symbols?.map((symbol, idx) => {
       const result = paymentTokensData?.[idx]?.result as any
-      const tokenAddress = result?.tokenAddress as Address
+      const tokenAddress = result?.[0] as Address
       const isNative = tokenAddress === zeroAddress
       return {
         symbol,
         address: tokenAddress,
-        priceFeed: result?.chainlinkFeed as Address,
+        priceFeed: result?.[1] as Address,
         decimals: 0,
         balance: '0',
-        price: 0n,
+        price: '0',
         isNative
       }
     }) ?? []
@@ -71,35 +74,36 @@ export const usePaymentTokens = () => {
     }
   ])
 
-  const { data: erc20Data } = useReadContracts({
-    contracts: erc20Contracts,
-    enabled: !!address && erc20Contracts.length > 0,
-    watch: true
-  })
+  const { data: erc20Data, refetch: refetchErc20BalanceQuery } =
+    useReadContracts({
+      contracts: erc20Contracts,
+      query: {
+        enabled: !!address && erc20Contracts.length > 0
+      }
+    })
 
-  const priceFeedContracts = baseTokens.map((token) => [
-    {
-      address: token.priceFeed,
-      abi: oracleAbi,
-      functionName: 'latestAnswer'
-    }
-  ])
+  const priceFeedContracts = baseTokens.flatMap((token) => ({
+    address: token.priceFeed,
+    abi: ChainlinkFeed as Abi,
+    functionName: 'latestAnswer'
+  }))
 
   const { data: priceFeedData } = useReadContracts({
     contracts: priceFeedContracts,
-    enabled: !!address && erc20Contracts.length > 0,
-    watch: true
+    query: {
+      enabled: !!address && baseTokens.length > 0
+    }
   })
 
   // Merge balance/decimals into baseTokens
   let tokenIndex = 0
-  const tokensWithBalances = baseTokens.map((token, i) => {
+  const tokensWithBalances: PaymentToken[] = baseTokens.map((token, i) => {
     if (token.isNative) {
       return {
         ...token,
         decimals: nativeBalanceData?.decimals ?? 18,
         balance: nativeBalanceData?.value?.toString() ?? '0',
-        price: priceFeedData?.[i]?.result as bigint
+        price: priceFeedData?.[i]?.result?.toString() ?? '0'
       }
     } else {
       const decimals = erc20Data?.[tokenIndex * 2]?.result as number
@@ -109,7 +113,7 @@ export const usePaymentTokens = () => {
         ...token,
         decimals: decimals ?? 0,
         balance: balance?.toString() ?? '0',
-        price: priceFeedData?.[i]?.result as bigint
+        price: priceFeedData?.[i]?.result?.toString() ?? '0'
       }
     }
   })
@@ -120,13 +124,34 @@ export const usePaymentTokens = () => {
   )
 
   useEffect(() => {
-    setPaymentTokens(tokensWithBalances)
-    setPaymentToken(tokensWithBalances[0])
-  }, [tokensWithBalances])
+    if (
+      !symbols ||
+      !paymentTokensData ||
+      !erc20Data ||
+      !priceFeedData ||
+      !tokensWithBalances ||
+      tokensWithBalances.length === 0
+    ) {
+      return
+    }
+
+    if (JSON.stringify(paymentTokens) !== JSON.stringify(tokensWithBalances)) {
+      setPaymentTokens(tokensWithBalances)
+      setPaymentToken(tokensWithBalances[0])
+    }
+  }, [
+    symbols,
+    paymentTokensData,
+    erc20Data,
+    priceFeedData,
+    tokensWithBalances,
+    paymentTokens
+  ])
 
   return {
     paymentTokens,
     paymentToken,
-    setPaymentToken
+    setPaymentToken,
+    refetchBalanceQueries: [refetchNativeBalanceQuery, refetchErc20BalanceQuery]
   }
 }

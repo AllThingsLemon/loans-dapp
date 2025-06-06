@@ -1,31 +1,40 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   useAccount,
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt
 } from 'wagmi'
-import { zeroAddress, erc20Abi, parseUnits } from 'viem'
+import { erc20Abi } from 'viem'
+
 import { PaymentToken } from './usePaymentTokens'
 import { useWritePaymentsProcessPayment } from '../generated'
 import { useToast } from './use-toast'
+import { useChainAddress } from '@/src/hooks/useChainAddress'
 
 export const usePaymentProcess = (
   isReady: boolean,
   token: PaymentToken,
   requiredAmount: bigint,
   orderId: string,
-  usdAmount: string,
-  receiverId: string
+  usdAmount: bigint,
+  receiverId: string,
+  refetchBalanceQueries: any[]
 ) => {
   const { toast } = useToast()
 
-  const PAYMENTS_ADDRESS = zeroAddress as `0x${string}` // TODO: replace with proper payments contract
+  const PAYMENTS_ADDRESS = useChainAddress('payments')
   const { address } = useAccount()
 
-  isReady = isReady && token && token.address && address != undefined
+  isReady =
+    isReady &&
+    token &&
+    token.address &&
+    address != undefined &&
+    PAYMENTS_ADDRESS != undefined
 
   const [isSettingAllowance, setIsSettingAllowance] = useState(false)
+  const [isSettingProcess, setIsSettingProcess] = useState(false)
 
   const { data: allowanceForPay, refetch: refetchTokenAllowance } =
     useReadContract({
@@ -36,8 +45,8 @@ export const usePaymentProcess = (
     })
 
   const isTokenApproved = useMemo(() => {
-    if (token.isNative) return true
-    if (!allowanceForPay || !requiredAmount) return false
+    if (token && token.isNative) return true
+    if (!token || !allowanceForPay || !requiredAmount) return false
     return allowanceForPay >= requiredAmount
   }, [allowanceForPay, token, requiredAmount])
 
@@ -50,56 +59,60 @@ export const usePaymentProcess = (
     hash: allowanceHash
   })
 
-  const approveTokens = useCallback(async () => {
-    if (!address || !requiredAmount || !token.address || !token.decimals) {
-      throw new Error('Missing required data for approval')
-    }
+  const approveButtonClicked = () => {
     try {
       setIsSettingAllowance(true)
-      await increaseAllowance({
+      increaseAllowance({
         address: token.address as `0x${string}`,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [
-          PAYMENTS_ADDRESS,
-          parseUnits(BigInt(requiredAmount).toString(), token.decimals)
-        ]
+        args: [PAYMENTS_ADDRESS, requiredAmount]
       })
-      refetchTokenAllowance()
     } catch (error) {
       console.error('Error approving tokens:', error)
       throw error
-    } finally {
-      setIsSettingAllowance(false)
     }
-  }, [
-    token,
-    increaseAllowance,
-    requiredAmount,
-    address,
-    refetchTokenAllowance,
-    PAYMENTS_ADDRESS
-  ])
+  }
 
-  const { writeContractAsync: processPaymentAsync, data: collectData } =
+  useEffect(() => {
+    if (isTokenAllowanceSuccess) {
+      refetchTokenAllowance()
+    }
+    setIsSettingAllowance(false)
+  }, [isTokenAllowanceSuccess, refetchTokenAllowance])
+
+  const { writeContractAsync: processPaymentAsync, data: processPaymentData } =
     useWritePaymentsProcessPayment()
 
-  const { isLoading: isProcessing, isSuccess: isProcessSuccess } =
+  const { isLoading: isPaymentProcessing, isSuccess: isPaymentProcessSuccess } =
     useWaitForTransactionReceipt({
-      hash: collectData as `0x${string}`
+      hash: processPaymentData
     })
 
-  const processPayment = useCallback(async () => {
+  const [processTxHash, setProcessTxHash] = useState<`0x${string}` | undefined>(
+    undefined
+  )
+
+  const processButtonClicked = async () => {
     try {
-      await processPaymentAsync({
+      setIsSettingProcess(true)
+      console.log(
+        BigInt(orderId),
+        BigInt(usdAmount),
+        BigInt(receiverId),
+        token.symbol
+      )
+      const tx = await processPaymentAsync({
         args: [
           BigInt(orderId),
           BigInt(usdAmount),
           BigInt(receiverId),
           token.symbol
         ],
-        address: PAYMENTS_ADDRESS as `0x${string}`
+        value: token.isNative ? requiredAmount : 0n
       })
+
+      setProcessTxHash(tx)
 
       toast({
         title: 'Thank you!',
@@ -109,23 +122,32 @@ export const usePaymentProcess = (
     } catch (error) {
       console.error('Error processing payments:', error)
       throw error
+    } finally {
+      setIsSettingProcess(false)
     }
-  }, [
-    token,
-    processPaymentAsync,
-    orderId,
-    usdAmount,
-    receiverId,
-    PAYMENTS_ADDRESS,
-    toast
-  ])
+  }
+
+  useEffect(() => {
+    if (
+      isPaymentProcessSuccess &&
+      refetchBalanceQueries &&
+      refetchBalanceQueries.length > 0
+    ) {
+      for (const refetchBalanceQuery of refetchBalanceQueries) {
+        refetchBalanceQuery()
+      }
+    } else {
+      setProcessTxHash(undefined)
+    }
+  }, [isPaymentProcessSuccess, refetchBalanceQueries])
 
   return {
     isTokenApproved,
-    approveTokens,
-    isSettingAllowance,
+    increaseAllowance,
     isApproveLoading: isSettingAllowance || isTokenAllowanceLoading,
-    processPayment,
-    isProcessLoading: isProcessing
+    processButtonClicked,
+    approveButtonClicked,
+    isProcessLoading: isSettingProcess || isPaymentProcessing,
+    processTxHash
   }
 }
