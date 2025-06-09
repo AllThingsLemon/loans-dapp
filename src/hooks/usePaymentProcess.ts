@@ -19,7 +19,7 @@ export const usePaymentProcess = (
   orderId: string,
   usdAmount: bigint,
   receiverId: string,
-  refetchBalanceQueries: any[]
+  refetchQueriesAfterProcess: any[]
 ) => {
   const { toast } = useToast()
 
@@ -96,12 +96,6 @@ export const usePaymentProcess = (
   const processButtonClicked = async () => {
     try {
       setIsSettingProcess(true)
-      console.log(
-        BigInt(orderId),
-        BigInt(usdAmount),
-        BigInt(receiverId),
-        token.symbol
-      )
       const tx = await processPaymentAsync({
         args: [
           BigInt(orderId),
@@ -121,6 +115,7 @@ export const usePaymentProcess = (
       })
     } catch (error) {
       console.error('Error processing payments:', error)
+      setProcessTxHash(undefined)
       throw error
     } finally {
       setIsSettingProcess(false)
@@ -130,16 +125,22 @@ export const usePaymentProcess = (
   useEffect(() => {
     if (
       isPaymentProcessSuccess &&
-      refetchBalanceQueries &&
-      refetchBalanceQueries.length > 0
+      refetchQueriesAfterProcess &&
+      refetchQueriesAfterProcess.length > 0
     ) {
-      for (const refetchBalanceQuery of refetchBalanceQueries) {
-        refetchBalanceQuery()
+      if (!token.isNative) {
+        refetchTokenAllowance()
       }
-    } else {
-      setProcessTxHash(undefined)
+      for (const refetchQuery of refetchQueriesAfterProcess) {
+        refetchQuery()
+      }
     }
-  }, [isPaymentProcessSuccess, refetchBalanceQueries])
+  }, [
+    isPaymentProcessSuccess,
+    refetchQueriesAfterProcess,
+    refetchTokenAllowance,
+    token
+  ])
 
   return {
     isTokenApproved,

@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { parseEther } from 'viem'
+import { useRouter } from 'next/navigation'
 
 import { Card, CardContent, CardFooter } from '@/src/components/ui/card'
 import { Input } from '@/src/components/ui/input'
@@ -32,19 +33,19 @@ export const Payments = () => {
     receiverId !== '' &&
     callbackURL !== ''
 
+  const parsedUSDAmount = parseEther(usdAmount)
+
   const {
+    paymentId,
     paymentTokens,
     paymentToken,
     setPaymentToken,
-    refetchBalanceQueries
-  } = usePaymentTokens()
-
-  const parsedUSDAmount = parseEther(usdAmount)
-  console.log('====>parsedUSDAmount', parsedUSDAmount)
-  const consumingTokenAmounts =
-    (BigInt(paymentToken?.price || '0') * parsedUSDAmount) / BigInt(10 ** 18)
+    refetchQueriesAfterProcess,
+    consumingTokenAmounts
+  } = usePaymentTokens(parsedUSDAmount, BigInt(orderId))
 
   const {
+    processTxHash,
     isTokenApproved,
     isApproveLoading,
     increaseAllowance,
@@ -58,8 +59,21 @@ export const Payments = () => {
     orderId,
     parsedUSDAmount,
     receiverId,
-    refetchBalanceQueries
+    refetchQueriesAfterProcess
   )
+
+  const router = useRouter()
+  const orderCompleted =
+    paymentId !==
+    '0x0000000000000000000000000000000000000000000000000000000000000000'
+
+  useEffect(() => {
+    if (paymentId && orderCompleted) {
+      router.push(
+        `${callbackURL}?paymentId=${paymentId}&txhash=${processTxHash}`
+      )
+    }
+  }, [paymentId, processTxHash, callbackURL, router, orderCompleted])
 
   return (
     <Card>
@@ -127,8 +141,8 @@ export const Payments = () => {
                 <div>
                   Your {paymentToken.symbol} Balance:{' '}
                   {formatAtomicUnits(
-                    BigInt(paymentToken?.balance),
-                    BigInt(paymentToken?.decimals),
+                    BigInt(paymentToken?.tokenBalance),
+                    BigInt(paymentToken?.tokenDecimals),
                     paymentToken.symbol
                   )}
                 </div>
@@ -137,7 +151,7 @@ export const Payments = () => {
                   Consuming {paymentToken.symbol} Balance:{' '}
                   {formatAtomicUnits(
                     BigInt(consumingTokenAmounts),
-                    BigInt(paymentToken.decimals),
+                    BigInt(paymentToken.tokenDecimals),
                     paymentToken.symbol
                   )}
                 </div>
@@ -147,7 +161,7 @@ export const Payments = () => {
           <CardFooter className="flex-col">
             {paymentToken && paymentToken.symbol && (
               <div className="flex space-x-4">
-                {BigInt(paymentToken?.balance) >= consumingTokenAmounts ? (
+                {BigInt(paymentToken?.tokenBalance) >= consumingTokenAmounts ? (
                   <>
                     {!paymentToken.isNative && (
                       <Button
@@ -155,7 +169,10 @@ export const Payments = () => {
                         variant="outline"
                         className="flex-1"
                         disabled={
-                          isTokenApproved || !paymentToken || !increaseAllowance
+                          isTokenApproved ||
+                          !paymentToken ||
+                          !increaseAllowance ||
+                          orderCompleted
                         }
                         onClick={approveButtonClicked}
                       >
@@ -166,7 +183,9 @@ export const Payments = () => {
                     <Button
                       type="submit"
                       className="flex-1 bg-blue-500 hover:bg-blue-600"
-                      disabled={!isTokenApproved || !paymentToken}
+                      disabled={
+                        !isTokenApproved || !paymentToken || orderCompleted
+                      }
                       onClick={processButtonClicked}
                     >
                       {isProcessLoading ? 'Confirming' : 'Confirm'}
