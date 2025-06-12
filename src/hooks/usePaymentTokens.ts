@@ -72,20 +72,18 @@ export const usePaymentTokens = (parsedUSDAmount: bigint, orderId: bigint) => {
       }
     }) ?? []
 
-  // Generate list of ERC20 addresses
-  const erc20Addresses = baseTokens
+  const erc20Contracts = baseTokens
     .filter((t) => !t.isNative)
     .map((t) => t.address)
-
-  const erc20Contracts = erc20Addresses.flatMap((token) => [
-    { address: token, abi: erc20Abi, functionName: 'decimals' },
-    {
-      address: token,
-      abi: erc20Abi,
-      functionName: 'balanceOf',
-      args: [address!]
-    }
-  ])
+    .flatMap((token) => [
+      { address: token, abi: erc20Abi, functionName: 'decimals' },
+      {
+        address: token,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address!]
+      }
+    ])
 
   const { data: erc20Data, refetch: refetchErc20BalanceQuery } =
     useReadContracts({
@@ -154,7 +152,6 @@ export const usePaymentTokens = (parsedUSDAmount: bigint, orderId: bigint) => {
     if (
       !symbols ||
       !paymentTokensData ||
-      !erc20Data ||
       !priceFeedData ||
       !tokensWithBalances ||
       tokensWithBalances.length === 0
@@ -169,7 +166,6 @@ export const usePaymentTokens = (parsedUSDAmount: bigint, orderId: bigint) => {
   }, [
     symbols,
     paymentTokensData,
-    erc20Data,
     priceFeedData,
     tokensWithBalances,
     paymentTokens
