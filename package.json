@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "pages:build": "npx @cloudflare/next-on-pages",
-    "preview": "npm run pages:build && wrangler pages dev",
-    "deploy": "npm run pages:build && wrangler pages deploy",
+    "preview": "npm run build && npm run pages:build && wrangler pages dev .vercel/output/static",
+    "deploy": "npm run build && npm run pages:build && wrangler pages deploy .vercel/output/static",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv env.d.ts",
     "prebuild": "node scripts/generate-robots-txt.js",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx}\" && eslint --fix \"**/*.{js,jsx,ts,tsx}\"",
@@ -59,7 +59,7 @@
     "wagmi": "^2.12.9"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.2",
+    "@cloudflare/next-on-pages": "^1.13.12",
     "@cloudflare/workers-types": "^4.20240821.1",
     "@hey-api/openapi-ts": "^0.53.7",
     "@types/node": "^20",
