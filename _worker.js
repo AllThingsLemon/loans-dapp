@@ -1,1 +1,2 @@
-export { default } from '@cloudflare/next-on-pages/worker'
+import worker from '@cloudflare/next-on-pages/worker'
+export default worker
