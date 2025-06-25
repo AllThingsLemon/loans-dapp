@@ -182,7 +182,7 @@ export const Payments = () => {
 
                     <Button
                       type="submit"
-                      className="flex-1 bg-blue-500 hover:bg-blue-600"
+                      className="flex-1"
                       disabled={
                         !isTokenApproved || !paymentToken || orderCompleted
                       }
