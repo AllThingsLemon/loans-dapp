@@ -16,7 +16,9 @@ export default function NotFound() {
         {/* Progress bar indicating the completion status */}
         <div className="w-full pt-12">
           <Progress value={progress} className="w-full" />
-          <p className="text-center text-foreground mt-2 text-xl">55% complete</p>
+          <p className="text-center text-foreground mt-2 text-xl">
+            55% complete
+          </p>
         </div>
       </div>
     </div>
