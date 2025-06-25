@@ -13,7 +13,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   React.useEffect(() => setMounted(true), [])
 
   client.setConfig({
-    baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api-dao.in8.com'
+    baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || ''
   })
 
   if (!mounted) return null
