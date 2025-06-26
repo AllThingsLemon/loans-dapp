@@ -1,5 +1,6 @@
 name = "payments-dapp"
 compatibility_date = "2024-07-29"
+pages_build_output_dir = ".vercel/output/static"
 
 
 [vars]
