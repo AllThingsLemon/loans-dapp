@@ -37,8 +37,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated files
+src/generated.ts
+
 # wrangler files
-.wrangler
 .dev.vars
 
 package-lock.json
