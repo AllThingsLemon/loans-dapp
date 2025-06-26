@@ -11,6 +11,18 @@ if (process.env.NODE_ENV === 'development') {
 const nextConfig = {
   experimental: {
     optimizeCss: false
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      }
+    }
+    return config
+  },
+  env: {
+    NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID
   }
 }
 
