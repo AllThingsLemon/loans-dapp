@@ -97,3 +97,25 @@ Finally, if you also want to see the example work in the deployed application
 make sure to add a `MY_KV_NAMESPACE` binding to your Pages application in its
 [dashboard kv bindings settings section](https://dash.cloudflare.com/?to=/:account/pages/view/:pages-project/settings/functions#kv_namespace_bindings_section).
 After having configured it make sure to re-deploy your application.
+
+
+## Environment Variables & Secrets
+
+This project uses Cloudflare Pages for deployment. Environment variables are configured as follows:
+
+### Public Variables (wrangler.toml)
+Non-sensitive configuration that's safe to expose in code:
+```toml
+[vars]
+NEXT_PUBLIC_BSC_TESTNET_PAYMENTS_ADDRESS = "0xaE5d3395eB2f06BFc4e283E69d9166c71043F6Ea"
+```
+
+### Secrets (Wrangler CLI)
+Sensitive data like API keys and project IDs:
+```bash
+npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-name=lemon-payments-dapp
+```
+
+**Note:** Cloudflare docs suck and say a lot of stuff that sound good but in my experience aren't true.
+Wrangler CLI secrets are available during both build time and runtime, while Cloudflare dashboard secrets are runtime-only for this project configuration.
+Apparently- Their docs say otherwise but my experience was different.
