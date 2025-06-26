@@ -7,23 +7,14 @@ import { fallback } from '@wagmi/core'
 const walletConnectProjectId =
   process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || ''
 
-// Only initialize WalletConnect on the client side
-const getConnectors = () => {
-  if (typeof window === 'undefined' || !walletConnectProjectId) {
-    return [injected()]
-  }
-  
-  const { connectors: rainbowConnectors } = getDefaultWallets({
-    appName: 'Lemon-Payments',
-    projectId: walletConnectProjectId
-  })
-  
-  return [injected(), ...rainbowConnectors]
-}
+const { connectors: rainbowConnectors } = getDefaultWallets({
+  appName: 'Lemon-Payments',
+  projectId: walletConnectProjectId
+})
 
 export const config = createConfig({
   chains: [bsc, bscTestnet],
-  connectors: getConnectors(),
+  connectors: [injected(), ...rainbowConnectors],
   transports: {
     [bsc.id]: fallback([
       http('https://bsc-dataseed1.binance.org/'),
