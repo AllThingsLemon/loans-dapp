@@ -13,7 +13,8 @@
     "deploy": "wrangler pages deploy .vercel/output/static",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv env.d.ts",
     "prebuild": "node scripts/generate-robots-txt.js",
-    "format": "prettier --write \"**/*.{js,jsx,ts,tsx}\" && eslint --fix \"**/*.{js,jsx,ts,tsx}\"",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\" && eslint --fix \"**/*.{js,jsx,ts,tsx}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,md}\" && eslint \"**/*.{js,jsx,ts,tsx}\"",
     "lint:json": "eslint '**/*.{json,json5,jsonc}'",
     "openapi-ts": "openapi-ts",
     "wagmi:generate": "wagmi generate"
