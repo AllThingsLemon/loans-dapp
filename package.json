@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "wagmi generate && npx prettier --write src/generated.ts && next build",
     "start": "next start",
     "lint": "next lint",
     "pages:build": "npx @cloudflare/next-on-pages",
@@ -14,7 +14,8 @@
     "prebuild": "node scripts/generate-robots-txt.js",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx}\" && eslint --fix \"**/*.{js,jsx,ts,tsx}\"",
     "lint:json": "eslint '**/*.{json,json5,jsonc}'",
-    "openapi-ts": "openapi-ts"
+    "openapi-ts": "openapi-ts",
+    "wagmi:generate": "wagmi generate"
   },
   "dependencies": {
     "@hey-api/client-fetch": "^0.4.1",
