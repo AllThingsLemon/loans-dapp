@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "wagmi generate && npx prettier --write src/generated.ts && npx @cloudflare/next-on-pages",
+    "build": "wagmi generate && npx prettier --write src/generated.ts && next build",
     "build:local": "wagmi generate && npx prettier --write src/generated.ts && next build",
     "start": "next start",
     "lint": "next lint",
