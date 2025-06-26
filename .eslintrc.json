@@ -4,28 +4,9 @@
     "plugin:eslint-plugin-next-on-pages/recommended",
     "prettier"
   ],
-  "plugins": ["eslint-plugin-next-on-pages", "react", "prettier"],
+  "plugins": ["eslint-plugin-next-on-pages", "react"],
   "rules": {
-    "prettier/prettier": ["error", {
-      "bracketSpacing": true,
-      "jsxBracketSameLine": false,
-      "singleQuote": true,
-      "trailingComma": "none",
-      "arrowParens": "always"
-    }],
-    "react/jsx-curly-spacing": ["error", {
-      "when": "never",
-      "children": true,
-      "allowMultiline": true
-    }],
-    "react/jsx-wrap-multilines": ["error", {
-      "declaration": "parens-new-line",
-      "assignment": "parens-new-line",
-      "return": "parens-new-line",
-      "arrow": "parens-new-line",
-      "condition": "parens-new-line",
-      "logical": "parens-new-line",
-      "prop": "ignore"
-    }]
+    "react/jsx-curly-spacing": "off",
+    "react/jsx-wrap-multilines": "off"
   }
 }
