@@ -1,5 +1,14 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with
-[`c3`](https://developers.cloudflare.com/pages/get-started/c3).
+# Loans DApp
+
+A decentralized loan management application built with Next.js, wagmi, and RainbowKit.
+
+## Features
+
+- Connect wallet using RainbowKit
+- View loan management dashboard
+- Create and manage loans
+- Lend and borrow funds
+- Built with modern web3 technologies
 
 ## Getting Started
 
@@ -15,8 +24,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the
-result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 ## Cloudflare integration
 
@@ -76,7 +84,7 @@ In order to enable the example:
   and uncomment the commented lines below it.
 - Do the same in the `wrangler.toml` file, where the comment is:
   ```
-  # KV Example:
+  # KV Example:
   ```
 - If you're using TypeScript run the `cf-typegen` script to update the
   `env.d.ts` file:
@@ -98,7 +106,6 @@ make sure to add a `MY_KV_NAMESPACE` binding to your Pages application in its
 [dashboard kv bindings settings section](https://dash.cloudflare.com/?to=/:account/pages/view/:pages-project/settings/functions#kv_namespace_bindings_section).
 After having configured it make sure to re-deploy your application.
 
-
 ## Environment Variables & Secrets
 
 This project uses Cloudflare Pages for deployment. Environment variables are configured as follows:
@@ -107,15 +114,23 @@ This project uses Cloudflare Pages for deployment. Environment variables are con
 Non-sensitive configuration that's safe to expose in code:
 ```toml
 [vars]
-NEXT_PUBLIC_BSC_TESTNET_PAYMENTS_ADDRESS = "0xaE5d3395eB2f06BFc4e283E69d9166c71043F6Ea"
+NEXT_PUBLIC_BSC_TESTNET_LOANS_ADDRESS = "0x..."
 ```
 
 ### Secrets (Wrangler CLI)
 Sensitive data like API keys and project IDs:
 ```bash
-npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-name=lemon-payments-dapp
+npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-name=loans-dapp
 ```
 
 **Note:** Cloudflare docs suck and say a lot of stuff that sound good but in my experience aren't true.
 Wrangler CLI secrets are available during both build time and runtime, while Cloudflare dashboard secrets are runtime-only for this project configuration.
 Apparently- Their docs say otherwise but my experience was different.
+
+## Tech Stack
+
+- **Framework:** Next.js 14
+- **Styling:** Tailwind CSS
+- **Web3:** wagmi, viem, RainbowKit
+- **UI Components:** Radix UI
+- **Deployment:** Cloudflare Pages

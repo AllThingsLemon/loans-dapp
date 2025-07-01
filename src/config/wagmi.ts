@@ -1,32 +1,83 @@
-import { createConfig, http } from 'wagmi'
-import { bsc, bscTestnet } from 'wagmi/chains'
 import { getDefaultWallets } from '@rainbow-me/rainbowkit'
-import { injected } from 'wagmi/connectors'
-import { fallback } from '@wagmi/core'
+import { createConfig, http } from 'wagmi'
+import { type Chain } from 'viem'
+
+const citron = {
+  id: 1005,
+  name: 'LemonChainTestnet',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'TLEMX',
+    symbol: 'tLEMX'
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.testnet.lemonchain.io']
+    },
+    public: {
+      http: ['https://rpc.testnet.lemonchain.io']
+    }
+  },
+  blockExplorers: {
+    default: {
+      name: 'Lemon Chain Testnet Explorer',
+      url: 'https://explorer-testnet.lemonchain.io/'
+    }
+  }
+} as const satisfies Chain
+
+const lemon = {
+  id: 1006,
+  name: 'LemonChain',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'LEMX',
+    symbol: 'LEMX'
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.lemonchain.io']
+    },
+    public: {
+      http: ['https://rpc.lemonchain.io']
+    }
+  },
+  blockExplorers: {
+    default: {
+      name: 'Lemon Chain Explorer',
+      url: 'https://explorer.lemonchain.io/'
+    }
+  }
+} as const satisfies Chain
 
 const walletConnectProjectId =
   process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || ''
 
-const { connectors: rainbowConnectors } = getDefaultWallets({
-  appName: 'Lemon-Payments',
+
+const chains = [
+  lemon,
+  ...(process.env.NEXT_PUBLIC_INCLUDE_TESTNET === 'true' ? [citron] : [])
+] as const
+
+const { connectors } = getDefaultWallets({
+  appName: 'Loans DApp',
   projectId: walletConnectProjectId
 })
 
 export const config = createConfig({
-  chains: [bsc, bscTestnet],
-  connectors: [injected(), ...rainbowConnectors],
+  chains,
+  connectors,
   transports: {
-    [bsc.id]: fallback([
-      http('https://bsc-dataseed1.binance.org/'),
-      http('https://bsc-dataseed1.ninicoin.io/'),
-      http('https://bsc-dataseed1.defibit.io/')
-    ]),
-    [bscTestnet.id]: fallback([
-      http('https://data-seed-prebsc-1-s1.binance.org:8545'),
-      http('https://data-seed-prebsc-2-s1.binance.org:8545'),
-      http('http://data-seed-prebsc-1-s2.binance.org:8545'),
-      http('http://data-seed-prebsc-2-s2.binance.org:8545'),
-      http('https://data-seed-prebsc-1-s3.binance.org:8545')
-    ])
-  }
+    [citron.id]: http(),
+    [lemon.id]: http(),
+  },
+  pollingInterval: 4000, // Poll every 4 seconds
+  batch: {
+    multicall: {
+      batchSize: 1024,
+      wait: 16,
+    },
+  },
 })
+
+export { chains }

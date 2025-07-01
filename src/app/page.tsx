@@ -1,23 +1,31 @@
 'use client'
 import { useAccount } from 'wagmi'
-import { Payments } from '../components/dashboard/Payments'
+import { Dashboard } from '@/src/components/dashboard/Dashboard'
 
 export default function Home() {
   const { isConnected } = useAccount()
 
   return (
-    <div>
-      {isConnected ? (
-        <div className="chart-wrapper mx-auto flex flex-col flex-wrap items-start justify-center gap-6 p-6 sm:flex-row sm:p-8">
-          <div className="grid w-full gap-6 lg:max-w-[800px]">
-            <Payments />
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isConnected ? (
+          <Dashboard />
+        ) : (
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              Welcome to Loans DApp
+            </h1>
+            <p className="text-lg text-gray-600 mb-8">
+              Connect your wallet to start managing loans and lending activities
+            </p>
+            <div className="bg-white rounded-lg shadow p-8 max-w-md mx-auto">
+              <p className="text-gray-500">
+                Please connect your wallet to access the loan management dashboard
+              </p>
+            </div>
           </div>
-        </div>
-      ) : (
-        <p className="text-2xl text-center mt-8">
-          Connect your wallet to process your payment
-        </p>
-      )}
+        )}
+      </div>
     </div>
   )
 }

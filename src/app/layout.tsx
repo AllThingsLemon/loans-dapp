@@ -4,7 +4,7 @@ import { Providers } from '@/src/components/common/Providers'
 import { Toaster } from '@/src/components/ui/toaster'
 
 export const metadata = {
-  title: 'Lemon Payments'
+  title: 'Loans DApp'
 }
 
 export default function RootLayout({
