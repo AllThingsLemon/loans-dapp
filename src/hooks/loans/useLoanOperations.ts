@@ -103,13 +103,29 @@ export const useLoanOperations = (options?: {
 
   // Contract write functions
   const { writeContractAsync: initiateLoan, isPending: isCreatingLoan } =
-    useWriteLoansInitiateLoan()
+    useWriteLoansInitiateLoan({
+      mutation: {
+        retry: false, // Disable retries to prevent double MetaMask popups
+      }
+    })
   const { writeContractAsync: makeLoanPayment, isPending: isPayingLoan } =
-    useWriteLoansMakeLoanPayment()
+    useWriteLoansMakeLoanPayment({
+      mutation: {
+        retry: false, // Disable retries to prevent double MetaMask popups
+      }
+    })
   const { writeContractAsync: approveToken, isPending: isApprovingToken } =
-    useWriteContract()
+    useWriteContract({
+      mutation: {
+        retry: false, // Disable retries to prevent double MetaMask popups
+      }
+    })
   const { writeContractAsync: withdrawCollateral, isPending: isWithdrawingCollateral } =
-    useWriteLoansWithdrawCollateral()
+    useWriteLoansWithdrawCollateral({
+      mutation: {
+        retry: false, // Disable retries to prevent double MetaMask popups
+      }
+    })
 
   // Check if user has sufficient LMLN for origination fee
   const hasInsufficientLmln =

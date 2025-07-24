@@ -25,7 +25,7 @@ export function useContractCall(options: UseContractCallOptions = {}) {
     async <T>(
       contractCall: () => Promise<T>,
       account?: string
-    ): Promise<T | null> => {
+    ): Promise<T> => {
       setState({ isLoading: true, error: null })
 
       try {
@@ -47,7 +47,7 @@ export function useContractCall(options: UseContractCallOptions = {}) {
           error instanceof Error ? error : new Error('Unknown contract error')
         setState({ isLoading: false, error: contractError })
         options.onError?.(contractError)
-        return null
+        throw contractError
       }
     },
     [queryClient, options]

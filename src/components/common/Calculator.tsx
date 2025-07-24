@@ -13,6 +13,7 @@ import {
 } from '../../utils/decimals'
 import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
+import { handleContractError, isUserRejection, type ContractError } from '../../utils/errorHandling'
 
 interface CalculatorSectionProps {
   isDashboard?: boolean
@@ -111,12 +112,17 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     requiredCollateral,
     userLmlnBalance,
     hasInsufficientLmln,
-    error: operationError
+    error: rawOperationError
   } = useLoanOperations({ 
     loanRequest, 
     selectedLtvOption,
     onDataChange: onLoanCreated
   })
+
+  // Filter out user rejections from operation errors - don't show them in UI
+  const operationError = rawOperationError && !isUserRejection(rawOperationError) 
+    ? rawOperationError 
+    : null
 
   // Calculate loan details using contract values
   const calculation = useMemo(() => {
@@ -206,14 +212,26 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     }
 
     try {
-      await createLoan(loanRequest)
-      setIsDialogOpen(false)
-      toast({
-        title: 'Loan Created Successfully',
-        description: 'Your loan has been created and will appear in your active loans!'
-      })
+      const result = await createLoan(loanRequest)
+      
+      // Only show success if we actually get a successful result
+      if (result) {
+        setIsDialogOpen(false)
+        toast({
+          title: 'Loan Created Successfully',
+          description: 'Your loan has been created and will appear in your active loans!'
+        })
+      }
     } catch (error) {
-      // Error is handled by useLoanOperations
+      const contractError = error as ContractError
+      
+      // For user rejections, just close the modal - no error feedback needed
+      if (isUserRejection(contractError)) {
+        setIsDialogOpen(false)
+      } else {
+        // Use our shared error handling utility for actual errors
+        handleContractError(contractError, toast, 'Loan Creation Failed')
+      }
     }
   }
 
