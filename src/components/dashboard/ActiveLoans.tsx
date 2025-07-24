@@ -40,6 +40,7 @@ import {
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
+import { handleContractError, type ContractError } from '@/src/utils/errorHandling'
 import {
   CreditCard,
   Calendar,
@@ -98,18 +99,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         description: 'You can now make the payment!'
       })
     } catch (error: any) {
-      const isUserRejection =
-        error?.message?.includes('User rejected') ||
-        error?.message?.includes('User denied') ||
-        error?.code === 4001
-
-      if (!isUserRejection) {
-        toast({
-          title: 'Approval Failed',
-          description: `Failed to approve tokens: ${error?.message || 'Unknown error'}`,
-          variant: 'destructive'
-        })
-      }
+      handleContractError(error as ContractError, toast, 'Approval Failed')
     }
   }
 
@@ -128,28 +118,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         })
       }
     } catch (error: any) {
-      // Check if it's a user rejection
-      const isUserRejection =
-        error?.message?.includes('User rejected') ||
-        error?.message?.includes('User denied') ||
-        error?.code === 4001
-
-      // Try to extract contract revert reason
-      let errorMessage = error?.message || 'Unknown error'
-      if (error?.reason) {
-        errorMessage = error.reason
-      } else if (error?.data?.message) {
-        errorMessage = error.data.message
-      }
-
-      if (!isUserRejection) {
-        toast({
-          title: 'Withdrawal Failed',
-          description: errorMessage,
-          variant: 'destructive'
-        })
-      }
-      // Don't show error toast for user rejections - user knows they cancelled
+      handleContractError(error as ContractError, toast, 'Withdrawal Failed')
     }
   }
 
@@ -222,31 +191,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         setIsPaymentDialogOpen(false)
       }
     } catch (error: any) {
-      // Check if it's a user rejection
-      const isUserRejection =
-        error?.message?.includes('User rejected') ||
-        error?.message?.includes('User denied') ||
-        error?.code === 4001
-
-      // Try to extract contract revert reason
-      let errorMessage = error?.message || 'Unknown error'
-      if (error?.reason) {
-        errorMessage = error.reason
-      } else if (error?.data?.message) {
-        errorMessage = error.data.message
-      } else if (error?.message?.includes('insufficient funds')) {
-        errorMessage =
-          'Contract validation failed - this may be due to loan state, timing, or other contract rules'
-      }
-
-      if (!isUserRejection) {
-        toast({
-          title: 'Payment Failed',
-          description: errorMessage,
-          variant: 'destructive'
-        })
-      }
-      // Don't show error toast for user rejections - user knows they cancelled
+      handleContractError(error as ContractError, toast, 'Payment Failed')
     }
   }
 
