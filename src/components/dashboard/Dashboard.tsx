@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle
 } from '@/src/components/ui/card'
-import { Button } from '@/src/components/ui/button'
 import {
   Tabs,
   TabsContent,
@@ -22,7 +21,6 @@ import { formatAmountWithSymbol } from '@/src/utils/format'
 import CalculatorSection from '@/src/components/common/Calculator'
 import { ActiveLoans } from '@/src/components/dashboard/ActiveLoans'
 import { LoanHistory } from '@/src/components/dashboard/LoanHistory'
-import { PayLoan } from '@/src/components/dashboard/PayLoan'
 import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
 import { Plus, History, CreditCard, Calculator } from 'lucide-react'
 

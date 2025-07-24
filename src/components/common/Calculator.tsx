@@ -1,32 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle
-} from '../../components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from '../../components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '../../components/ui/Select'
 import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
 import { useLoanOperations } from '../../hooks/loans/useLoanOperations'
 import { formatUnits, parseUnits } from 'viem'
-import { Plus, AlertTriangle } from 'lucide-react'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
 import {
@@ -35,6 +11,8 @@ import {
   formatTokenAmount,
   formatDurationRange
 } from '../../utils/decimals'
+import { LoanParameters } from '../calculator/LoanParameters'
+import { LoanSummary } from '../calculator/LoanSummary'
 
 interface CalculatorSectionProps {
   isDashboard?: boolean
@@ -258,391 +236,33 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
 
   const calculatorContent = (
     <div className='grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto'>
-      <Card
-        className={`${!isDashboard ? 'animate-slide-in-left bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
-      >
-        <CardHeader>
-          <CardTitle className={`${!isDashboard ? 'text-2xl text-white' : ''}`}>
-            Loan Parameters
-          </CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-6'>
-          <div>
-            <label
-              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
-            >
-              💰 How much do you need?
-            </label>
-            <div className='relative'>
-              <span
-                className={`absolute left-3 top-3 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-              >
-                $
-              </span>
-              <Input
-                type='number'
-                value={loanAmount === 0 ? '' : loanAmount}
-                onChange={(e) => {
-                  const value = e.target.value
-                  // Handle empty input
-                  if (value === '') {
-                    setLoanAmount(0)
-                    return
-                  }
-
-                  const numValue = Number(value)
-                  const maxAmount = loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
-                    : 100000 // Allow reasonable max
-                  // Allow typing (don't enforce min while typing, only enforce max)
-                  if (numValue <= maxAmount) {
-                    setLoanAmount(numValue)
-                  }
-                }}
-                onBlur={(e) => {
-                  // Ensure we have a valid number when user leaves the field
-                  const value = e.target.value
-                  const minAmount = loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18))
-                    : 1000
-                  if (value === '' || Number(value) < minAmount) {
-                    setLoanAmount(minAmount) // Set to minimum if empty or below min
-                  }
-                }}
-                min={
-                  loanConfig?.minLoanAmount
-                    ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
-                    : '1000'
-                }
-                max={
-                  loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
-                    : 100000
-                }
-                className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''}`}
-                placeholder='10000'
-              />
-            </div>
-            <div
-              className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-            >
-              {tokenConfig?.loanToken.symbol || 'Token'} - $
-              {loanConfig?.minLoanAmount
-                ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
-                : '1000'}{' '}
-              minimum loan
-            </div>
-          </div>
-
-          <div>
-            <label
-              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
-            >
-              📅 Loan Duration
-            </label>
-            <Select
-              value={selectedConfigIndex.toString()}
-              onValueChange={(value) => setSelectedConfigIndex(Number(value))}
-            >
-              <SelectTrigger
-                className={`w-full ${!isDashboard ? 'bg-white/10 border-white/20 text-white' : ''}`}
-              >
-                <SelectValue placeholder='Select loan duration' />
-              </SelectTrigger>
-              <SelectContent>
-                {interestAprConfigs.length === 0 ? (
-                  <SelectItem value='loading' disabled>
-                    {configLoading
-                      ? 'Loading durations...'
-                      : 'No durations available'}
-                  </SelectItem>
-                ) : (
-                  interestAprConfigs.map((config, index) => (
-                    <SelectItem key={index} value={index.toString()}>
-                      {formatDurationRange(
-                        config.minDuration,
-                        config.maxDuration
-                      )}
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-            {selectedConfig && (
-              <div
-                className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-              >
-                APR:{' '}
-                {Number(
-                  formatPercentage(
-                    selectedConfig.interestApr,
-                    tokenConfig?.interestRateDecimals || 6
-                  )
-                ).toFixed(1)}
-                %
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label
-              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
-            >
-              ⚖️ Loan-to-Value Ratio: {ltv}%
-            </label>
-            <input
-              type='range'
-              min='20'
-              max='60'
-              step='10'
-              value={ltv}
-              onChange={(e) => setLtv(Number(e.target.value))}
-              className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider'
-            />
-            <div
-              className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-            >
-              <span>20% (Safer)</span>
-              <span>60% (Max)</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card
-        className={`${!isDashboard ? 'animate-scale-in bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
-      >
-        <CardHeader>
-          <CardTitle className={`${!isDashboard ? 'text-2xl text-white' : ''}`}>
-            Loan Summary
-          </CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <div
-            className={`${!isDashboard ? 'bg-white/10 backdrop-blur-sm' : 'bg-muted'} rounded-lg p-4 border ${!isDashboard ? 'border-white/20' : ''}`}
-          >
-            <div className='flex justify-between items-center mb-4'>
-              <span
-                className={`text-lg font-semibold ${!isDashboard ? 'text-gray-300' : ''}`}
-              >
-                Loan Amount
-              </span>
-              <span
-                className={`text-2xl font-bold ${!isDashboard ? 'text-white' : ''}`}
-              >
-                ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
-              </span>
-            </div>
-
-            <div className='space-y-3 text-sm'>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  LEMON Required
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
-                >
-                  {calculation.lemonRequired > 0
-                    ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LEMON`
-                    : calculation.priceError || 'Calculating...'}
-                </span>
-              </div>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  Origination Fee - payable in {tokenConfig?.feeToken.symbol || 'Token'}
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
-                >
-                  {calculation.originationFeeLmln?.toFixed(2) || '0'} {tokenConfig?.feeToken.symbol || 'Token'}
-                  {hasInsufficientLmln && ' ⚠️'}
-                </span>
-              </div>
-              {hasInsufficientLmln && (
-                <div className='text-red-500 text-xs mt-1'>
-                  Balance:{' '}
-                  {userLmlnBalance && tokenConfig
-                    ? Number(
-                        formatTokenAmount(
-                          userLmlnBalance,
-                          tokenConfig.feeToken.decimals
-                        )
-                      ).toFixed(2)
-                    : '0'}{' '}
-                  {tokenConfig?.feeToken.symbol || 'Token'}
-                </div>
-              )}
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  LTV Ratio
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-yellow-400' : 'text-yellow-600'}`}
-                >
-                  {calculation.ltv}%
-                </span>
-              </div>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  Estimated APR
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-yellow-400' : 'text-yellow-600'}`}
-                >
-                  {calculation.apr.toFixed(1)}%
-                </span>
-              </div>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  Monthly Payment
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
-                >
-                  ${calculation.monthlyPayment.toFixed(2)}
-                </span>
-              </div>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  Balloon Payment
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
-                >
-                  $
-                  {calculation.balloonPayment.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </span>
-              </div>
-              <div className='flex justify-between'>
-                <span
-                  className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-                >
-                  Loan Term
-                </span>
-                <span
-                  className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
-                >
-                  {calculation.durationDisplay}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`text-center text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
-          >
-            ✓ No credit check required • ✓ Instant approval
-          </div>
-
-          {isDashboard && (
-            <div className='text-center mt-6'>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold py-3 px-8 text-lg'
-                    disabled={!calculation.isValid}
-                  >
-                    <Plus className='h-4 w-4 mr-2' />
-                    Create New Loan
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className='sm:max-w-md'>
-                  <DialogHeader>
-                    <DialogTitle className='flex items-center gap-2'>
-                      <AlertTriangle className='h-5 w-5 text-yellow-600' />
-                      Confirm Loan Creation
-                    </DialogTitle>
-                    <DialogDescription>
-                      Please review your loan details before proceeding. This
-                      transaction will require your approval.
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  <div className='space-y-4 py-4'>
-                    <div className='space-y-2 text-sm'>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>Loan Amount:</span>
-                        <span>
-                          ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
-                        </span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>Loan Term:</span>
-                        <span>{calculation.durationDisplay}</span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>LTV Ratio:</span>
-                        <span>{calculation.ltv}%</span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>Estimated APR:</span>
-                        <span>{calculation.apr.toFixed(1)}%</span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>
-                          Collateral Required:
-                        </span>
-                        <span>
-                          {calculation.lemonRequired.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}{' '}
-                          LEMON
-                        </span>
-                      </div>
-                      <div className='flex justify-between'>
-                        <span className='font-medium'>Origination Fee:</span>
-                        <span>
-                          {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
-                          {tokenConfig?.feeToken.symbol || 'Token'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {operationError && (
-                      <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
-                        {operationError.message}
-                      </div>
-                    )}
-                  </div>
-
-                  <DialogFooter className='flex gap-2'>
-                    <Button
-                      variant='outline'
-                      onClick={() => setIsDialogOpen(false)}
-                      disabled={isTransacting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleCreateLoan}
-                      disabled={isTransacting || !calculation.isValid}
-                      className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
-                    >
-                      {isTransacting ? 'Creating Loan...' : 'Confirm & Create Loan'}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <LoanParameters
+        loanAmount={loanAmount}
+        setLoanAmount={setLoanAmount}
+        selectedConfigIndex={selectedConfigIndex}
+        setSelectedConfigIndex={setSelectedConfigIndex}
+        ltv={ltv}
+        setLtv={setLtv}
+        loanConfig={loanConfig}
+        tokenConfig={tokenConfig}
+        interestAprConfigs={interestAprConfigs}
+        selectedConfig={selectedConfig}
+        configLoading={configLoading}
+        isDashboard={isDashboard}
+      />
+      
+      <LoanSummary
+        calculation={calculation}
+        tokenConfig={tokenConfig}
+        hasInsufficientLmln={hasInsufficientLmln}
+        userLmlnBalance={userLmlnBalance}
+        operationError={operationError}
+        isTransacting={isTransacting}
+        isDialogOpen={isDialogOpen}
+        setIsDialogOpen={setIsDialogOpen}
+        handleCreateLoan={handleCreateLoan}
+        isDashboard={isDashboard}
+      />
     </div>
   )
 
