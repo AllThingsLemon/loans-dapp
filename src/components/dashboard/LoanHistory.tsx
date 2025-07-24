@@ -1,9 +1,33 @@
 'use client'
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/src/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/src/components/ui/card'
 import { Badge } from '@/src/components/ui/badge'
 import { useLoans } from '@/src/hooks/useLoans'
-import { History, CheckCircle, XCircle, DollarSign, Calendar, Percent } from 'lucide-react'
+import { useReadLoansPrecision } from '@/src/generated'
+import {
+  formatAmountWithSymbol,
+  formatPercentage,
+  formatWithPrecision,
+  formatDuration,
+  formatTimestamp,
+  getLoanStatusLabel,
+  getLoanStatusVariant,
+  truncateAddress
+} from '@/src/utils/format'
+import {
+  History,
+  CheckCircle,
+  XCircle,
+  DollarSign,
+  Calendar,
+  Percent
+} from 'lucide-react'
 
 interface LoanHistoryProps {
   compact?: boolean
@@ -11,36 +35,36 @@ interface LoanHistoryProps {
 
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const { loanHistory } = useLoans()
+  const { data: contractPrecision } = useReadLoansPrecision()
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: number) => {
     switch (status) {
-      case 'paid':
-        return <CheckCircle className="h-4 w-4 text-green-600" />
-      case 'defaulted':
-        return <XCircle className="h-4 w-4 text-red-600" />
+      case 1: // paid
+        return <CheckCircle className='h-4 w-4 text-green-600' />
+      case 2: // defaulted
+        return <XCircle className='h-4 w-4 text-red-600' />
       default:
-        return <History className="h-4 w-4 text-muted-foreground" />
+        return <History className='h-4 w-4 text-muted-foreground' />
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <Badge variant="default" className="bg-green-100 text-green-800">Paid</Badge>
-      case 'defaulted':
-        return <Badge variant="destructive">Defaulted</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
+  const getStatusBadge = (status: number) => {
+    return (
+      <Badge variant={getLoanStatusVariant(status)}>
+        {getLoanStatusLabel(status)}
+      </Badge>
+    )
   }
 
   if (loanHistory.length === 0) {
     return (
-      <div className="text-center py-8">
-        <History className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-        <h3 className="text-lg font-medium text-muted-foreground mb-2">No Loan History</h3>
-        <p className="text-sm text-muted-foreground">
-          You don't have any completed loans yet.
+      <div className='text-center py-8'>
+        <History className='h-12 w-12 mx-auto mb-4 text-muted-foreground' />
+        <h3 className='text-lg font-medium text-muted-foreground mb-2'>
+          No Loan History
+        </h3>
+        <p className='text-sm text-muted-foreground'>
+          You don&apos;t have any completed loans yet.
         </p>
       </div>
     )
@@ -48,26 +72,36 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
 
   if (compact) {
     return (
-      <div className="space-y-3">
+      <div className='space-y-3'>
         {loanHistory.slice(0, 3).map((loan) => (
-          <div key={loan.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-            <div className="flex items-center gap-3">
+          <div
+            key={loan.id}
+            className='flex items-center justify-between p-3 bg-muted rounded-lg'
+          >
+            <div className='flex items-center gap-3'>
               {getStatusIcon(loan.status)}
               <div>
-                <p className="font-medium">{loan.amount.toFixed(2)} LEMX</p>
-                <p className="text-sm text-muted-foreground">
-                  {loan.interestRate}% • {loan.term} months
+                <p className='font-medium'>
+                  {formatAmountWithSymbol(loan.loanAmount, 'LUSD')}
+                </p>
+                <p className='text-sm text-muted-foreground'>
+                  {contractPrecision
+                    ? formatWithPrecision(loan.interestApr, contractPrecision)
+                    : '...'}{' '}
+                  • {formatDuration(loan.duration)}
                 </p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="font-medium">{loan.totalPaid.toFixed(2)} LEMX</p>
-              <p className="text-sm text-muted-foreground">total paid</p>
+            <div className='text-right'>
+              <p className='font-medium'>
+                {formatAmountWithSymbol(loan.paidAmount, 'LEMX')}
+              </p>
+              <p className='text-sm text-muted-foreground'>total paid</p>
             </div>
           </div>
         ))}
         {loanHistory.length > 3 && (
-          <div className="text-center text-sm text-muted-foreground py-2">
+          <div className='text-center text-sm text-muted-foreground py-2'>
             ... and {loanHistory.length - 3} more completed loans
           </div>
         )}
@@ -76,78 +110,100 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className='space-y-4'>
       {loanHistory.map((loan) => (
         <Card key={loan.id}>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className='flex items-center justify-between'>
+              <div className='flex items-center gap-3'>
                 {getStatusIcon(loan.status)}
                 <div>
-                  <CardTitle className="text-lg">Loan #{loan.id}</CardTitle>
+                  <CardTitle className='text-lg'>
+                    Loan #{truncateAddress(loan.id)}
+                  </CardTitle>
                   <CardDescription>
-                    {loan.lender ? `Lender: ${loan.lender}` : 'Direct loan'}
+                    Protocol Loan • {getLoanStatusLabel(loan.status)}
                   </CardDescription>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className='flex items-center gap-2'>
                 {getStatusBadge(loan.status)}
-                {loan.collateral && (
-                  <Badge variant={loan.collateral === 'LEMX' ? "yellow" : "outline"}>{loan.collateral}</Badge>
-                )}
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <DollarSign className="h-3 w-3" />
+            <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+              <div className='space-y-1'>
+                <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                  <DollarSign className='h-3 w-3' />
                   Original Amount
                 </p>
-                <p className="font-medium">{loan.amount.toFixed(2)} LEMX</p>
+                <p className='font-medium'>
+                  {formatAmountWithSymbol(loan.loanAmount, 'LUSD')}
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Percent className="h-3 w-3" />
+              <div className='space-y-1'>
+                <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                  <Percent className='h-3 w-3' />
                   Interest Rate
                 </p>
-                <p className="font-medium">{loan.interestRate}%</p>
+                <p className='font-medium'>
+                  {contractPrecision
+                    ? formatWithPrecision(loan.interestApr, contractPrecision)
+                    : '...'}
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
+              <div className='space-y-1'>
+                <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                  <Calendar className='h-3 w-3' />
                   Start Date
                 </p>
-                <p className="font-medium">{loan.startDate.toLocaleDateString()}</p>
+                <p className='font-medium'>
+                  {formatTimestamp(loan.createdAt).toLocaleDateString()}
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
+              <div className='space-y-1'>
+                <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                  <Calendar className='h-3 w-3' />
                   Due Date
                 </p>
-                <p className="font-medium">{loan.dueDate.toLocaleDateString()}</p>
+                <p className='font-medium'>
+                  {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
+                </p>
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Total Paid</p>
-                  <p className="text-lg font-semibold text-green-600">
-                    {loan.totalPaid.toFixed(2)} LEMX
+            <div className='mt-4 pt-4 border-t'>
+              <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground'>Total Paid</p>
+                  <p className='text-lg font-semibold text-green-600'>
+                    {formatAmountWithSymbol(loan.paidAmount, 'LEMX')}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Remaining Balance</p>
-                  <p className="text-lg font-semibold">
-                    {loan.remainingBalance.toFixed(2)} LEMX
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground'>
+                    Remaining Balance
+                  </p>
+                  <p className='text-lg font-semibold'>
+                    {formatAmountWithSymbol(loan.remainingBalance, 'LUSD')}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Payment Completion</p>
-                  <p className="text-lg font-semibold">
-                    {((loan.totalPaid / loan.amount) * 100).toFixed(1)}%
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground'>
+                    Payment Completion
+                  </p>
+                  <p className='text-lg font-semibold'>
+                    {loan.loanAmount + loan.interestAmount > 0n
+                      ? Number(
+                          ((loan.loanAmount +
+                            loan.interestAmount -
+                            loan.remainingBalance) *
+                            100n) /
+                            (loan.loanAmount + loan.interestAmount)
+                        ).toFixed(1)
+                      : '0'}
+                    %
                   </p>
                 </div>
               </div>
@@ -157,4 +213,4 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
       ))}
     </div>
   )
-} 
+}

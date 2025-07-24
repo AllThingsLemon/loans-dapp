@@ -36,8 +36,8 @@ export const ThreeStateSwitch = React.forwardRef<
 
   return (
     <button
-      type="button"
-      role="switch"
+      type='button'
+      role='switch'
       aria-checked={state === 'right'}
       data-state={state}
       disabled={disabled}
@@ -55,7 +55,7 @@ export const ThreeStateSwitch = React.forwardRef<
           left: positions[state],
           transition: 'left 0.2s ease'
         }}
-        className="block h-4 w-4 rounded-full bg-background shadow-lg ring-0"
+        className='block h-4 w-4 rounded-full bg-background shadow-lg ring-0'
       />
     </button>
   )

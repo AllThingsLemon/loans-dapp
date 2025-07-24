@@ -51,18 +51,18 @@ const Toast = React.forwardRef<
       className={cn(toastVariants({ variant }), className)}
       {...props}
     >
-      <div className="flex items-center space-x-4">
+      <div className='flex items-center space-x-4'>
         {variant === 'default' && (
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500">
-            <CheckIcon className="h-5 w-5 text-white" />
+          <div className='flex h-6 w-6 items-center justify-center rounded-full bg-green-500'>
+            <CheckIcon className='h-5 w-5 text-white' />
           </div>
         )}
         {variant === 'destructive' && (
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500">
-            <Cross2Icon className="h-5 w-5 text-white" />
+          <div className='flex h-6 w-6 items-center justify-center rounded-full bg-red-500'>
+            <Cross2Icon className='h-5 w-5 text-white' />
           </div>
         )}
-        <div className="flex-1">{props.children}</div>
+        <div className='flex-1'>{props.children}</div>
       </div>
     </ToastPrimitives.Root>
   )
@@ -94,10 +94,10 @@ const ToastClose = React.forwardRef<
       'absolute right-1 top-1 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-1 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600',
       className
     )}
-    toast-close=""
+    toast-close=''
     {...props}
   >
-    <Cross2Icon className="h-4 w-4" />
+    <Cross2Icon className='h-4 w-4' />
   </ToastPrimitives.Close>
 ))
 ToastClose.displayName = ToastPrimitives.Close.displayName
