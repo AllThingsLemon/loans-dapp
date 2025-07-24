@@ -2,9 +2,9 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   useReadLoansCalculateInterestApr,
   useReadLoansOriginationFees
-} from '@/generated'
+} from '@/src/generated'
 import { useContractTokenConfiguration } from './useContractTokenConfiguration'
-import { formatPercentage, formatTokenAmount } from '@/utils/decimals'
+import { formatPercentage, formatTokenAmount } from '@/src/utils/decimals'
 
 export interface LoanCalculation {
   loanAmount: number
@@ -68,6 +68,35 @@ export const useLoanCalculator = (
     args: ltvForContract ? [ltvForContract] : undefined
   })
 
+  // Function to get current LEMX price from Worker
+  const getCurrentLemxPrice = useCallback(async () => {
+    const workerUrl = process.env.NEXT_PUBLIC_LEMX_PRICE_WORKER_URL || 'https://lem-loans.clients-lemon.workers.dev'
+
+    const response = await fetch(workerUrl, {
+      headers: {
+        Accept: 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`Worker responded with ${response.status}`)
+    }
+
+    const data = (await response.json()) as CoinMarketCapResponse
+
+    if (
+      data.status &&
+      data.status.error_code === 0 &&
+      data.data &&
+      data.data.LEMX
+    ) {
+      const price = parseFloat(data.data.LEMX.quote.USD.price)
+      return price
+    } else {
+      throw new Error('LEMX current price not found in response')
+    }
+  }, [])
+
   // Function to get LEMX price (tries historical first, then current)
   const getLemxPrice = useCallback(async () => {
     const baseWorkerUrl = process.env.NEXT_PUBLIC_LEMX_PRICE_WORKER_URL || 'https://lem-loans.clients-lemon.workers.dev'
@@ -109,35 +138,6 @@ export const useLoanCalculator = (
       }
     }
   }, [getCurrentLemxPrice])
-
-  // Function to get current LEMX price from Worker
-  const getCurrentLemxPrice = useCallback(async () => {
-    const workerUrl = process.env.NEXT_PUBLIC_LEMX_PRICE_WORKER_URL || 'https://lem-loans.clients-lemon.workers.dev'
-
-    const response = await fetch(workerUrl, {
-      headers: {
-        Accept: 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`Worker responded with ${response.status}`)
-    }
-
-    const data = (await response.json()) as CoinMarketCapResponse
-
-    if (
-      data.status &&
-      data.status.error_code === 0 &&
-      data.data &&
-      data.data.LEMX
-    ) {
-      const price = parseFloat(data.data.LEMX.quote.USD.price)
-      return price
-    } else {
-      throw new Error('LEMX current price not found in response')
-    }
-  }, [])
 
   // Fetch price when component mounts
   useEffect(() => {

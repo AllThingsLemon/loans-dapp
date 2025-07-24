@@ -1,4 +1,13 @@
-import { getDefaultWallets } from '@rainbow-me/rainbowkit'
+import { 
+  getDefaultWallets,
+  connectorsForWallets 
+} from '@rainbow-me/rainbowkit'
+import {
+  injectedWallet,
+  walletConnectWallet,
+  metaMaskWallet,
+  rainbowWallet
+} from '@rainbow-me/rainbowkit/wallets'
 import { createConfig, http } from 'wagmi'
 import { type Chain } from 'viem'
 
@@ -59,10 +68,23 @@ const chains = [
   ...(process.env.NEXT_PUBLIC_INCLUDE_TESTNET === 'true' ? [citron] : [])
 ] as const
 
-const { connectors } = getDefaultWallets({
-  appName: 'Loans DApp',
-  projectId: walletConnectProjectId
-})
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: 'Recommended',
+      wallets: [
+        injectedWallet,
+        metaMaskWallet,
+        walletConnectWallet,
+        rainbowWallet
+      ]
+    }
+  ],
+  {
+    appName: 'Loans DApp',
+    projectId: walletConnectProjectId
+  }
+)
 
 export const config = createConfig({
   chains,
