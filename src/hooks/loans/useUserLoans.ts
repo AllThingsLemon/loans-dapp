@@ -16,7 +16,7 @@ import {
 import { useLoanConfig } from './useLoanConfig'
 import { queryClient } from '../query/queryClient'
 import type { Loan } from '../useLoans'
-import { LOAN_STATUS } from '@/src/constants'
+import { LOAN_STATUS, QUERY_CONFIG } from '@/src/constants'
 import { type LoanStructResponse, parseLoanStruct } from '@/src/types/contracts'
 import { usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
@@ -154,13 +154,16 @@ export const useUserLoans = () => {
             elapsedTimeInCycle
           )
         } catch (error) {
-          console.error(`❌ Failed to fetch loan data for ${loanId}:`, error)
+          // Log error for debugging but don't pollute production console
+          if (process.env.NODE_ENV === 'development') {
+            console.error(`Failed to fetch loan data for ${loanId}:`, error)
+          }
           return null
         }
       },
       enabled: !!config && !!loanId,
-      staleTime: 10000, // Consider data fresh for 10 seconds
-      cacheTime: 60000  // Keep in cache for 1 minute
+      staleTime: QUERY_CONFIG.STALE_TIME,
+      cacheTime: QUERY_CONFIG.GC_TIME
     }))
   })
 

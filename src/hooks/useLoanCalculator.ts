@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   useReadLoansCalculateInterestApr,
   useReadLoansOriginationFees
@@ -69,7 +69,7 @@ export const useLoanCalculator = (
   })
 
   // Function to get LEMX price (tries historical first, then current)
-  const getLemxPrice = async () => {
+  const getLemxPrice = useCallback(async () => {
     const baseWorkerUrl = process.env.NEXT_PUBLIC_LEMX_PRICE_WORKER_URL || 'https://lem-loans.clients-lemon.workers.dev'
     
     try {
@@ -108,10 +108,10 @@ export const useLoanCalculator = (
         throw new Error('Could not get price of LEMX')
       }
     }
-  }
+  }, [getCurrentLemxPrice])
 
   // Function to get current LEMX price from Worker
-  const getCurrentLemxPrice = async () => {
+  const getCurrentLemxPrice = useCallback(async () => {
     const workerUrl = process.env.NEXT_PUBLIC_LEMX_PRICE_WORKER_URL || 'https://lem-loans.clients-lemon.workers.dev'
 
     const response = await fetch(workerUrl, {
@@ -137,7 +137,7 @@ export const useLoanCalculator = (
     } else {
       throw new Error('LEMX current price not found in response')
     }
-  }
+  }, [])
 
   // Fetch price when component mounts
   useEffect(() => {

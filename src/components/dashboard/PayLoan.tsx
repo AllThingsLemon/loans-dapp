@@ -135,7 +135,7 @@ export function PayLoan() {
               {activeLoans.map((loan) => (
                 <SelectItem key={loan.id} value={loan.id}>
                   Loan #{truncateAddress(loan.id)} -{' '}
-                  {formatAmountWithSymbol(loan.remainingBalance)} remaining
+                  {formatAmountWithSymbol(loan.remainingBalance, tokenConfig?.loanToken.symbol || 'Token')} remaining
                 </SelectItem>
               ))}
             </SelectContent>
@@ -149,13 +149,13 @@ export function PayLoan() {
               <div>
                 <span className='text-muted-foreground'>Original Amount:</span>
                 <p className='font-medium'>
-                  {formatAmountWithSymbol(selectedLoan.loanAmount)}
+                  {formatAmountWithSymbol(selectedLoan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
               </div>
               <div>
                 <span className='text-muted-foreground'>Interest Rate:</span>
                 <p className='font-medium'>
-                  {decimals
+                  {tokenConfig?.interestRateDecimals
                     ? formatContractPercentage(
                         selectedLoan.interestApr,
                         tokenConfig.interestRateDecimals
@@ -166,7 +166,7 @@ export function PayLoan() {
               <div>
                 <span className='text-muted-foreground'>Total Paid:</span>
                 <p className='font-medium text-green-600'>
-                  {formatAmountWithSymbol(selectedLoan.paidAmount)}
+                  {formatAmountWithSymbol(selectedLoan.paidAmount, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
               </div>
               <div>
@@ -174,7 +174,7 @@ export function PayLoan() {
                   Remaining Balance:
                 </span>
                 <p className='font-medium text-orange-600'>
-                  {formatAmountWithSymbol(selectedLoan.remainingBalance)}
+                  {formatAmountWithSymbol(selectedLoan.remainingBalance, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
               </div>
             </div>
@@ -199,7 +199,7 @@ export function PayLoan() {
           {selectedLoan && (
             <p className='text-sm text-muted-foreground'>
               Maximum payment:{' '}
-              {formatAmountWithSymbol(selectedLoan.remainingBalance)}
+              {formatAmountWithSymbol(selectedLoan.remainingBalance, tokenConfig?.loanToken.symbol || 'Token')}
             </p>
           )}
         </div>
