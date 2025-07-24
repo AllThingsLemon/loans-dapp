@@ -25,7 +25,6 @@ import {
 } from '../../components/ui/Select'
 import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
 import { useLoanOperations } from '../../hooks/loans/useLoanOperations'
-import { useReadLoansCalculateInterestApr } from '../../generated'
 import { formatUnits, parseUnits } from 'viem'
 import { Plus, AlertTriangle } from 'lucide-react'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
