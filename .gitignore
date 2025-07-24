@@ -29,6 +29,12 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.dev
+.env.development
+.env.prod
+.env.production
+.env.test
+.env.staging
 
 # vercel
 .vercel
@@ -43,5 +49,6 @@ src/generated.ts
 # wrangler files
 .dev.vars
 wrangler.toml
+env.d.ts
 
 package-lock.json
