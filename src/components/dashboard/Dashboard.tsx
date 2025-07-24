@@ -23,6 +23,7 @@ import CalculatorSection from '@/src/components/common/Calculator'
 import { ActiveLoans } from '@/src/components/dashboard/ActiveLoans'
 import { LoanHistory } from '@/src/components/dashboard/LoanHistory'
 import { PayLoan } from '@/src/components/dashboard/PayLoan'
+import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
 import { Plus, History, CreditCard, Calculator } from 'lucide-react'
 
 export function Dashboard() {
@@ -128,7 +129,9 @@ export function Dashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <CalculatorSection isDashboard={true} onLoanCreated={refetch} />
+          <Web3ErrorBoundary>
+            <CalculatorSection isDashboard={true} onLoanCreated={refetch} />
+          </Web3ErrorBoundary>
         </CardContent>
       </Card>
 
@@ -157,7 +160,9 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ActiveLoans compact />
+                <Web3ErrorBoundary>
+                  <ActiveLoans compact />
+                </Web3ErrorBoundary>
               </CardContent>
             </Card>
 
@@ -187,7 +192,9 @@ export function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ActiveLoans />
+              <Web3ErrorBoundary>
+                <ActiveLoans />
+              </Web3ErrorBoundary>
             </CardContent>
           </Card>
         </TabsContent>
@@ -201,7 +208,9 @@ export function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LoanHistory />
+              <Web3ErrorBoundary>
+                <LoanHistory />
+              </Web3ErrorBoundary>
             </CardContent>
           </Card>
         </TabsContent>
