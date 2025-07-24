@@ -42,5 +42,6 @@ src/generated.ts
 
 # wrangler files
 .dev.vars
+wrangler.toml
 
 package-lock.json
