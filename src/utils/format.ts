@@ -76,7 +76,7 @@ export const formatAmount = (amount: bigint, decimals = 18): string => {
 
 export const formatAmountWithSymbol = (
   amount: bigint,
-  symbol: string = 'LUSD',
+  symbol: string,
   decimals = 18
 ): string => {
   const formattedAmount = parseFloat(formatAmount(amount, decimals)).toFixed(2)
@@ -143,12 +143,12 @@ export const getLoanStatusLabel = (status: number): string => {
 
 export const getLoanStatusVariant = (
   status: number
-): 'default' | 'secondary' | 'destructive' => {
+): 'default' | 'secondary' | 'destructive' | 'green' => {
   switch (status) {
     case 0:
-      return 'secondary' // Completed
+      return 'secondary' // Completed (grey)
     case 1:
-      return 'secondary' // Unlocked
+      return 'green' // Unlocked (green)
     case 2:
       return 'destructive' // Defaulted
     case 3:

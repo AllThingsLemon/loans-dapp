@@ -17,6 +17,7 @@ import {
 } from '@/src/components/ui/tabs'
 import { Badge } from '@/src/components/ui/badge'
 import { useLoans } from '@/src/hooks/useLoans'
+import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import { formatAmountWithSymbol } from '@/src/utils/format'
 import CalculatorSection from '@/src/components/common/Calculator'
 import { ActiveLoans } from '@/src/components/dashboard/ActiveLoans'
@@ -25,7 +26,8 @@ import { PayLoan } from '@/src/components/dashboard/PayLoan'
 import { Plus, History, CreditCard, Calculator } from 'lucide-react'
 
 export function Dashboard() {
-  const { activeLoans, loanHistory, isLoading, loanTokenSymbol, refetch } = useLoans()
+  const { activeLoans, loanHistory, isLoading, refetch } = useLoans()
+  const { tokenConfig } = useContractTokenConfiguration()
   const [activeTab, setActiveTab] = useState('overview')
 
   const totalActiveLoans = activeLoans.length
@@ -38,8 +40,8 @@ export function Dashboard() {
     0n
   )
   const totalPaid =
-    activeLoans.reduce((sum, loan) => sum + loan.paidAmount, 0n) +
-    loanHistory.reduce((sum, loan) => sum + loan.paidAmount, 0n)
+    activeLoans.reduce((sum, loan) => sum + (loan?.paidAmount || 0n), 0n) +
+    loanHistory.reduce((sum, loan) => sum + (loan?.paidAmount || 0n), 0n)
 
   return (
     <div className='space-y-6'>
@@ -73,11 +75,11 @@ export function Dashboard() {
             <CardTitle className='text-sm font-medium'>
               Total Borrowed
             </CardTitle>
-            <Badge variant='yellow'>{loanTokenSymbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalBorrowed, loanTokenSymbol)}
+              {formatAmountWithSymbol(totalBorrowed, tokenConfig?.loanToken.symbol || 'Token')}
             </div>
             <p className='text-xs text-muted-foreground'>
               Total amount borrowed
@@ -90,11 +92,11 @@ export function Dashboard() {
             <CardTitle className='text-sm font-medium'>
               Remaining Balance
             </CardTitle>
-            <Badge variant='yellow'>{loanTokenSymbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalRemaining, loanTokenSymbol)}
+              {formatAmountWithSymbol(totalRemaining, tokenConfig?.loanToken.symbol || 'Token')}
             </div>
             <p className='text-xs text-muted-foreground'>Outstanding balance</p>
           </CardContent>
@@ -103,11 +105,11 @@ export function Dashboard() {
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Total Paid</CardTitle>
-            <Badge variant='yellow'>{loanTokenSymbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalPaid, loanTokenSymbol)}
+              {formatAmountWithSymbol(totalPaid, tokenConfig?.loanToken.symbol || 'Token')}
             </div>
             <p className='text-xs text-muted-foreground'>Total amount repaid</p>
           </CardContent>

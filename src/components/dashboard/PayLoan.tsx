@@ -34,8 +34,8 @@ import { useToast } from '@/src/hooks/use-toast'
 import { CreditCard, DollarSign, AlertCircle } from 'lucide-react'
 
 export function PayLoan() {
-  const { activeLoans, payLoan, isLoading, loanTokenSymbol, loanTokenDecimals } = useLoans()
-  const { decimals } = useContractDecimals()
+  const { activeLoans, payLoan, isLoading } = useLoans()
+  const { tokenConfig } = useContractDecimals()
   const { toast } = useToast()
   const [selectedLoanId, setSelectedLoanId] = useState<`0x${string}` | ''>('')
   const [paymentAmount, setPaymentAmount] = useState('')
@@ -47,7 +47,7 @@ export function PayLoan() {
       !selectedLoanId ||
       !paymentAmount ||
       parseFloat(paymentAmount) <= 0 ||
-      !loanTokenDecimals
+      !tokenConfig?.loanToken.decimals
     ) {
       toast({
         title: 'Invalid Payment',
@@ -57,7 +57,7 @@ export function PayLoan() {
       return
     }
 
-    const paymentWei = parseTokenAmount(paymentAmount, loanTokenDecimals)
+    const paymentWei = parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals)
 
     if (selectedLoan && paymentWei > selectedLoan.remainingBalance) {
       toast({
@@ -158,7 +158,7 @@ export function PayLoan() {
                   {decimals
                     ? formatContractPercentage(
                         selectedLoan.interestApr,
-                        decimals.interestRateDecimals
+                        tokenConfig.interestRateDecimals
                       ) + '%'
                     : '...'}
                 </p>
@@ -183,7 +183,7 @@ export function PayLoan() {
 
         <div className='space-y-2'>
           <Label htmlFor='payment-amount'>
-            Payment Amount ({loanTokenSymbol || 'Token'})
+            Payment Amount ({tokenConfig?.loanToken.symbol || 'Token'})
           </Label>
           <div className='relative'>
             <DollarSign className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
@@ -206,8 +206,8 @@ export function PayLoan() {
 
         {selectedLoan &&
           paymentAmount &&
-          loanTokenDecimals &&
-          parseTokenAmount(paymentAmount, loanTokenDecimals) >
+          tokenConfig?.loanToken.decimals &&
+          parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals) >
             selectedLoan.remainingBalance && (
             <div className='flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg'>
               <AlertCircle className='h-4 w-4 text-red-600' />
@@ -223,9 +223,9 @@ export function PayLoan() {
             isLoading ||
             !selectedLoanId ||
             !paymentAmount ||
-            !loanTokenDecimals ||
+            !tokenConfig?.loanToken.decimals ||
             (selectedLoan &&
-              parseTokenAmount(paymentAmount, loanTokenDecimals) >
+              parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals) >
                 selectedLoan.remainingBalance)
           }
           className='w-full'

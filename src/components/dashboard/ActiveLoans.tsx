@@ -22,7 +22,7 @@ import {
 import { Input } from '@/src/components/ui/input'
 import { Label } from '@/src/components/ui/label'
 import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
-import { useContractDecimals } from '@/src/hooks/useContractDecimals'
+import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
   formatPercentage,
@@ -39,6 +39,7 @@ import {
   formatTokenAmount
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
+import { LOAN_STATUS } from '@/src/constants'
 import {
   CreditCard,
   Calendar,
@@ -56,17 +57,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const { 
     activeLoans, 
     payLoan, 
+    pullCollateral,
     isLoading, 
     refetch,
-    loanTokenSymbol,
-    loanTokenDecimals,
     currentAllowance,
     approveTokenAllowance,
     isTransacting,
     userLoanTokenBalance
   } = useLoans()
-  const { getTimeUntilDue, getPaymentProgress } = useLoanPayment(undefined)
-  const { decimals } = useContractDecimals()
+  const { tokenConfig } = useContractTokenConfiguration()
+  const { getTimeUntilDue, getPaymentProgress, isPaymentRequired, isCollateralWithdrawable, getPaymentStatus } = useLoanPayment(undefined, tokenConfig?.loanToken.decimals)
 
 
   const { toast } = useToast()
@@ -78,7 +78,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     if (
       !paymentAmount ||
       parseFloat(paymentAmount) <= 0 ||
-      !loanTokenDecimals
+      !tokenConfig?.loanToken.decimals
     ) {
       toast({
         title: 'Invalid Amount',
@@ -89,8 +89,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     }
 
     try {
-      const paymentWei = parseTokenAmount(paymentAmount, loanTokenDecimals)
-      console.log('Requesting approval for amount:', paymentWei.toString())
+      const paymentWei = parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals)
 
       await approveTokenAllowance(paymentWei)
 
@@ -98,9 +97,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         title: 'Approval Successful',
         description: 'You can now make the payment!'
       })
-    } catch (error) {
-      console.error('Approval failed:', error)
-
+    } catch (error: any) {
       const isUserRejection =
         error?.message?.includes('User rejected') ||
         error?.message?.includes('User denied') ||
@@ -116,16 +113,50 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     }
   }
 
-  const handlePayment = async (loanId: `0x${string}`) => {
-    console.log('=== Payment Debug Start ===')
-    console.log('loanId:', loanId)
-    console.log('paymentAmount (input):', paymentAmount)
-    console.log('decimals:', decimals)
+  const handleWithdrawal = async (loanId: `0x${string}`) => {
+    try {
+      const result = await pullCollateral(loanId)
 
+      // Only show success if we actually get a successful result
+      if (result) {
+        // Refresh all loan data
+        await refetch()
+        
+        toast({
+          title: 'Withdrawal Successful',
+          description: 'Your collateral has been withdrawn successfully!'
+        })
+      }
+    } catch (error: any) {
+      // Check if it's a user rejection
+      const isUserRejection =
+        error?.message?.includes('User rejected') ||
+        error?.message?.includes('User denied') ||
+        error?.code === 4001
+
+      // Try to extract contract revert reason
+      let errorMessage = error?.message || 'Unknown error'
+      if (error?.reason) {
+        errorMessage = error.reason
+      } else if (error?.data?.message) {
+        errorMessage = error.data.message
+      }
+
+      if (!isUserRejection) {
+        toast({
+          title: 'Withdrawal Failed',
+          description: errorMessage,
+          variant: 'destructive'
+        })
+      }
+      // Don't show error toast for user rejections - user knows they cancelled
+    }
+  }
+
+  const handlePayment = async (loanId: `0x${string}`) => {
     // Find the loan being paid
     const loan = activeLoans.find((l) => l.id === loanId)
     if (!loan) {
-      console.error('Loan not found for ID:', loanId)
       toast({
         title: 'Loan Not Found',
         description: 'Could not find the loan to make payment on',
@@ -134,36 +165,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       return
     }
 
-    console.log('=== Loan State Debug ===')
-    console.log('Loan status:', loan.status)
-    console.log('Loan remaining balance:', loan.remainingBalance.toString())
-    console.log('Loan total cycles:', loan.totalCycles.toString())
-    console.log('Loan transpired cycles:', loan.transpiredCycles.toString())
-    console.log('Loan due timestamp:', loan.dueTimestamp.toString())
-    console.log('Current timestamp:', Math.floor(Date.now() / 1000))
-    console.log(
-      'Is loan overdue:',
-      loan.dueTimestamp < BigInt(Math.floor(Date.now() / 1000))
-    )
-    console.log('=========================')
-
-    console.log('=== Payment Validation Debug ===')
-    console.log('userLoanTokenBalance:', userLoanTokenBalance?.toString())
-    console.log('currentAllowance:', currentAllowance?.toString())
-    console.log('loanTokenSymbol:', loanTokenSymbol)
-    console.log('loanTokenDecimals:', loanTokenDecimals)
-    console.log('===================================')
-
     if (
       !paymentAmount ||
       parseFloat(paymentAmount) <= 0 ||
-      !loanTokenDecimals
+      !tokenConfig?.loanToken.decimals
     ) {
-      console.log('Validation failed:', {
-        paymentAmount,
-        isValidNumber: parseFloat(paymentAmount) > 0,
-        loanTokenDecimalsAvailable: !!loanTokenDecimals
-      })
       toast({
         title: 'Invalid Amount',
         description: 'Please enter a valid payment amount',
@@ -174,23 +180,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
     try {
       // Convert payment amount to wei using loan token decimals from contract
-      const paymentWei = parseTokenAmount(paymentAmount, loanTokenDecimals)
-      console.log('Payment conversion successful:', {
-        originalAmount: paymentAmount,
-        decimalsUsed: loanTokenDecimals,
-        paymentWei: paymentWei.toString()
-      })
+      const paymentWei = parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals)
 
       // Check if user has sufficient token balance
       if (userLoanTokenBalance && paymentWei > userLoanTokenBalance) {
-        console.error('Insufficient token balance:', {
-          required: paymentWei.toString(),
-          available: userLoanTokenBalance.toString(),
-          shortfall: (paymentWei - userLoanTokenBalance).toString()
-        })
         toast({
           title: 'Insufficient Balance',
-          description: `You need ${paymentAmount} ${loanTokenSymbol} but only have ${formatTokenAmount(userLoanTokenBalance, loanTokenDecimals)} ${loanTokenSymbol}`,
+          description: `You need ${paymentAmount} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
           variant: 'destructive'
         })
         return
@@ -198,10 +194,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
       // Check payment amount against loan remaining balance
       if (paymentWei > loan.remainingBalance) {
-        console.error('Payment exceeds remaining balance:', {
-          payment: paymentWei.toString(),
-          remaining: loan.remainingBalance.toString()
-        })
         toast({
           title: 'Payment Too Large',
           description:
@@ -211,7 +203,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         return
       }
 
-      console.log('Calling payLoan...')
       const result = await payLoan(loanId, paymentWei)
 
       // Only show success if we actually get a successful result
@@ -230,23 +221,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         setSelectedLoan(null)
         setIsPaymentDialogOpen(false)
       }
-    } catch (error) {
-      console.error('=== Payment Error ===')
-      console.error('Error type:', error?.constructor?.name)
-      console.error('Error message:', error?.message)
-      console.error('Error code:', error?.code)
-      console.error('Error data:', error?.data)
-      console.error('Error reason:', error?.reason)
-      console.error('Error details:', error?.details)
-      console.error('Full error:', error)
-
+    } catch (error: any) {
       // Check if it's a user rejection
       const isUserRejection =
         error?.message?.includes('User rejected') ||
         error?.message?.includes('User denied') ||
         error?.code === 4001
-
-      console.error('Is user rejection:', isUserRejection)
 
       // Try to extract contract revert reason
       let errorMessage = error?.message || 'Unknown error'
@@ -259,9 +239,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           'Contract validation failed - this may be due to loan state, timing, or other contract rules'
       }
 
-      console.error('Processed error message:', errorMessage)
-      console.error('=====================')
-
       if (!isUserRejection) {
         toast({
           title: 'Payment Failed',
@@ -271,8 +248,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       }
       // Don't show error toast for user rejections - user knows they cancelled
     }
-
-    console.log('=== Payment Debug End ===')
   }
 
   if (activeLoans.length === 0) {
@@ -303,14 +278,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <p className='font-medium'>
                   {formatAmountWithSymbol(
                     loan.loanAmount,
-                    loanTokenSymbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token'
                   )}
                 </p>
                 <p className='text-sm text-muted-foreground'>
-                  {decimals
+                  {tokenConfig
                     ? formatContractPercentage(
                         loan.interestApr,
-                        decimals.interestRateDecimals
+                        tokenConfig.interestRateDecimals
                       ) + '%'
                     : '...'}{' '}
                   • {formatDuration(loan.duration)}
@@ -321,7 +296,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
               <p className='font-medium'>
                 {formatAmountWithSymbol(
                   loan.remainingBalance,
-                  loanTokenSymbol || 'Token'
+                  tokenConfig?.loanToken.symbol || 'Token'
                 )}
               </p>
               <p className='text-sm text-muted-foreground'>remaining</p>
@@ -340,23 +315,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   return (
     <div className='space-y-4'>
       {activeLoans.map((loan) => {
-        console.log('loan in active', loan)
-
-        // Additional cycle-specific debugging
-        console.log(`=== ActiveLoans Cycle Analysis for ${loan.id} ===`)
-        console.log('Duration (seconds):', loan.duration.toString())
-        console.log('Duration (days):', Number(loan.duration) / 86400)
-        console.log('transpiredCycles:', loan.transpiredCycles.toString())
-        console.log('totalCycles:', loan.totalCycles.toString())
-        console.log('cyclesAhead:', loan.cyclesAhead.toString())
-        console.log(
-          'Expected cycles per day:',
-          Number(loan.totalCycles) / (Number(loan.duration) / 86400)
-        )
-        console.log('============================================')
         const timeUntilDue = getTimeUntilDue(loan)
         const progress = getPaymentProgress(loan)
-        const isOverdue = timeUntilDue.value <= 0
+        const isOverdue = timeUntilDue ? timeUntilDue.value <= 0 : false
 
         return (
           <Card key={loan.id}>
@@ -374,8 +335,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </div>
                 </div>
                 <div className='flex items-center gap-2'>
-                  <Badge variant={isOverdue ? 'destructive' : 'default'}>
-                    {isOverdue ? 'Overdue' : 'Active'}
+                  <Badge variant={getLoanStatusVariant(loan.status)}>
+                    {getLoanStatusLabel(loan.status)}
                   </Badge>
                 </div>
               </div>
@@ -391,7 +352,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='font-medium'>
                     {formatAmountWithSymbol(
                       loan.loanAmount,
-                      loanTokenSymbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </p>
                 </div>
@@ -401,10 +362,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Interest Rate
                   </p>
                   <p className='font-medium'>
-                    {decimals
+                    {tokenConfig
                       ? formatContractPercentage(
                           loan.interestApr,
-                          decimals.interestRateDecimals
+                          tokenConfig.interestRateDecimals
                         ) + '%'
                       : '...'}
                   </p>
@@ -426,7 +387,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p
                     className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}
                   >
-                    {Math.abs(timeUntilDue.value)} {timeUntilDue.unit}
+                    {timeUntilDue ? `${Math.abs(timeUntilDue.value)} ${timeUntilDue.unit}` : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -443,14 +404,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Paid:{' '}
                     {formatAmountWithSymbol(
                       loan.paidAmount,
-                      loanTokenSymbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </span>
                   <span>
                     Remaining:{' '}
                     {formatAmountWithSymbol(
                       loan.remainingBalance,
-                      loanTokenSymbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </span>
                 </div>
@@ -476,16 +437,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>Collateral</p>
                   <p className='text-sm font-medium'>
-                    {formatAmountWithSymbol(loan.collateralAmount, 'LEMX')}
+                    {formatAmountWithSymbol(loan.collateralAmount, tokenConfig?.nativeToken.symbol || 'Token')}
                   </p>
                 </div>
                 <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>LTV</p>
                   <p className='text-sm font-medium'>
-                    {decimals
+                    {tokenConfig
                       ? formatContractPercentage(
                           loan.ltv,
-                          decimals.ltvDecimals
+                          tokenConfig.ltvDecimals
                         ) + '%'
                       : '...'}
                   </p>
@@ -494,28 +455,38 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
               {/* Payment Action */}
               <div className='flex items-center gap-3 pt-2'>
-                <Dialog
-                  open={isPaymentDialogOpen && selectedLoan === loan.id}
-                  onOpenChange={(open) => {
-                    setIsPaymentDialogOpen(open)
-                    if (!open) {
-                      setSelectedLoan(null)
-                      setPaymentAmount('')
-                    }
-                  }}
-                >
-                  <DialogTrigger asChild>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => {
-                        setSelectedLoan(loan.id)
-                        setIsPaymentDialogOpen(true)
-                      }}
-                    >
-                      Make Payment
-                    </Button>
-                  </DialogTrigger>
+                {loan.status === LOAN_STATUS.UNLOCKED ? (
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => handleWithdrawal(loan.id)}
+                    disabled={isTransacting}
+                  >
+                    {isTransacting ? 'Processing...' : 'Withdraw Collateral'}
+                  </Button>
+                ) : (
+                  <Dialog
+                    open={isPaymentDialogOpen && selectedLoan === loan.id}
+                    onOpenChange={(open) => {
+                      setIsPaymentDialogOpen(open)
+                      if (!open) {
+                        setSelectedLoan(null)
+                        setPaymentAmount('')
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => {
+                          setSelectedLoan(loan.id)
+                          setIsPaymentDialogOpen(true)
+                        }}
+                      >
+                        Make Payment
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Make Payment</DialogTitle>
@@ -527,7 +498,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     <div className='space-y-4'>
                       <div className='space-y-2'>
                         <Label htmlFor='payment-amount'>
-                          Payment Amount ({loanTokenSymbol || 'Token'})
+                          Payment Amount ({tokenConfig?.loanToken.symbol || 'Token'})
                         </Label>
                         <div className='relative'>
                           <Input
@@ -544,18 +515,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             size='sm'
                             className='absolute right-1 top-1 h-6 px-1 text-xs'
                             onClick={() => {
-                              if (loanTokenDecimals) {
+                              if (tokenConfig?.loanToken.decimals) {
                                 const maxAmount = formatTokenAmount(
                                   loan.remainingBalance,
-                                  loanTokenDecimals
+                                  tokenConfig.loanToken.decimals
                                 )
                                 setPaymentAmount(maxAmount)
-                                console.log('Set max payment amount:', {
-                                  remainingBalance:
-                                    loan.remainingBalance.toString(),
-                                  decimals: loanTokenDecimals,
-                                  formatted: maxAmount
-                                })
                               }
                             }}
                           >
@@ -568,14 +533,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                           Remaining balance:{' '}
                           {formatAmountWithSymbol(
                             loan.remainingBalance,
-                            loanTokenSymbol || 'Token'
+                            tokenConfig?.loanToken.symbol || 'Token'
                           )}
                         </p>
                         <p>
                           Payment amount:{' '}
                           {formatAmountWithSymbol(
                             loan.paymentAmount,
-                            loanTokenSymbol || 'Token'
+                            tokenConfig?.loanToken.symbol || 'Token'
                           )}
                         </p>
                       </div>
@@ -584,10 +549,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         {(() => {
                           // Check if approval is needed
                           const paymentWei =
-                            paymentAmount && loanTokenDecimals
+                            paymentAmount && tokenConfig?.loanToken.decimals
                               ? parseTokenAmount(
                                   paymentAmount,
-                                  loanTokenDecimals
+                                  tokenConfig.loanToken.decimals
                                 )
                               : 0n
                           const needsApproval =
@@ -641,9 +606,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       </div>
                     </div>
                   </DialogContent>
-                </Dialog>
+                  </Dialog>
+                )}
 
-                {isOverdue && (
+                {isOverdue && loan.status === LOAN_STATUS.ACTIVE && (
                   <div className='flex items-center gap-2 text-sm text-red-600'>
                     <AlertCircle className='h-4 w-4' />
                     <span>Payment overdue</span>

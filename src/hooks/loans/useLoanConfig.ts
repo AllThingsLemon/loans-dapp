@@ -5,7 +5,7 @@ import {
   useReadLoansCalculateInterestApr,
   useReadLoansOriginationFees
 } from '@/src/generated'
-import { useContractDecimals } from '../useContractDecimals'
+import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { parsePercentage } from '../../utils/decimals'
 import { DEFAULT_LTV_VALUES, LIMITS } from '@/src/constants'
 import { type LoanConfigResponse, type InterestConfigResponse, parseLoanConfig, parseInterestConfig } from '@/src/types/contracts'
@@ -26,8 +26,8 @@ export interface InterestAprConfig {
 }
 
 export const useLoanConfig = () => {
-  // Get decimal configuration for LTV precision
-  const { decimals } = useContractDecimals()
+  // Get token configuration for LTV precision
+  const { tokenConfig } = useContractTokenConfiguration()
 
   // Get loan configuration
   const {
@@ -63,11 +63,11 @@ export const useLoanConfig = () => {
 
   // LTV values that match the contract setup using dynamic precision
   const testLTVs = useMemo(() => {
-    if (!decimals) return []
+    if (!tokenConfig) return []
     return DEFAULT_LTV_VALUES.map(value => 
-      parsePercentage(value, decimals.ltvDecimals)
+      parsePercentage(value, tokenConfig.ltvDecimals)
     )
-  }, [decimals])
+  }, [tokenConfig])
 
   // Fetch origination fees for test LTVs (only if testLTVs is populated)
   const ltv1Fee = useReadLoansOriginationFees({

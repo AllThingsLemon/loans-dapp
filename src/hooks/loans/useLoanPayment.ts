@@ -1,12 +1,21 @@
 import { useCallback, useMemo } from 'react'
 import type { Loan } from '../useLoans'
+import { LOAN_STATUS } from '@/src/constants'
 
 interface PaymentValidation {
   isValid: boolean
   error?: string
 }
 
-export const useLoanPayment = (loan: Loan | undefined) => {
+export const useLoanPayment = (loan: Loan | undefined, loanTokenDecimals: number = 18) => {
+  // Status-based flags
+  const isPaymentRequired = useMemo(() => {
+    return loan?.status === LOAN_STATUS.ACTIVE
+  }, [loan?.status])
+
+  const isCollateralWithdrawable = useMemo(() => {
+    return loan?.status === LOAN_STATUS.UNLOCKED
+  }, [loan?.status])
   // Calculate maximum payment (remaining balance)
   const maxPayment = useMemo(() => {
     return loan?.remainingBalance ?? 0n
@@ -15,8 +24,9 @@ export const useLoanPayment = (loan: Loan | undefined) => {
   // Convert payment string to BigInt wei
   const parsePaymentAmount = useCallback((paymentString: string): bigint => {
     if (!paymentString || isNaN(parseFloat(paymentString))) return 0n
-    return BigInt(Math.floor(parseFloat(paymentString) * 1e18))
-  }, [])
+    const multiplier = 10 ** loanTokenDecimals
+    return BigInt(Math.floor(parseFloat(paymentString) * multiplier))
+  }, [loanTokenDecimals])
 
   // Validate payment amount
   const validatePayment = useCallback(
@@ -74,6 +84,11 @@ export const useLoanPayment = (loan: Loan | undefined) => {
 
   // Utility functions for loan calculations
   const getTimeUntilDue = useCallback((loanData: Loan) => {
+    // Only calculate time until due for loans that require payments
+    if (loanData.status !== LOAN_STATUS.ACTIVE) {
+      return null
+    }
+
     const secondsRemaining = Number(loanData.timeToDefault)
     const daysRemaining = Math.floor(secondsRemaining / (24 * 60 * 60))
 
@@ -90,6 +105,14 @@ export const useLoanPayment = (loan: Loan | undefined) => {
     return totalOwed > 0n ? Number((paid * 100n) / totalOwed) : 0
   }, [])
 
+  // Get payment status for UI display
+  const getPaymentStatus = useCallback(() => {
+    if (!loan) return 'NO_LOAN'
+    if (isCollateralWithdrawable) return 'COLLATERAL_READY'
+    if (isPaymentRequired) return 'PAYMENT_DUE'
+    return 'COMPLETED'
+  }, [loan, isCollateralWithdrawable, isPaymentRequired])
+
   return {
     maxPayment,
     recommendedPayment,
@@ -98,6 +121,10 @@ export const useLoanPayment = (loan: Loan | undefined) => {
     isValidAmount,
     paymentProgress,
     getTimeUntilDue,
-    getPaymentProgress
+    getPaymentProgress,
+    // New status-aware properties
+    isPaymentRequired,
+    isCollateralWithdrawable,
+    getPaymentStatus
   }
 }

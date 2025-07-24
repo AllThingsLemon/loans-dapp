@@ -10,6 +10,7 @@ import {
 import { Badge } from '@/src/components/ui/badge'
 import { useLoans } from '@/src/hooks/useLoans'
 import { useReadLoansPrecision } from '@/src/generated'
+import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
   formatPercentage,
@@ -36,6 +37,7 @@ interface LoanHistoryProps {
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const { loanHistory } = useLoans()
   const { data: contractPrecision } = useReadLoansPrecision()
+  const { tokenConfig } = useContractTokenConfiguration()
 
   const getStatusIcon = (status: number) => {
     switch (status) {
@@ -73,7 +75,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
   if (compact) {
     return (
       <div className='space-y-3'>
-        {loanHistory.slice(0, 3).map((loan) => (
+        {loanHistory.filter(loan => loan).slice(0, 3).map((loan) => (
           <div
             key={loan.id}
             className='flex items-center justify-between p-3 bg-muted rounded-lg'
@@ -82,7 +84,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
               {getStatusIcon(loan.status)}
               <div>
                 <p className='font-medium'>
-                  {formatAmountWithSymbol(loan.loanAmount, 'LUSD')}
+                  {formatAmountWithSymbol(loan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
                 <p className='text-sm text-muted-foreground'>
                   {contractPrecision
@@ -94,7 +96,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
             </div>
             <div className='text-right'>
               <p className='font-medium'>
-                {formatAmountWithSymbol(loan.paidAmount, 'LEMX')}
+                {formatAmountWithSymbol(loan.paidAmount, tokenConfig?.nativeToken.symbol || 'Token')}
               </p>
               <p className='text-sm text-muted-foreground'>total paid</p>
             </div>
@@ -111,7 +113,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
 
   return (
     <div className='space-y-4'>
-      {loanHistory.map((loan) => (
+      {loanHistory.filter(loan => loan).map((loan) => (
         <Card key={loan.id}>
           <CardHeader>
             <div className='flex items-center justify-between'>
@@ -139,7 +141,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                   Original Amount
                 </p>
                 <p className='font-medium'>
-                  {formatAmountWithSymbol(loan.loanAmount, 'LUSD')}
+                  {formatAmountWithSymbol(loan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
               </div>
               <div className='space-y-1'>
@@ -178,7 +180,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground'>Total Paid</p>
                   <p className='text-lg font-semibold text-green-600'>
-                    {formatAmountWithSymbol(loan.paidAmount, 'LEMX')}
+                    {formatAmountWithSymbol(loan.paidAmount, tokenConfig?.nativeToken.symbol || 'Token')}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -186,7 +188,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                     Remaining Balance
                   </p>
                   <p className='text-lg font-semibold'>
-                    {formatAmountWithSymbol(loan.remainingBalance, 'LUSD')}
+                    {formatAmountWithSymbol(loan.remainingBalance, tokenConfig?.loanToken.symbol || 'Token')}
                   </p>
                 </div>
                 <div className='space-y-1'>

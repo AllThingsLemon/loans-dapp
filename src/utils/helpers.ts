@@ -8,34 +8,8 @@ import {
 } from 'date-fns'
 import { formatUnits } from 'viem'
 
-export const formatCurrency = (
-  value: bigint | number,
-  options: {
-    usdRate?: number
-    tokenDecimals?: number
-    displayDecimals?: number
-  } = {}
-): string => {
-  const { usdRate = 1, tokenDecimals = 18, displayDecimals = 2 } = options
-
-  let numericValue: number
-
-  if (typeof value === 'bigint') {
-    numericValue = Number(formatUnits(value, tokenDecimals))
-  } else {
-    numericValue = value
-  }
-
-  const finalValue = numericValue * usdRate
-
-  return finalValue.toLocaleString(undefined, {
-    minimumFractionDigits: displayDecimals,
-    maximumFractionDigits: displayDecimals
-  })
-}
-
-export const formatBalance = (balance: bigint): string => {
-  const formattedBalance = formatUnits(balance, 18)
+export const formatBalance = (balance: bigint, decimals: number = 18): string => {
+  const formattedBalance = formatUnits(balance, decimals)
   return parseFloat(formattedBalance).toFixed(2)
 }
 

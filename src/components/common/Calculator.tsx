@@ -28,7 +28,7 @@ import { useLoanOperations } from '../../hooks/loans/useLoanOperations'
 import { useReadLoansCalculateInterestApr } from '../../generated'
 import { formatUnits, parseUnits } from 'viem'
 import { Plus, AlertTriangle } from 'lucide-react'
-import { useContractDecimals } from '../../hooks/useContractDecimals'
+import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
 import {
   parsePercentage,
@@ -51,8 +51,9 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     error: configError
   } = useLoanConfig()
 
-  // Get contract decimal configuration
-  const { decimals } = useContractDecimals()
+  // Get contract token configuration
+  const { tokenConfig } = useContractTokenConfiguration()
+  const { toast } = useToast()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
@@ -65,15 +66,15 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
   // Set initial values from contract config
   useEffect(() => {
     if (loanConfig && loanConfig.minLoanAmount && loanAmount === 0) {
-      setLoanAmount(Number(formatUnits(loanConfig.minLoanAmount, 18)))
+      setLoanAmount(Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)))
     }
-    if (ltvOptions.length > 0 && ltv === 0 && decimals) {
+    if (ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
       const ltvPercentage = Number(
-        formatPercentage(ltvOptions[0].ltv, decimals.ltvDecimals)
+        formatPercentage(ltvOptions[0].ltv, tokenConfig.ltvDecimals)
       )
       setLtv(ltvPercentage)
     }
-  }, [loanConfig, ltvOptions, interestAprConfigs, loanAmount, ltv, decimals])
+  }, [loanConfig, ltvOptions, interestAprConfigs, loanAmount, ltv])
 
   // Get selected interest config
   const selectedConfig = useMemo(() => {
@@ -97,64 +98,34 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       !selectedDuration ||
       selectedDuration === 0n ||
       !ltv ||
-      !decimals
+      !tokenConfig
+    
     )
       return undefined
     const request = {
-      loanAmount: parseUnits(loanAmount.toString(), decimals.loanTokenDecimals),
+      loanAmount: parseUnits(loanAmount.toString(), tokenConfig.loanToken.decimals),
       duration: selectedDuration,
-      ltv: parsePercentage(ltv.toString(), decimals.ltvDecimals)
+      ltv: parsePercentage(ltv.toString(), tokenConfig.ltvDecimals)
     }
-    console.log('=== Loan Request Debug ===')
-    console.log('loanAmount (input):', loanAmount)
-    console.log('loanAmount (wei):', request.loanAmount.toString())
-    console.log('selectedDuration (seconds):', selectedDuration.toString())
-    console.log('ltv (percentage):', ltv)
-    console.log('ltv (contract format):', request.ltv.toString())
-    console.log('========================')
     return request
-  }, [loanAmount, selectedDuration, ltv, decimals])
+  }, [loanAmount, selectedDuration, ltv])
 
   // Get origination fee for selected LTV
   const selectedLtvOption = useMemo(() => {
-    if (!decimals) return undefined
-
-    console.log('=== LTV MATCHING DEBUG ===')
-    console.log('Current ltv from slider:', ltv)
-    console.log(
-      'Available ltvOptions:',
-      ltvOptions.map((opt) => ({
-        ltv: opt.ltv.toString(),
-        percentage: formatPercentage(opt.ltv, decimals.ltvDecimals)
-      }))
-    )
+    if (!tokenConfig) return undefined
 
     // Convert ltv percentage to contract format using dynamic LTV precision
     const ltvInContractFormat = parsePercentage(
       ltv.toString(),
-      decimals.ltvDecimals
-    )
-    console.log(
-      'LTV converted to contract format:',
-      ltvInContractFormat.toString()
+      tokenConfig.ltvDecimals
     )
 
     const found = ltvOptions.find(
       (option) => option.ltv === ltvInContractFormat
     )
-    console.log(
-      'Found matching option:',
-      found
-        ? {
-            ltv: found.ltv.toString(),
-            fee: found.fee.toString()
-          }
-        : 'NONE'
-    )
-    console.log('========================')
 
     return found
-  }, [ltvOptions, ltv, decimals])
+  }, [ltvOptions, ltv, tokenConfig])
 
   const {
     createLoan,
@@ -170,27 +141,9 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     onDataChange: onLoanCreated
   })
 
-  // Debug logging for Calculator
-  console.log('=== Calculator Operations Debug ===')
-  console.log('isTransacting:', isTransacting)
-  console.log('isSimulating:', isSimulating)
-  console.log('requiredCollateral:', requiredCollateral?.toString())
-  console.log('userLmlnBalance:', userLmlnBalance?.toString())
-  console.log('hasInsufficientLmln:', hasInsufficientLmln)
-  console.log('operationError:', operationError)
-  console.log('==================================')
-
   // Calculate loan details using contract values
   const calculation = useMemo(() => {
-    console.log('=== Calculation Debug ===')
-    console.log('selectedConfig:', selectedConfig)
-    console.log('contractApr:', contractApr?.toString())
-    console.log('selectedLtvOption:', selectedLtvOption)
-    console.log('requiredCollateral:', requiredCollateral?.toString())
-    console.log('isSimulating:', isSimulating)
-
-    if (!contractApr || !selectedLtvOption || !selectedConfig || !decimals) {
-      console.log('Missing required data for calculation')
+    if (!contractApr || !selectedLtvOption || !selectedConfig || !tokenConfig) {
       return {
         loanAmount,
         loanDuration: selectedDuration,
@@ -203,7 +156,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
         ltv,
         lemonRequired: 0,
         apr: 0,
-        originationFeeDollars: 0,
+        originationFeeLmln: 0,
         monthlyPayment: 0,
         balloonPayment: 0,
         isValid: false,
@@ -213,17 +166,17 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
 
     // Convert contract APR from precision scaled to percentage
     const aprPercentage = Number(
-      formatPercentage(contractApr, decimals.interestRateDecimals)
+      formatPercentage(contractApr, tokenConfig.interestRateDecimals)
     )
 
     // Get required collateral from simulation (in wei)
     const lemonRequired = requiredCollateral
-      ? Number(formatTokenAmount(requiredCollateral, 18)) // Native token is 18 decimals
+      ? Number(formatTokenAmount(requiredCollateral, tokenConfig?.nativeToken.decimals || 18)) // Native token decimals
       : 0
 
     // Convert origination fee from wei to LMLN amount
     const originationFeeLmln = Number(
-      formatTokenAmount(selectedLtvOption.fee, decimals.feeTokenDecimals)
+      formatTokenAmount(selectedLtvOption.fee, tokenConfig.feeToken.decimals)
     )
 
     // Calculate monthly interest payment
@@ -250,12 +203,9 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       priceError: isSimulating
         ? 'Calculating collateral...'
         : hasInsufficientLmln
-          ? `Insufficient LMLN balance. Need ${originationFeeLmln.toFixed(2)} LMLN, have ${userLmlnBalance ? Number(formatTokenAmount(userLmlnBalance, decimals.feeTokenDecimals)).toFixed(2) : '0'} LMLN`
+          ? `Insufficient ${tokenConfig?.feeToken.symbol || 'Token'} balance. Need ${originationFeeLmln.toFixed(2)} ${tokenConfig?.feeToken.symbol || 'Token'}, have ${userLmlnBalance ? Number(formatTokenAmount(userLmlnBalance, tokenConfig.feeToken.decimals)).toFixed(2) : '0'} ${tokenConfig?.feeToken.symbol || 'Token'}`
           : undefined
     }
-
-    console.log('Calculated result:', result)
-    console.log('========================')
 
     return result
   }, [
@@ -267,7 +217,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     selectedLtvOption,
     requiredCollateral,
     isSimulating,
-    decimals,
+    tokenConfig,
     hasInsufficientLmln,
     userLmlnBalance
   ])
@@ -286,7 +236,6 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
         description: 'Your loan has been created and will appear in your active loans!'
       })
     } catch (error) {
-      console.error('Failed to create loan:', error)
       // Error is handled by useLoanOperations
     }
   }
@@ -344,7 +293,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
 
                   const numValue = Number(value)
                   const maxAmount = loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, 18)) * 100
+                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
                     : 100000 // Allow reasonable max
                   // Allow typing (don't enforce min while typing, only enforce max)
                   if (numValue <= maxAmount) {
@@ -355,7 +304,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                   // Ensure we have a valid number when user leaves the field
                   const value = e.target.value
                   const minAmount = loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, 18))
+                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18))
                     : 1000
                   if (value === '' || Number(value) < minAmount) {
                     setLoanAmount(minAmount) // Set to minimum if empty or below min
@@ -363,12 +312,12 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                 }}
                 min={
                   loanConfig?.minLoanAmount
-                    ? formatUnits(loanConfig.minLoanAmount, 18)
+                    ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
                     : '1000'
                 }
                 max={
                   loanConfig?.minLoanAmount
-                    ? Number(formatUnits(loanConfig.minLoanAmount, 18)) * 100
+                    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
                     : 100000
                 }
                 className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''}`}
@@ -378,9 +327,9 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
             <div
               className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
             >
-              LUSD - $
+              {tokenConfig?.loanToken.symbol || 'Token'} - $
               {loanConfig?.minLoanAmount
-                ? formatUnits(loanConfig.minLoanAmount, 18)
+                ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
                 : '1000'}{' '}
               minimum loan
             </div>
@@ -428,7 +377,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                 {Number(
                   formatPercentage(
                     selectedConfig.interestApr,
-                    decimals?.interestRateDecimals || 6
+                    tokenConfig?.interestRateDecimals || 6
                   )
                 ).toFixed(1)}
                 %
@@ -482,7 +431,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
               <span
                 className={`text-2xl font-bold ${!isDashboard ? 'text-white' : ''}`}
               >
-                ${calculation.loanAmount.toLocaleString()} LUSD
+                ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
               </span>
             </div>
 
@@ -505,27 +454,27 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                 <span
                   className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
                 >
-                  Origination Fee - payable in LMLN
+                  Origination Fee - payable in {tokenConfig?.feeToken.symbol || 'Token'}
                 </span>
                 <span
                   className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
                 >
-                  {calculation.originationFeeLmln?.toFixed(2) || '0'} LMLN
+                  {calculation.originationFeeLmln?.toFixed(2) || '0'} {tokenConfig?.feeToken.symbol || 'Token'}
                   {hasInsufficientLmln && ' ⚠️'}
                 </span>
               </div>
               {hasInsufficientLmln && (
                 <div className='text-red-500 text-xs mt-1'>
                   Balance:{' '}
-                  {userLmlnBalance && decimals
+                  {userLmlnBalance && tokenConfig
                     ? Number(
                         formatTokenAmount(
                           userLmlnBalance,
-                          decimals.feeTokenDecimals
+                          tokenConfig.feeToken.decimals
                         )
                       ).toFixed(2)
                     : '0'}{' '}
-                  LMLN
+                  {tokenConfig?.feeToken.symbol || 'Token'}
                 </div>
               )}
               <div className='flex justify-between'>
@@ -630,7 +579,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                       <div className='flex justify-between'>
                         <span className='font-medium'>Loan Amount:</span>
                         <span>
-                          ${calculation.loanAmount.toLocaleString()} LUSD
+                          ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
                         </span>
                       </div>
                       <div className='flex justify-between'>
@@ -661,7 +610,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
                         <span className='font-medium'>Origination Fee:</span>
                         <span>
                           {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
-                          LMLN
+                          {tokenConfig?.feeToken.symbol || 'Token'}
                         </span>
                       </div>
                     </div>

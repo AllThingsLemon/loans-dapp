@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useUserLoans } from './loans/useUserLoans'
 import { useLoanOperations } from './loans/useLoanOperations'
-import { useLoanPayment } from './loans/useLoanPayment'
+
 
 export interface Loan {
   // From loans mapping
@@ -58,6 +58,7 @@ export const useLoans = (options?: {
     // Operations from useLoanOperations
     createLoan: operations.createLoan,
     payLoan: operations.payLoan,
+    pullCollateral: operations.pullCollateral,
     approveTokenAllowance: operations.approveTokenAllowance,
 
     // Transaction states
@@ -68,10 +69,7 @@ export const useLoans = (options?: {
     requiredCollateral: operations.requiredCollateral,
     hasInsufficientLmln: operations.hasInsufficientLmln,
 
-    // Token & balance info
-    loanTokenSymbol: operations.loanTokenSymbol,
-    loanTokenDecimals: operations.loanTokenDecimals,
-    loanTokenAddress: operations.loanTokenAddress,
+    // User balance info
     userLmlnBalance: operations.userLmlnBalance,
     userLoanTokenBalance: operations.userLoanTokenBalance,
     currentAllowance: operations.currentAllowance,
