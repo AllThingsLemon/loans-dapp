@@ -160,9 +160,9 @@
           }
         ],
         "indexed": false,
-        "internalType": "struct Loans.InterestAprConfig",
-        "name": "aprConfig",
-        "type": "tuple"
+        "internalType": "struct Loans.InterestAprConfig[]",
+        "name": "aprConfigs",
+        "type": "tuple[]"
       },
       {
         "indexed": false,
@@ -345,6 +345,12 @@
       {
         "indexed": false,
         "internalType": "uint256",
+        "name": "interestAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
         "name": "ltv",
         "type": "uint256"
       },
@@ -411,7 +417,26 @@
         "type": "uint256"
       }
     ],
-    "name": "OriginationFeesSet",
+    "name": "OriginationFeesAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": false,
+        "internalType": "uint256[]",
+        "name": "ltvs",
+        "type": "uint256[]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "OriginationFeesRemoved",
     "type": "event"
   },
   {
@@ -626,12 +651,30 @@
             "type": "uint256"
           }
         ],
-        "internalType": "struct Loans.InterestAprConfig",
-        "name": "aprConfig",
-        "type": "tuple"
+        "internalType": "struct Loans.InterestAprConfig[]",
+        "name": "aprConfigs",
+        "type": "tuple[]"
       }
     ],
     "name": "addInterestAprConfigs",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "ltvs",
+        "type": "uint256[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "fees",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "addOriginationFees",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -649,6 +692,60 @@
       {
         "internalType": "uint256",
         "name": "interestApr",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "loanDuration",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "loanAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "ltv",
+        "type": "uint256"
+      }
+    ],
+    "name": "calculateLoanDetails",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "interestAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "interestApr",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "originationFee",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "collateralAmount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "loanCycleDuration",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "firstLoanPayment",
         "type": "uint256"
       }
     ],
@@ -764,6 +861,19 @@
         "internalType": "bytes32[]",
         "name": "",
         "type": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getInterestAprConfigsLength",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -1061,6 +1171,11 @@
         "type": "uint256"
       },
       {
+        "internalType": "uint256",
+        "name": "loanCycleDuration",
+        "type": "uint256"
+      },
+      {
         "internalType": "bool",
         "name": "collateralWithdrawn",
         "type": "bool"
@@ -1109,6 +1224,19 @@
       }
     ],
     "name": "originationFees",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "originationFeesLength",
     "outputs": [
       {
         "internalType": "uint256",
@@ -1187,12 +1315,44 @@
   {
     "inputs": [
       {
+        "internalType": "bytes32",
+        "name": "loanId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "remainingTimeInCycle",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "index",
         "type": "uint256"
       }
     ],
     "name": "removeInterestAprConfig",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "ltvs",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "removeOriginationFees",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1293,24 +1453,6 @@
       }
     ],
     "name": "setLoanConfiguration",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256[]",
-        "name": "ltvs",
-        "type": "uint256[]"
-      },
-      {
-        "internalType": "uint256[]",
-        "name": "fees",
-        "type": "uint256[]"
-      }
-    ],
-    "name": "setOriginationFees",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
