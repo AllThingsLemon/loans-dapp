@@ -154,10 +154,6 @@ export const useUserLoans = () => {
             elapsedTimeInCycle
           )
         } catch (error) {
-          // Log error for debugging but don't pollute production console
-          if (process.env.NODE_ENV === 'development') {
-            console.error(`Failed to fetch loan data for ${loanId}:`, error)
-          }
           return null
         }
       },
