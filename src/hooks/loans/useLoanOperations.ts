@@ -4,13 +4,14 @@ import { DEFAULT_DECIMALS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
   useWriteLoansMakeLoanPayment,
-  useSimulateLoansInitiateLoan,
   useReadLoansOriginationFeeToken,
   useReadLoansCollateralTokenPrice,
+  useReadLoansCalculateLoanDetails,
   loansAddress,
   useWriteLoansWithdrawCollateral
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
+import { config } from '@/src/config/wagmi'
 import { erc20Abi } from 'viem'
 import { useContractCall } from './useContractCall'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
@@ -22,14 +23,7 @@ export interface LoanRequest {
   ltv: bigint // percentage scaled by PRECISION (e.g., 50 * 1e8 = 50%)
 }
 
-// Calculate required collateral using contract formula: (loanAmount * collateralTokenPrice) / ltv
-const calculateRequiredCollateral = (
-  loanAmount: bigint,
-  ltv: bigint,
-  collateralTokenPrice: bigint
-): bigint => {
-  return (loanAmount * collateralTokenPrice) / ltv
-}
+// No longer needed - calculateLoanDetails provides this
 
 export const useLoanOperations = (options?: {
   loanRequest?: LoanRequest
@@ -101,6 +95,20 @@ export const useLoanOperations = (options?: {
     }
   })
 
+  // Get current LMLN token allowance for origination fees
+  const { data: currentLmlnAllowance, refetch: refetchLmlnAllowance } = useReadContract({
+    address: feeTokenAddress,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args:
+      address && loansContractAddress
+        ? [address, loansContractAddress]
+        : undefined,
+    query: {
+      enabled: !!feeTokenAddress && !!address && !!loansContractAddress
+    }
+  })
+
   // Contract write functions
   const { writeContractAsync: initiateLoan, isPending: isCreatingLoan } =
     useWriteLoansInitiateLoan({
@@ -133,30 +141,29 @@ export const useLoanOperations = (options?: {
       ? userLmlnBalance < selectedLtvOption.fee
       : false
 
-  // Calculate required collateral for simulation
-  const requiredCollateralValue =
-    loanRequest && collateralTokenPrice
-      ? calculateRequiredCollateral(
-          loanRequest.loanAmount,
-          loanRequest.ltv,
-          collateralTokenPrice
-        )
-      : undefined
-
-  // Simulate the loan creation to get required collateral
+  // Calculate loan details using the view function (no token interactions)
   const {
-    data: simulationData,
-    isLoading: isSimulating,
-    error: simulationError
-  } = useSimulateLoansInitiateLoan({
+    data: calculationData,
+    isLoading: isCalculating,
+    error: calculationError
+  } = useReadLoansCalculateLoanDetails({
     args: loanRequest
       ? [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv]
       : undefined,
-    value: requiredCollateralValue,
     query: {
-      enabled: !!loanRequest && !!address && !hasInsufficientLmln && !!requiredCollateralValue
+      enabled: !!loanRequest
     }
   })
+
+  // Extract calculation results
+  const [
+    interestAmount,
+    interestApr,
+    originationFee,
+    collateralAmount,
+    loanCycleDuration,
+    firstLoanPayment
+  ] = calculationData || []
 
 
   // Contract call wrapper with error handling and cache invalidation
@@ -171,12 +178,38 @@ export const useLoanOperations = (options?: {
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
       if (!address) throw new Error('Wallet not connected')
-      if (!simulationData?.request)
-        throw new Error('Transaction simulation failed')
-
+      if (!collateralAmount) throw new Error('Collateral amount not calculated')
+      if (!originationFee) throw new Error('Origination fee not calculated')
+      
       const result = await executeCall(async () => {
-        // Use the simulated transaction parameters including the required msg.value
-        const txHash = await initiateLoan(simulationData.request)
+        // Check if we need to approve LMLN tokens for origination fee
+        if (!currentLmlnAllowance || currentLmlnAllowance < originationFee) {
+          if (!feeTokenAddress || !loansContractAddress) {
+            throw new Error('Missing token addresses for approval')
+          }
+
+          // Approve LMLN tokens for origination fee
+          const approvalTxHash = await approveToken({
+            address: feeTokenAddress,
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [loansContractAddress, originationFee]
+          })
+
+          // Wait for approval transaction to be confirmed
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
+          }
+
+          // Refetch allowance after approval
+          await refetchLmlnAllowance()
+        }
+
+        // Execute the transaction directly with calculated parameters
+        const txHash = await initiateLoan({
+          args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+          value: collateralAmount
+        })
 
         // Wait for transaction to be confirmed on blockchain
         if (publicClient) {
@@ -193,7 +226,7 @@ export const useLoanOperations = (options?: {
 
       return result
     },
-    [address, initiateLoan, executeCall, simulationData, onDataChange]
+    [address, initiateLoan, executeCall, collateralAmount, originationFee, currentLmlnAllowance, feeTokenAddress, loansContractAddress, approveToken, publicClient, refetchLmlnAllowance, onDataChange]
   )
 
   // Function to approve token allowance if needed
@@ -319,11 +352,19 @@ export const useLoanOperations = (options?: {
     // Transaction states
     isTransacting:
       isCreatingLoan || isPayingLoan || isExecuting || isApprovingToken,
-    isSimulating: isSimulating || decimalsLoading,
+    isSimulating: isCalculating || decimalsLoading,
     
     // Loan creation data
-    requiredCollateral: simulationData?.request?.value,
+    requiredCollateral: collateralAmount,
     hasInsufficientLmln,
+    calculationData: calculationData ? {
+      interestAmount,
+      interestApr,
+      originationFee,
+      collateralAmount,
+      loanCycleDuration,
+      firstLoanPayment
+    } : undefined,
     
     // Contract addresses
     loansContractAddress,
@@ -332,8 +373,9 @@ export const useLoanOperations = (options?: {
     userLmlnBalance,
     userLoanTokenBalance,
     currentAllowance,
+    currentLmlnAllowance,
     
-    // Error state
-    error: executionError || simulationError || decimalsError
+    // Error state  
+    error: executionError || calculationError || decimalsError
   }
 }
