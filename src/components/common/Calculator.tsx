@@ -32,6 +32,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
+  
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
@@ -54,6 +55,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     }
   }, [loanConfig, ltvOptions, interestAprConfigs, loanAmount, ltv])
 
+
   // Get selected interest config
   const selectedConfig = useMemo(() => {
     if (!interestAprConfigs || interestAprConfigs.length === 0) return null
@@ -65,9 +67,6 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     if (!selectedConfig) return 0n
     return (selectedConfig.minDuration + selectedConfig.maxDuration) / 2n
   }, [selectedConfig])
-
-  // Get current interest rate from selected config
-  const contractApr = selectedConfig?.interestApr
 
   // Create loan request for simulation
   const loanRequest = useMemo(() => {
@@ -112,6 +111,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     requiredCollateral,
     userLmlnBalance,
     hasInsufficientLmln,
+    calculationData,
     error: rawOperationError
   } = useLoanOperations({ 
     loanRequest, 
@@ -124,9 +124,9 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     ? rawOperationError 
     : null
 
-  // Calculate loan details using contract values
+  // Calculate loan details using contract calculation data
   const calculation = useMemo(() => {
-    if (!contractApr || !selectedLtvOption || !selectedConfig || !tokenConfig) {
+    if (!selectedConfig || !tokenConfig) {
       return {
         loanAmount,
         loanDuration: selectedDuration,
@@ -147,24 +147,43 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       }
     }
 
-    // Convert contract APR from precision scaled to percentage
-    const aprPercentage = Number(
-      formatPercentage(contractApr, tokenConfig.interestRateDecimals)
-    )
+    // Use contract calculation data if available
+    if (!calculationData) {
+      return {
+        loanAmount,
+        loanDuration: selectedDuration,
+        durationDisplay: formatDurationRange(
+          selectedConfig.minDuration,
+          selectedConfig.maxDuration
+        ),
+        ltv,
+        lemonRequired: 0,
+        apr: 0,
+        originationFeeLmln: 0,
+        monthlyPayment: 0,
+        balloonPayment: 0,
+        isValid: false,
+        priceError: isSimulating ? 'Calculating collateral...' : 'Contract calculation not available'
+      }
+    }
 
-    // Get required collateral from simulation (in wei)
-    const lemonRequired = requiredCollateral
-      ? Number(formatTokenAmount(requiredCollateral, tokenConfig?.nativeToken.decimals || 18)) // Native token decimals
+    // Use contract-calculated values
+    const aprPercentage = calculationData.interestApr
+      ? Number(formatPercentage(calculationData.interestApr, tokenConfig.interestRateDecimals))
       : 0
 
-    // Convert origination fee from wei to LMLN amount
-    const originationFeeLmln = Number(
-      formatTokenAmount(selectedLtvOption.fee, tokenConfig.feeToken.decimals)
-    )
+    const lemonRequired = calculationData.collateralAmount
+      ? Number(formatTokenAmount(calculationData.collateralAmount, tokenConfig.nativeToken.decimals))
+      : 0
 
-    // Calculate monthly interest payment
-    const monthlyRate = aprPercentage / 100 / 12
-    const monthlyPayment = loanAmount * monthlyRate
+    const originationFeeLmln = calculationData.originationFee
+      ? Number(formatTokenAmount(calculationData.originationFee, tokenConfig.feeToken.decimals))
+      : 0
+
+    // Use contract's firstLoanPayment for monthly payment
+    const monthlyPayment = calculationData.firstLoanPayment
+      ? Number(formatTokenAmount(calculationData.firstLoanPayment, tokenConfig.loanToken.decimals))
+      : 0
 
     // Balloon payment is the principal
     const balloonPayment = loanAmount
@@ -182,7 +201,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       originationFeeLmln,
       monthlyPayment,
       balloonPayment,
-      isValid: !isSimulating && !!requiredCollateral && !hasInsufficientLmln,
+      isValid: !isSimulating && !!calculationData && !hasInsufficientLmln,
       priceError: isSimulating
         ? 'Calculating collateral...'
         : hasInsufficientLmln
@@ -196,9 +215,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     selectedDuration,
     selectedConfig,
     ltv,
-    contractApr,
-    selectedLtvOption,
-    requiredCollateral,
+    calculationData,
     isSimulating,
     tokenConfig,
     hasInsufficientLmln,
