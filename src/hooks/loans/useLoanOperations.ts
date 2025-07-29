@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi'
+import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_DECIMALS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
@@ -13,9 +14,8 @@ import {
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 import { erc20Abi } from 'viem'
-import { useContractCall } from './useContractCall'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
-import { formatTokenAmount } from '../../utils/decimals'
+import { loanKeys } from '../query/loanQueries'
 
 export interface LoanRequest {
   loanAmount: bigint // wei (token decimals)
@@ -23,17 +23,57 @@ export interface LoanRequest {
   ltv: bigint // percentage scaled by PRECISION (e.g., 50 * 1e8 = 50%)
 }
 
-// No longer needed - calculateLoanDetails provides this
-
-export const useLoanOperations = (options?: {
+export interface UseLoanOperationsOptions {
   loanRequest?: LoanRequest
   selectedLtvOption?: { ltv: bigint; fee: bigint }
-  onDataChange?: () => Promise<void>
-}) => {
-  const { loanRequest, selectedLtvOption, onDataChange } = options || {}
+}
+
+export interface UseLoanOperationsReturn {
+  // Operations
+  createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
+  approveLoanFee: () => Promise<`0x${string}` | undefined>
+  payLoan: (loanId: `0x${string}`, amount: bigint) => Promise<`0x${string}` | undefined>
+  pullCollateral: (loanId: `0x${string}`) => Promise<`0x${string}` | undefined>
+  approveTokenAllowance: (amount: bigint) => Promise<`0x${string}` | undefined>
+  
+  // Transaction states
+  isTransacting: boolean
+  isSimulating: boolean
+  
+  // Loan creation data
+  requiredCollateral: bigint | undefined
+  hasInsufficientLmln: boolean
+  calculationData: {
+    interestAmount: bigint | undefined
+    interestApr: bigint | undefined
+    originationFee: bigint | undefined
+    collateralAmount: bigint | undefined
+    loanCycleDuration: bigint | undefined
+    firstLoanPayment: bigint | undefined
+  } | undefined
+  
+  // Contract addresses
+  loansContractAddress: `0x${string}` | undefined
+  
+  // User balances
+  userLmlnBalance: bigint | undefined
+  userLoanTokenBalance: bigint | undefined
+  currentAllowance: bigint | undefined
+  currentLmlnAllowance: bigint | undefined
+  
+  // Error state  
+  error: Error | null
+}
+
+// No longer needed - calculateLoanDetails provides this
+
+export const useLoanOperations = (options?: UseLoanOperationsOptions): UseLoanOperationsReturn => {
+  const { loanRequest, selectedLtvOption } = options || {}
   const { address } = useAccount()
   const chainId = useChainId()
   const publicClient = usePublicClient()
+  const queryClient = useQueryClient()
+
   
   // Get native token decimals from chain config
   const nativeTokenDecimals = publicClient?.chain?.nativeCurrency?.decimals ?? DEFAULT_DECIMALS.NATIVE_TOKEN
@@ -166,14 +206,37 @@ export const useLoanOperations = (options?: {
   ] = calculationData || []
 
 
-  // Contract call wrapper with error handling and cache invalidation
-  const {
-    executeCall,
-    isLoading: isExecuting,
-    error: executionError
-  } = useContractCall({
-    invalidateQueries: true
-  })
+
+
+  // Function to approve LMLN tokens for loan creation
+  const approveLoanFee = useCallback(
+    async () => {
+      if (!address) throw new Error('Wallet not connected')
+      if (!originationFee) throw new Error('Origination fee not calculated')
+      if (!feeTokenAddress || !loansContractAddress) {
+        throw new Error('Missing token addresses for approval')
+      }
+
+      // Approve LMLN tokens for origination fee
+      const approvalTxHash = await approveToken({
+        address: feeTokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [loansContractAddress, originationFee]
+      })
+
+      // Wait for approval transaction to be confirmed
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
+      }
+
+      // Refetch allowance after approval
+      await refetchLmlnAllowance()
+
+      return approvalTxHash
+    },
+    [address, originationFee, feeTokenAddress, loansContractAddress, approveToken, publicClient, refetchLmlnAllowance]
+  )
 
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
@@ -181,52 +244,61 @@ export const useLoanOperations = (options?: {
       if (!collateralAmount) throw new Error('Collateral amount not calculated')
       if (!originationFee) throw new Error('Origination fee not calculated')
       
-      const result = await executeCall(async () => {
-        // Check if we need to approve LMLN tokens for origination fee
-        if (!currentLmlnAllowance || currentLmlnAllowance < originationFee) {
-          if (!feeTokenAddress || !loansContractAddress) {
-            throw new Error('Missing token addresses for approval')
-          }
-
-          // Approve LMLN tokens for origination fee
-          const approvalTxHash = await approveToken({
-            address: feeTokenAddress,
-            abi: erc20Abi,
-            functionName: 'approve',
-            args: [loansContractAddress, originationFee]
-          })
-
-          // Wait for approval transaction to be confirmed
-          if (publicClient) {
-            await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
-          }
-
-          // Refetch allowance after approval
-          await refetchLmlnAllowance()
-        }
-
-        // Execute the transaction directly with calculated parameters
-        const txHash = await initiateLoan({
-          args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
-          value: collateralAmount
-        })
-
-        // Wait for transaction to be confirmed on blockchain
-        if (publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash: txHash })
-        }
-
-        return txHash
-      }, address)
-
-      // If loan creation was successful, trigger data refresh
-      if (result && onDataChange) {
-        await onDataChange()
+      // Check if we have sufficient allowance (approval should be done before calling this)
+      if (currentLmlnAllowance === undefined || currentLmlnAllowance < originationFee) {
+        throw new Error('Insufficient LMLN allowance. Please approve first.')
       }
 
-      return result
+      // Execute the transaction directly with calculated parameters
+      const txHash = await initiateLoan({
+        args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+        value: collateralAmount
+      })
+
+      // Wait for transaction to be confirmed on blockchain
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+      }
+
+      // If loan creation was successful, invalidate queries
+      if (txHash && address) {
+        // Comprehensive invalidation to ensure UI updates immediately
+        await Promise.all([
+          // Invalidate wagmi-generated queries for account loan IDs
+          queryClient.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey
+              return Array.isArray(key) &&
+                     key.some(part =>
+                       typeof part === 'object' &&
+                       part !== null &&
+                       'args' in part &&
+                       Array.isArray(part.args) &&
+                       part.args[0] === address
+                     )
+            }
+          }),
+          
+          // Invalidate custom loan queries
+          queryClient.invalidateQueries({ 
+            queryKey: loanKeys.all 
+          }),
+          
+          // Invalidate individual loan detail queries
+          queryClient.invalidateQueries({ 
+            predicate: (query) => 
+              Array.isArray(query.queryKey) && 
+              query.queryKey[0] === 'loan'
+          }),
+          
+          // Broad invalidation as fallback
+          queryClient.invalidateQueries()
+        ])
+      }
+
+      return txHash
     },
-    [address, initiateLoan, executeCall, collateralAmount, originationFee, currentLmlnAllowance, feeTokenAddress, loansContractAddress, approveToken, publicClient, refetchLmlnAllowance, onDataChange]
+    [address, initiateLoan, collateralAmount, originationFee, currentLmlnAllowance, feeTokenAddress, loansContractAddress, approveToken, publicClient, refetchLmlnAllowance, queryClient]
   )
 
   // Function to approve token allowance if needed
@@ -236,30 +308,24 @@ export const useLoanOperations = (options?: {
         throw new Error('Missing required data for token approval')
       }
 
-      const result = await executeCall(async () => {
-        const txHash = await approveToken({
-          address: loanTokenAddress,
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [loansContractAddress, amount]
-        })
-        
-        // Wait for transaction to be mined
-        if (publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash: txHash })
-        }
-
-        return txHash
-      }, address)
-
-      // After transaction is confirmed, refetch the allowance
-      if (result) {
-        await refetchAllowance()
+      const txHash = await approveToken({
+        address: loanTokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [loansContractAddress, amount]
+      })
+      
+      // Wait for transaction to be mined
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
       }
 
-      return result
+      // After transaction is confirmed, refetch the allowance
+      await refetchAllowance()
+
+      return txHash
     },
-    [address, loanTokenAddress, loansContractAddress, approveToken, executeCall, refetchAllowance, publicClient]
+    [address, loanTokenAddress, loansContractAddress, approveToken, refetchAllowance, publicClient]
   )
 
   const payLoan = useCallback(
@@ -292,31 +358,54 @@ export const useLoanOperations = (options?: {
         }
       }
 
-      const result = await executeCall(async () => {
-        const tx = await makeLoanPayment({
-          args: [loanId, amount]
-        })
+      const txHash = await makeLoanPayment({
+        args: [loanId, amount]
+      })
 
-        return tx
-      }, address)
-
-      // If payment was successful, trigger data refresh
-      if (result && onDataChange) {
-        await onDataChange()
+      // Wait for transaction to be confirmed
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
       }
 
-      return result
+      // If payment was successful, invalidate queries
+      if (txHash && address) {
+        await Promise.all([
+          // Invalidate wagmi-generated queries
+          queryClient.invalidateQueries({ 
+            predicate: (query) => {
+              const key = query.queryKey
+              return Array.isArray(key) && 
+                     key.some(part => 
+                       typeof part === 'object' && 
+                       part !== null && 
+                       'args' in part && 
+                       Array.isArray(part.args) && 
+                       part.args[0] === address
+                     )
+            }
+          }),
+          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
+          queryClient.invalidateQueries({ 
+            predicate: (query) => 
+              Array.isArray(query.queryKey) && 
+              query.queryKey[0] === 'loan'
+          }),
+          queryClient.invalidateQueries()
+        ])
+      }
+
+      return txHash
     },
     [
       address,
       makeLoanPayment,
-      executeCall,
       loanTokenAddress,
       loansContractAddress,
       userLoanTokenBalance,
       currentAllowance,
       approveTokenAllowance,
-      onDataChange
+      publicClient,
+      queryClient
     ]
   )
 
@@ -326,32 +415,57 @@ export const useLoanOperations = (options?: {
         throw new Error('Wallet not connected')
       }
 
-      const result = await executeCall(async () => {
-        const tx = await withdrawCollateral({
-          args: [loanId]
-        })
-        return tx
-      }, address)
+      const txHash = await withdrawCollateral({
+        args: [loanId]
+      })
 
-      // If withdrawal was successful, trigger data refresh
-      if (result && onDataChange) {
-        await onDataChange()
+      // Wait for transaction to be confirmed
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
       }
 
-      return result
+      // If withdrawal was successful, invalidate queries
+      if (txHash && address) {
+        await Promise.all([
+          // Invalidate wagmi-generated queries
+          queryClient.invalidateQueries({ 
+            predicate: (query) => {
+              const key = query.queryKey
+              return Array.isArray(key) && 
+                     key.some(part => 
+                       typeof part === 'object' && 
+                       part !== null && 
+                       'args' in part && 
+                       Array.isArray(part.args) && 
+                       part.args[0] === address
+                     )
+            }
+          }),
+          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
+          queryClient.invalidateQueries({ 
+            predicate: (query) => 
+              Array.isArray(query.queryKey) && 
+              query.queryKey[0] === 'loan'
+          }),
+          queryClient.invalidateQueries()
+        ])
+      }
+
+      return txHash
     },
-    [address]
+    [address, withdrawCollateral, publicClient, queryClient]
   )
   return {
     // Operations
     createLoan,
+    approveLoanFee,
     payLoan,
     pullCollateral,
     approveTokenAllowance,
     
     // Transaction states
     isTransacting:
-      isCreatingLoan || isPayingLoan || isExecuting || isApprovingToken,
+      isCreatingLoan || isPayingLoan || isWithdrawingCollateral || isApprovingToken,
     isSimulating: isCalculating || decimalsLoading,
     
     // Loan creation data
@@ -376,6 +490,6 @@ export const useLoanOperations = (options?: {
     currentLmlnAllowance,
     
     // Error state  
-    error: executionError || calculationError || decimalsError
+    error: calculationError || decimalsError
   }
 }
