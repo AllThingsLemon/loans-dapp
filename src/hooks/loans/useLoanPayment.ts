@@ -7,7 +7,10 @@ interface PaymentValidation {
   error?: string
 }
 
-export const useLoanPayment = (loan: Loan | undefined, loanTokenDecimals: number = 18) => {
+export const useLoanPayment = (
+  loan: Loan | undefined,
+  loanTokenDecimals: number = 18
+) => {
   // Status-based flags
   const isPaymentRequired = useMemo(() => {
     return loan?.status === LOAN_STATUS.ACTIVE
@@ -22,11 +25,14 @@ export const useLoanPayment = (loan: Loan | undefined, loanTokenDecimals: number
   }, [loan?.remainingBalance])
 
   // Convert payment string to BigInt wei
-  const parsePaymentAmount = useCallback((paymentString: string): bigint => {
-    if (!paymentString || isNaN(parseFloat(paymentString))) return 0n
-    const multiplier = 10 ** loanTokenDecimals
-    return BigInt(Math.floor(parseFloat(paymentString) * multiplier))
-  }, [loanTokenDecimals])
+  const parsePaymentAmount = useCallback(
+    (paymentString: string): bigint => {
+      if (!paymentString || isNaN(parseFloat(paymentString))) return 0n
+      const multiplier = 10 ** loanTokenDecimals
+      return BigInt(Math.floor(parseFloat(paymentString) * multiplier))
+    },
+    [loanTokenDecimals]
+  )
 
   // Validate payment amount
   const validatePayment = useCallback(
@@ -68,8 +74,8 @@ export const useLoanPayment = (loan: Loan | undefined, loanTokenDecimals: number
     [validatePayment]
   )
 
-  // Get recommended payment amount (minimum cycle payment)
-  const recommendedPayment = useMemo(() => {
+  // Get minimum payment amount (minimum cycle payment)
+  const minimumPayment = useMemo(() => {
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
@@ -115,7 +121,7 @@ export const useLoanPayment = (loan: Loan | undefined, loanTokenDecimals: number
 
   return {
     maxPayment,
-    recommendedPayment,
+    minimumPayment,
     parsePaymentAmount,
     validatePayment,
     isValidAmount,
