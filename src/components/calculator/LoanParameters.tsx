@@ -1,7 +1,6 @@
 'use client'
 
 import { Input } from '../ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { formatUnits } from 'viem'
 import { formatPercentage, formatDurationRange } from '../../utils/decimals'
@@ -9,14 +8,15 @@ import { formatPercentage, formatDurationRange } from '../../utils/decimals'
 interface LoanParametersProps {
   loanAmount: number
   setLoanAmount: (amount: number) => void
-  selectedConfigIndex: number
-  setSelectedConfigIndex: (index: number) => void
+  duration: number
+  setDuration: (duration: number) => void
   ltv: number
   setLtv: (ltv: number) => void
   loanConfig: any
   tokenConfig: any
   interestAprConfigs: any[]
-  selectedConfig: any
+  ltvOptions: any[]
+  durationRange: { min: number; max: number }
   configLoading: boolean
   isDashboard?: boolean
 }
@@ -24,17 +24,34 @@ interface LoanParametersProps {
 export function LoanParameters({
   loanAmount,
   setLoanAmount,
-  selectedConfigIndex,
-  setSelectedConfigIndex,
+  duration,
+  setDuration,
   ltv,
   setLtv,
   loanConfig,
   tokenConfig,
   interestAprConfigs,
-  selectedConfig,
+  ltvOptions,
+  durationRange,
   configLoading,
   isDashboard = false
 }: LoanParametersProps) {
+
+  // Use pre-calculated duration range from the hook
+  const minDuration = durationRange.min
+  const maxDuration = durationRange.max
+  
+  // Calculate LTV percentages from the raw options
+  const ltvPercentages = ltvOptions.length > 0 && tokenConfig 
+    ? ltvOptions.map(option => Number(formatPercentage(option.ltv, tokenConfig.ltvDecimals)))
+    : []
+  
+  // Calculate min/max LTV from the actual percentages
+  const minLtvPercentage = ltvPercentages.length > 0 ? Math.min(...ltvPercentages) : 0
+  const maxLtvPercentage = ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
+  
+  // Display duration in hours for readability
+  const durationHours = Math.floor(duration / (60 * 60))
   return (
     <Card
       className={`${!isDashboard ? 'animate-slide-in-left bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
@@ -110,52 +127,39 @@ export function LoanParameters({
           </div>
         </div>
 
-        {/* Duration Selection */}
+        {/* Duration Slider */}
         <div>
           <label
             className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
           >
-            📅 Loan Duration
+            📅 Loan Duration: {durationHours} hours
           </label>
-          <Select
-            value={selectedConfigIndex.toString()}
-            onValueChange={(value) => setSelectedConfigIndex(Number(value))}
-          >
-            <SelectTrigger
-              className={`w-full ${!isDashboard ? 'bg-white/10 border-white/20 text-white' : ''}`}
-            >
-              <SelectValue placeholder='Select loan duration' />
-            </SelectTrigger>
-            <SelectContent>
-              {interestAprConfigs.length === 0 ? (
-                <SelectItem value='loading' disabled>
-                  {configLoading ? 'Loading durations...' : 'No durations available'}
-                </SelectItem>
-              ) : (
-                interestAprConfigs.map((config, index) => (
-                  <SelectItem key={index} value={index.toString()}>
-                    {formatDurationRange(
-                      config.minDuration,
-                      config.maxDuration
-                    )}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          {selectedConfig && (
-            <div
-              className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-            >
-              APR:{' '}
-              {Number(
-                formatPercentage(
-                  selectedConfig.interestApr,
-                  tokenConfig?.interestRateDecimals || 6
-                )
-              ).toFixed(1)}
-              %
+          {interestAprConfigs.length === 0 ? (
+            <div className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}>
+              {configLoading ? 'Loading durations...' : 'No durations available'}
             </div>
+          ) : (
+            <>
+              <input
+                type='range'
+                min={minDuration}
+                max={maxDuration}
+                step='3600'
+                value={duration}
+                disabled={interestAprConfigs.length === 0}
+                onChange={(e) => {
+                  const seconds = Number(e.target.value)
+                  setDuration(seconds)
+                }}
+                className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider disabled:opacity-50 disabled:cursor-not-allowed'
+              />
+              <div
+                className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
+              >
+                <span>{Math.floor(minDuration / (60 * 60))} hours</span>
+                <span>{Math.floor(maxDuration / (60 * 60))} hours</span>
+              </div>
+            </>
           )}
         </div>
 
@@ -166,21 +170,33 @@ export function LoanParameters({
           >
             ⚖️ Loan-to-Value Ratio: {ltv}%
           </label>
-          <input
-            type='range'
-            min='20'
-            max='60'
-            step='10'
-            value={ltv}
-            onChange={(e) => setLtv(Number(e.target.value))}
-            className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider'
-          />
-          <div
-            className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-          >
-            <span>20% (Safer)</span>
-            <span>60% (Max)</span>
-          </div>
+          {ltvOptions.length === 0 ? (
+            <div className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}>
+              {configLoading ? 'Loading LTV options...' : 'No LTV options available'}
+            </div>
+          ) : (
+            <>
+              <input
+                type='range'
+                min={0}
+                max={ltvPercentages.length - 1}
+                step={1}
+                value={ltvPercentages.indexOf(ltv)}
+                disabled={ltvOptions.length === 0}
+                onChange={(e) => {
+                  const index = Number(e.target.value)
+                  setLtv(ltvPercentages[index])
+                }}
+                className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider disabled:opacity-50 disabled:cursor-not-allowed'
+              />
+              <div
+                className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
+              >
+                <span>{minLtvPercentage}%</span>
+                <span>{maxLtvPercentage}%</span>
+              </div>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
