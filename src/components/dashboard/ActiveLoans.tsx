@@ -606,23 +606,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             </div>
                           )}
                         </div>
-                        <div className='text-sm text-muted-foreground'>
-                          <p>
-                            Remaining balance:{' '}
-                            {formatAmountWithSymbol(
-                              loan.remainingBalance,
-                              tokenConfig?.loanToken.symbol || 'Token'
-                            )}
-                          </p>
-                          <p>
-                            Payment amount:{' '}
-                            {formatAmountWithSymbol(
-                              loan.paymentAmount,
-                              tokenConfig?.loanToken.symbol || 'Token'
-                            )}
-                          </p>
-                        </div>
-
                         <div className='flex gap-2'>
                           {(() => {
                             // Check if approval is needed
