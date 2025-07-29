@@ -12,10 +12,13 @@ interface LoanSummaryProps {
   hasInsufficientLmln: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
-  isTransacting: boolean
+  isApprovingLoanFee: boolean
+  isCreatingLoan: boolean
   isDialogOpen: boolean
   setIsDialogOpen: (open: boolean) => void
   handleCreateLoan: () => Promise<void>
+  handleApproveLoanFee: () => Promise<void>
+  needsApproval: boolean
   isDashboard?: boolean
 }
 
@@ -25,10 +28,13 @@ export function LoanSummary({
   hasInsufficientLmln,
   userLmlnBalance,
   operationError,
-  isTransacting,
+  isApprovingLoanFee,
+  isCreatingLoan,
   isDialogOpen,
   setIsDialogOpen,
   handleCreateLoan,
+  handleApproveLoanFee,
+  needsApproval,
   isDashboard = false
 }: LoanSummaryProps) {
   return (
@@ -255,17 +261,27 @@ export function LoanSummary({
                   <Button
                     variant='outline'
                     onClick={() => setIsDialogOpen(false)}
-                    disabled={isTransacting}
+                    disabled={isApprovingLoanFee || isCreatingLoan}
                   >
                     Cancel
                   </Button>
-                  <Button
-                    onClick={handleCreateLoan}
-                    disabled={isTransacting || !calculation.isValid}
-                    className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
-                  >
-                    {isTransacting ? 'Creating Loan...' : 'Confirm & Create Loan'}
-                  </Button>
+                  {needsApproval ? (
+                    <Button
+                      onClick={handleApproveLoanFee}
+                      disabled={isApprovingLoanFee || isCreatingLoan || !calculation.isValid}
+                      className='bg-gradient-to-r from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 text-white'
+                    >
+                      {isApprovingLoanFee ? 'Approving...' : 'Approve LMLN Fee'}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleCreateLoan}
+                      disabled={isApprovingLoanFee || isCreatingLoan || !calculation.isValid}
+                      className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
+                    >
+                      {isCreatingLoan ? 'Creating Loan...' : 'Confirm & Create Loan'}
+                    </Button>
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
