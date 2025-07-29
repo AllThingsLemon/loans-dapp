@@ -21,6 +21,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { Input } from '@/src/components/ui/input'
 import { Label } from '@/src/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/src/components/ui/radio-group'
 import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
@@ -38,7 +39,10 @@ import {
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
-import { handleContractError, type ContractError } from '@/src/utils/errorHandling'
+import {
+  handleContractError,
+  type ContractError
+} from '@/src/utils/errorHandling'
 import {
   CreditCard,
   Calendar,
@@ -53,11 +57,11 @@ interface ActiveLoansProps {
 }
 
 export function ActiveLoans({ compact = false }: ActiveLoansProps) {
-  const { 
-    activeLoans, 
-    payLoan, 
+  const {
+    activeLoans,
+    payLoan,
     pullCollateral,
-    isLoading, 
+    isLoading,
     refetch,
     currentAllowance,
     approveTokenAllowance,
@@ -65,18 +69,86 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLoanTokenBalance
   } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
-  const { getTimeUntilDue, getPaymentProgress, isPaymentRequired, isCollateralWithdrawable, getPaymentStatus } = useLoanPayment(undefined, tokenConfig?.loanToken.decimals)
-
+  const {
+    getTimeUntilDue,
+    getPaymentProgress,
+    isPaymentRequired,
+    isCollateralWithdrawable,
+    getPaymentStatus
+  } = useLoanPayment(undefined, tokenConfig?.loanToken.decimals)
 
   const { toast } = useToast()
   const [selectedLoan, setSelectedLoan] = useState<`0x${string}` | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentType, setPaymentType] = useState<
+    'balance' | 'minimum' | 'custom'
+  >('minimum')
+  const [customAmount, setCustomAmount] = useState('')
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+  const [isApprovingPayment, setIsApprovingPayment] = useState(false)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+
+  // Helper function to calculate rounded-up minimum payment (to nearest 0.10)
+  const calculateMinimumPayment = (loan: Loan): string => {
+    if (!loan || !tokenConfig?.loanToken.decimals) return '0'
+    const minPayment = formatTokenAmount(
+      loan.paymentAmount,
+      tokenConfig.loanToken.decimals
+    )
+    const rounded = Math.ceil(parseFloat(minPayment) * 10) / 10
+    return rounded.toFixed(1)
+  }
+
+  // Helper function to get payment amount based on selected type
+  const getPaymentAmount = (loan: Loan): string => {
+    if (!loan || !tokenConfig?.loanToken.decimals) return '0'
+
+    switch (paymentType) {
+      case 'balance':
+        return formatTokenAmount(
+          loan.remainingBalance,
+          tokenConfig.loanToken.decimals
+        )
+      case 'minimum':
+        return calculateMinimumPayment(loan)
+      case 'custom':
+        return customAmount
+      default:
+        return '0'
+    }
+  }
+
+  // Helper function to handle payment type changes
+  const handlePaymentTypeChange = (
+    newType: 'balance' | 'minimum' | 'custom'
+  ) => {
+    setPaymentType(newType)
+    if (newType !== 'custom') {
+      setCustomAmount('')
+    }
+    // Update paymentAmount for validation/approval logic
+    const loan = activeLoans.find((l) => l.id === selectedLoan)
+    if (loan) {
+      if (newType === 'balance') {
+        setPaymentAmount(
+          formatTokenAmount(
+            loan.remainingBalance,
+            tokenConfig?.loanToken.decimals || 18
+          )
+        )
+      } else if (newType === 'minimum') {
+        setPaymentAmount(calculateMinimumPayment(loan))
+      }
+    }
+  }
 
   const handleApproval = async () => {
+    const currentPaymentAmount =
+      paymentType === 'custom' ? customAmount : paymentAmount
+
     if (
-      !paymentAmount ||
-      parseFloat(paymentAmount) <= 0 ||
+      !currentPaymentAmount ||
+      parseFloat(currentPaymentAmount) <= 0 ||
       !tokenConfig?.loanToken.decimals
     ) {
       toast({
@@ -87,8 +159,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       return
     }
 
+    setIsApprovingPayment(true)
     try {
-      const paymentWei = parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals)
+      const paymentWei = parseTokenAmount(
+        currentPaymentAmount,
+        tokenConfig.loanToken.decimals
+      )
 
       await approveTokenAllowance(paymentWei)
 
@@ -98,6 +174,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       })
     } catch (error: any) {
       handleContractError(error as ContractError, toast, 'Approval Failed')
+    } finally {
+      setIsApprovingPayment(false)
     }
   }
 
@@ -109,7 +187,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       if (result) {
         // Refresh all loan data
         await refetch()
-        
+
         toast({
           title: 'Withdrawal Successful',
           description: 'Your collateral has been withdrawn successfully!'
@@ -132,9 +210,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       return
     }
 
+    const currentPaymentAmount =
+      paymentType === 'custom' ? customAmount : paymentAmount
+
     if (
-      !paymentAmount ||
-      parseFloat(paymentAmount) <= 0 ||
+      !currentPaymentAmount ||
+      parseFloat(currentPaymentAmount) <= 0 ||
       !tokenConfig?.loanToken.decimals
     ) {
       toast({
@@ -145,17 +226,22 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       return
     }
 
+    setIsProcessingPayment(true)
     try {
       // Convert payment amount to wei using loan token decimals from contract
-      const paymentWei = parseTokenAmount(paymentAmount, tokenConfig.loanToken.decimals)
+      const paymentWei = parseTokenAmount(
+        currentPaymentAmount,
+        tokenConfig.loanToken.decimals
+      )
 
       // Check if user has sufficient token balance
       if (userLoanTokenBalance && paymentWei > userLoanTokenBalance) {
         toast({
           title: 'Insufficient Balance',
-          description: `You need ${paymentAmount} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
+          description: `You need ${currentPaymentAmount} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
           variant: 'destructive'
         })
+        setIsProcessingPayment(false)
         return
       }
 
@@ -167,6 +253,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
             'Payment amount cannot exceed the remaining loan balance',
           variant: 'destructive'
         })
+        setIsProcessingPayment(false)
         return
       }
 
@@ -174,10 +261,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
       // Only show success if we actually get a successful result
       if (result) {
-        
         // Refresh all loan data
         await refetch()
-        
+
         toast({
           title: 'Payment Successful',
           description: 'Your payment has been processed successfully!'
@@ -186,10 +272,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         // Close the dialog and clear state
         setPaymentAmount('')
         setSelectedLoan(null)
+        setPaymentType('minimum')
+        setCustomAmount('')
+        setIsApprovingPayment(false)
+        setIsProcessingPayment(false)
         setIsPaymentDialogOpen(false)
       }
     } catch (error: any) {
       handleContractError(error as ContractError, toast, 'Payment Failed')
+    } finally {
+      setIsProcessingPayment(false)
     }
   }
 
@@ -330,7 +422,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p
                     className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}
                   >
-                    {timeUntilDue ? `${Math.abs(timeUntilDue.value)} ${timeUntilDue.unit}` : 'N/A'}
+                    {timeUntilDue
+                      ? `${Math.abs(timeUntilDue.value)} ${timeUntilDue.unit}`
+                      : 'N/A'}
                   </p>
                 </div>
               </div>
@@ -380,17 +474,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>Collateral</p>
                   <p className='text-sm font-medium'>
-                    {formatAmountWithSymbol(loan.collateralAmount, tokenConfig?.nativeToken.symbol || 'Token')}
+                    {formatAmountWithSymbol(
+                      loan.collateralAmount,
+                      tokenConfig?.nativeToken.symbol || 'Token'
+                    )}
                   </p>
                 </div>
                 <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>LTV</p>
                   <p className='text-sm font-medium'>
                     {tokenConfig
-                      ? formatPercentage(
-                          loan.ltv,
-                          tokenConfig.ltvDecimals
-                        ) + '%'
+                      ? formatPercentage(loan.ltv, tokenConfig.ltvDecimals) +
+                        '%'
                       : '...'}
                   </p>
                 </div>
@@ -415,6 +510,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       if (!open) {
                         setSelectedLoan(null)
                         setPaymentAmount('')
+                        setPaymentType('minimum')
+                        setCustomAmount('')
+                        setIsApprovingPayment(false)
+                        setIsProcessingPayment(false)
                       }
                     }}
                   >
@@ -424,131 +523,179 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         size='sm'
                         onClick={() => {
                           setSelectedLoan(loan.id)
+                          setPaymentType('minimum')
+                          setPaymentAmount(calculateMinimumPayment(loan))
+                          setCustomAmount('')
                           setIsPaymentDialogOpen(true)
                         }}
                       >
                         Make Payment
                       </Button>
                     </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Make Payment</DialogTitle>
-                      <DialogDescription>
-                        Enter the amount you want to pay towards loan #
-                        {truncateAddress(loan.id)}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className='space-y-4'>
-                      <div className='space-y-2'>
-                        <Label htmlFor='payment-amount'>
-                          Payment Amount ({tokenConfig?.loanToken.symbol || 'Token'})
-                        </Label>
-                        <div className='relative'>
-                          <Input
-                            id='payment-amount'
-                            type='number'
-                            placeholder='0.00'
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            className='pr-16'
-                          />
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Make Payment</DialogTitle>
+                        <DialogDescription>
+                          Enter the amount you want to pay towards loan #
+                          {truncateAddress(loan.id)}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className='space-y-4'>
+                        <div className='space-y-4'>
+                          <div className='space-y-3'>
+                            <Label>Payment Options</Label>
+                            <RadioGroup
+                              value={paymentType}
+                              onValueChange={handlePaymentTypeChange}
+                              className='space-y-3'
+                            >
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem value='minimum' id='minimum' />
+                                <Label htmlFor='minimum' className='flex-1'>
+                                  <div className='flex items-center justify-between'>
+                                    <span>Pay minimum payment</span>
+                                    <span className='text-sm text-muted-foreground'>
+                                      {formatAmountWithSymbol(
+                                        parseTokenAmount(
+                                          calculateMinimumPayment(loan),
+                                          tokenConfig?.loanToken.decimals || 18
+                                        ),
+                                        tokenConfig?.loanToken.symbol || 'Token'
+                                      )}
+                                    </span>
+                                  </div>
+                                </Label>
+                              </div>
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem value='balance' id='balance' />
+                                <Label htmlFor='balance' className='flex-1'>
+                                  <div className='flex items-center justify-between'>
+                                    <span>Pay loan balance</span>
+                                    <span className='text-sm text-muted-foreground'>
+                                      {formatAmountWithSymbol(
+                                        loan.remainingBalance,
+                                        tokenConfig?.loanToken.symbol || 'Token'
+                                      )}
+                                    </span>
+                                  </div>
+                                </Label>
+                              </div>
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem value='custom' id='custom' />
+                                <Label htmlFor='custom'>Custom amount</Label>
+                              </div>
+                            </RadioGroup>
+                          </div>
+
+                          {paymentType === 'custom' && (
+                            <div className='space-y-2'>
+                              <Label htmlFor='custom-amount'>
+                                Amount (
+                                {tokenConfig?.loanToken.symbol || 'Token'})
+                              </Label>
+                              <Input
+                                id='custom-amount'
+                                type='number'
+                                placeholder='0.00'
+                                value={customAmount}
+                                onChange={(e) => {
+                                  setCustomAmount(e.target.value)
+                                  setPaymentAmount(e.target.value)
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div className='text-sm text-muted-foreground'>
+                          <p>
+                            Remaining balance:{' '}
+                            {formatAmountWithSymbol(
+                              loan.remainingBalance,
+                              tokenConfig?.loanToken.symbol || 'Token'
+                            )}
+                          </p>
+                          <p>
+                            Payment amount:{' '}
+                            {formatAmountWithSymbol(
+                              loan.paymentAmount,
+                              tokenConfig?.loanToken.symbol || 'Token'
+                            )}
+                          </p>
+                        </div>
+
+                        <div className='flex gap-2'>
+                          {(() => {
+                            // Check if approval is needed
+                            const currentPaymentAmount =
+                              paymentType === 'custom'
+                                ? customAmount
+                                : paymentAmount
+                            const paymentWei =
+                              currentPaymentAmount &&
+                              tokenConfig?.loanToken.decimals
+                                ? parseTokenAmount(
+                                    currentPaymentAmount,
+                                    tokenConfig.loanToken.decimals
+                                  )
+                                : 0n
+                            const needsApproval =
+                              !currentAllowance || currentAllowance < paymentWei
+                            const hasValidAmount =
+                              currentPaymentAmount &&
+                              parseFloat(currentPaymentAmount) > 0
+
+                            if (
+                              needsApproval &&
+                              hasValidAmount &&
+                              paymentWei > 0n
+                            ) {
+                              return (
+                                <Button
+                                  onClick={handleApproval}
+                                  disabled={isApprovingPayment || isProcessingPayment || !hasValidAmount}
+                                  className='flex-1'
+                                >
+                                  {isApprovingPayment
+                                    ? 'Approving...'
+                                    : 'Approve Tokens'}
+                                </Button>
+                              )
+                            } else {
+                              return (
+                                <Button
+                                  onClick={() => handlePayment(loan.id)}
+                                  disabled={
+                                    isApprovingPayment ||
+                                    isProcessingPayment ||
+                                    !hasValidAmount ||
+                                    needsApproval
+                                  }
+                                  className='flex-1'
+                                >
+                                  {isProcessingPayment
+                                    ? 'Processing...'
+                                    : 'Confirm Payment'}
+                                </Button>
+                              )
+                            }
+                          })()}
                           <Button
-                            type='button'
                             variant='outline'
-                            size='sm'
-                            className='absolute right-1 top-1 h-6 px-1 text-xs'
                             onClick={() => {
-                              if (tokenConfig?.loanToken.decimals) {
-                                const maxAmount = formatTokenAmount(
-                                  loan.remainingBalance,
-                                  tokenConfig.loanToken.decimals
-                                )
-                                setPaymentAmount(maxAmount)
-                              }
+                              setPaymentAmount('')
+                              setSelectedLoan(null)
+                              setPaymentType('minimum')
+                              setCustomAmount('')
+                              setIsApprovingPayment(false)
+                              setIsProcessingPayment(false)
+                              setIsPaymentDialogOpen(false)
                             }}
                           >
-                            MAX
+                            Cancel
                           </Button>
                         </div>
                       </div>
-                      <div className='text-sm text-muted-foreground'>
-                        <p>
-                          Remaining balance:{' '}
-                          {formatAmountWithSymbol(
-                            loan.remainingBalance,
-                            tokenConfig?.loanToken.symbol || 'Token'
-                          )}
-                        </p>
-                        <p>
-                          Payment amount:{' '}
-                          {formatAmountWithSymbol(
-                            loan.paymentAmount,
-                            tokenConfig?.loanToken.symbol || 'Token'
-                          )}
-                        </p>
-                      </div>
-
-                      <div className='flex gap-2'>
-                        {(() => {
-                          // Check if approval is needed
-                          const paymentWei =
-                            paymentAmount && tokenConfig?.loanToken.decimals
-                              ? parseTokenAmount(
-                                  paymentAmount,
-                                  tokenConfig.loanToken.decimals
-                                )
-                              : 0n
-                          const needsApproval =
-                            !currentAllowance || currentAllowance < paymentWei
-
-                          if (
-                            needsApproval &&
-                            paymentAmount &&
-                            paymentWei > 0n
-                          ) {
-                            return (
-                              <Button
-                                onClick={handleApproval}
-                                disabled={isTransacting || !paymentAmount}
-                                className='flex-1'
-                              >
-                                {isTransacting
-                                  ? 'Approving...'
-                                  : 'Approve Tokens'}
-                              </Button>
-                            )
-                          } else {
-                            return (
-                              <Button
-                                onClick={() => handlePayment(loan.id)}
-                                disabled={
-                                  isLoading ||
-                                  isTransacting ||
-                                  !paymentAmount ||
-                                  needsApproval
-                                }
-                                className='flex-1'
-                              >
-                                {isLoading || isTransacting
-                                  ? 'Processing...'
-                                  : 'Confirm Payment'}
-                              </Button>
-                            )
-                          }
-                        })()}
-                        <Button
-                          variant='outline'
-                          onClick={() => {
-                            setPaymentAmount('')
-                            setSelectedLoan(null)
-                            setIsPaymentDialogOpen(false)
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
+                    </DialogContent>
                   </Dialog>
                 )}
 
