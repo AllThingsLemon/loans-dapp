@@ -1,9 +1,6 @@
 import BigNumber from 'bignumber.js'
 import { formatUnits } from 'viem'
-import {
-  formatTokenAmount
-} from './decimals'
-
+import { formatTokenAmount } from './decimals'
 
 // New contract-specific formatting utilities
 export const formatAmount = (amount: bigint, decimals = 18): string => {

@@ -13,7 +13,11 @@ import {
 } from '../../utils/decimals'
 import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
-import { handleContractError, isUserRejection, type ContractError } from '../../utils/errorHandling'
+import {
+  handleContractError,
+  isUserRejection,
+  type ContractError
+} from '../../utils/errorHandling'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -31,16 +35,33 @@ const formatContractCalculation = (
 
   return {
     apr: calculationData.interestApr
-      ? Number(formatPercentage(calculationData.interestApr, tokenConfig.aprDecimals))
+      ? Number(
+          formatPercentage(calculationData.interestApr, tokenConfig.aprDecimals)
+        )
       : 0,
     lemonRequired: calculationData.collateralAmount
-      ? Number(formatTokenAmount(calculationData.collateralAmount, tokenConfig.nativeToken.decimals))
+      ? Number(
+          formatTokenAmount(
+            calculationData.collateralAmount,
+            tokenConfig.nativeToken.decimals
+          )
+        )
       : 0,
     originationFeeLmln: calculationData.originationFee
-      ? Number(formatTokenAmount(calculationData.originationFee, tokenConfig.feeToken.decimals))
+      ? Number(
+          formatTokenAmount(
+            calculationData.originationFee,
+            tokenConfig.feeToken.decimals
+          )
+        )
       : 0,
     monthlyPayment: calculationData.firstLoanPayment
-      ? Number(formatTokenAmount(calculationData.firstLoanPayment, tokenConfig.loanToken.decimals))
+      ? Number(
+          formatTokenAmount(
+            calculationData.firstLoanPayment,
+            tokenConfig.loanToken.decimals
+          )
+        )
       : 0
   }
 }
@@ -56,15 +77,18 @@ const buildPriceError = (
   if (isSimulating) {
     return 'Calculating collateral...'
   }
-  
+
   if (hasInsufficientLmln) {
-    const userBalance = userLmlnBalance && tokenConfig
-      ? Number(formatTokenAmount(userLmlnBalance, tokenConfig.feeToken.decimals)).toFixed(2)
-      : '0'
+    const userBalance =
+      userLmlnBalance && tokenConfig
+        ? Number(
+            formatTokenAmount(userLmlnBalance, tokenConfig.feeToken.decimals)
+          ).toFixed(2)
+        : '0'
     const symbol = tokenConfig?.feeToken.symbol || 'Token'
     return `Insufficient ${symbol} balance. Need ${originationFeeLmln.toFixed(2)} ${symbol}, have ${userBalance} ${symbol}`
   }
-  
+
   return undefined
 }
 
@@ -95,7 +119,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
-  
+
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   // UI loading states for transactions
@@ -112,12 +136,26 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
   // Set initial values from contract config
   useEffect(() => {
-    if (initialHookData.loanConfig && initialHookData.loanConfig.minLoanAmount && loanAmount === 0) {
-      setLoanAmount(Number(formatUnits(initialHookData.loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)))
+    if (
+      initialHookData.loanConfig &&
+      initialHookData.loanConfig.minLoanAmount &&
+      loanAmount === 0
+    ) {
+      setLoanAmount(
+        Number(
+          formatUnits(
+            initialHookData.loanConfig.minLoanAmount,
+            tokenConfig?.loanToken.decimals || 18
+          )
+        )
+      )
     }
     if (initialHookData.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
       const ltvPercentage = Number(
-        formatPercentage(initialHookData.ltvOptions[0].ltv, tokenConfig.ltvDecimals)
+        formatPercentage(
+          initialHookData.ltvOptions[0].ltv,
+          tokenConfig.ltvDecimals
+        )
       )
       setLtv(ltvPercentage)
     }
@@ -126,7 +164,12 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       const firstConfig = initialHookData.interestAprConfigs[0]
       setDuration(Number(firstConfig.minDuration))
     }
-  }, [initialHookData.loanConfig, initialHookData.ltvOptions, initialHookData.interestAprConfigs, tokenConfig])
+  }, [
+    initialHookData.loanConfig,
+    initialHookData.ltvOptions,
+    initialHookData.interestAprConfigs,
+    tokenConfig
+  ])
 
   // Use the selected duration directly (already in seconds)
   const selectedDuration = useMemo(() => {
@@ -143,9 +186,12 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       !tokenConfig
     )
       return undefined
-    
+
     const request = {
-      loanAmount: parseUnits(loanAmount.toString(), tokenConfig.loanToken.decimals),
+      loanAmount: parseUnits(
+        loanAmount.toString(),
+        tokenConfig.loanToken.decimals
+      ),
       duration: selectedDuration,
       ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
     }
@@ -168,21 +214,27 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   }, [initialHookData.ltvOptions, ltv, tokenConfig])
 
   // Get the loan operations with the calculated request
-  const loanOperations = useLoans({ 
-    loanRequest, 
+  const loanOperations = useLoans({
+    loanRequest,
     selectedLtvOption
   })
 
   // Filter out user rejections from operation errors - don't show them in UI
-  const operationError = loanOperations.error && !isUserRejection(loanOperations.error) 
-    ? loanOperations.error 
-    : null
+  const operationError =
+    loanOperations.error && !isUserRejection(loanOperations.error)
+      ? loanOperations.error
+      : null
 
   // Calculate loan details using contract calculation data
   const calculation = useMemo(() => {
     // Create base structure
-    const base = createBaseCalculation(loanAmount, selectedDuration, duration, ltv)
-    
+    const base = createBaseCalculation(
+      loanAmount,
+      selectedDuration,
+      duration,
+      ltv
+    )
+
     // Check if we're still loading contract configuration
     if (!tokenConfig || initialHookData.interestAprConfigs.length === 0) {
       return {
@@ -195,15 +247,18 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     if (!loanOperations.calculationData) {
       return {
         ...base,
-        priceError: loanOperations.isSimulating 
-          ? 'Calculating collateral...' 
+        priceError: loanOperations.isSimulating
+          ? 'Calculating collateral...'
           : 'Contract calculation not available'
       }
     }
 
     // Format the contract calculation data
-    const formatted = formatContractCalculation(loanOperations.calculationData, tokenConfig)
-    
+    const formatted = formatContractCalculation(
+      loanOperations.calculationData,
+      tokenConfig
+    )
+
     if (!formatted) {
       return {
         ...base,
@@ -212,9 +267,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     }
 
     // Build the final calculation with all values
-    const isValid = !loanOperations.isSimulating && 
-                    !!loanOperations.calculationData && 
-                    !loanOperations.hasInsufficientLmln
+    const isValid =
+      !loanOperations.isSimulating &&
+      !!loanOperations.calculationData &&
+      !loanOperations.hasInsufficientLmln
 
     const priceError = buildPriceError(
       loanOperations.isSimulating,
@@ -253,24 +309,31 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     if (loanOperations.currentLmlnAllowance === undefined) {
       return true
     }
-    return loanOperations.currentLmlnAllowance < loanOperations.calculationData.originationFee
-  }, [loanOperations.calculationData?.originationFee, loanOperations.currentLmlnAllowance])
+    return (
+      loanOperations.currentLmlnAllowance <
+      loanOperations.calculationData.originationFee
+    )
+  }, [
+    loanOperations.calculationData?.originationFee,
+    loanOperations.currentLmlnAllowance
+  ])
 
   // Handle loan fee approval
   const handleApproveLoanFee = async () => {
     setIsApprovingLoanFee(true)
     try {
       const result = await loanOperations.approveLoanFee()
-      
+
       if (result) {
         toast({
           title: 'Approval Successful',
-          description: 'LMLN tokens approved for loan fee. You can now create the loan!'
+          description:
+            'LMLN tokens approved for loan fee. You can now create the loan!'
         })
       }
     } catch (error) {
       const contractError = error as ContractError
-      
+
       // For user rejections, just close the modal - no error feedback needed
       if (isUserRejection(contractError)) {
         setIsDialogOpen(false)
@@ -292,18 +355,19 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     setIsCreatingLoan(true)
     try {
       const result = await loanOperations.createLoan(loanRequest)
-      
+
       // Only show success if we actually get a successful result
       if (result) {
         setIsDialogOpen(false)
         toast({
           title: 'Loan Created Successfully',
-          description: 'Your loan has been created and will appear in your active loans!'
+          description:
+            'Your loan has been created and will appear in your active loans!'
         })
       }
     } catch (error) {
       const contractError = error as ContractError
-      
+
       // For user rejections, just close the modal - no error feedback needed
       if (isUserRejection(contractError)) {
         setIsDialogOpen(false)
@@ -312,7 +376,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         handleContractError(contractError, toast, 'Loan Creation Failed')
       }
     } finally {
-        setIsCreatingLoan(false)
+      setIsCreatingLoan(false)
     }
   }
 
@@ -350,7 +414,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         configLoading={initialHookData.isLoading}
         isDashboard={isDashboard}
       />
-      
+
       <LoanSummary
         calculation={calculation}
         tokenConfig={tokenConfig}

@@ -36,20 +36,24 @@ export function LoanParameters({
   configLoading,
   isDashboard = false
 }: LoanParametersProps) {
-
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
-  
+
   // Calculate LTV percentages from the raw options
-  const ltvPercentages = ltvOptions.length > 0 && tokenConfig 
-    ? ltvOptions.map(option => Number(formatPercentage(option.ltv, tokenConfig.ltvDecimals)))
-    : []
-  
+  const ltvPercentages =
+    ltvOptions.length > 0 && tokenConfig
+      ? ltvOptions.map((option) =>
+          Number(formatPercentage(option.ltv, tokenConfig.ltvDecimals))
+        )
+      : []
+
   // Calculate min/max LTV from the actual percentages
-  const minLtvPercentage = ltvPercentages.length > 0 ? Math.min(...ltvPercentages) : 0
-  const maxLtvPercentage = ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
-  
+  const minLtvPercentage =
+    ltvPercentages.length > 0 ? Math.min(...ltvPercentages) : 0
+  const maxLtvPercentage =
+    ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
+
   // Display duration in hours for readability
   const durationHours = Math.floor(duration / (60 * 60))
   return (
@@ -87,7 +91,12 @@ export function LoanParameters({
 
                 const numValue = Number(value)
                 const maxAmount = loanConfig?.minLoanAmount
-                  ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
+                  ? Number(
+                      formatUnits(
+                        loanConfig.minLoanAmount,
+                        tokenConfig?.loanToken.decimals || 18
+                      )
+                    ) * 100
                   : 100000
                 if (numValue <= maxAmount) {
                   setLoanAmount(numValue)
@@ -96,7 +105,12 @@ export function LoanParameters({
               onBlur={(e) => {
                 const value = e.target.value
                 const minAmount = loanConfig?.minLoanAmount
-                  ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18))
+                  ? Number(
+                      formatUnits(
+                        loanConfig.minLoanAmount,
+                        tokenConfig?.loanToken.decimals || 18
+                      )
+                    )
                   : 1000
                 if (value === '' || Number(value) < minAmount) {
                   setLoanAmount(minAmount)
@@ -104,12 +118,20 @@ export function LoanParameters({
               }}
               min={
                 loanConfig?.minLoanAmount
-                  ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
+                  ? formatUnits(
+                      loanConfig.minLoanAmount,
+                      tokenConfig?.loanToken.decimals || 18
+                    )
                   : '1000'
               }
               max={
                 loanConfig?.minLoanAmount
-                  ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
+                  ? Number(
+                      formatUnits(
+                        loanConfig.minLoanAmount,
+                        tokenConfig?.loanToken.decimals || 18
+                      )
+                    ) * 100
                   : 100000
               }
               className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''}`}
@@ -121,7 +143,10 @@ export function LoanParameters({
           >
             {tokenConfig?.loanToken.symbol || 'Token'} - $
             {loanConfig?.minLoanAmount
-              ? formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)
+              ? formatUnits(
+                  loanConfig.minLoanAmount,
+                  tokenConfig?.loanToken.decimals || 18
+                )
               : '1000'}{' '}
             minimum loan
           </div>
@@ -135,8 +160,12 @@ export function LoanParameters({
             📅 Loan Duration: {durationHours} hours
           </label>
           {interestAprConfigs.length === 0 ? (
-            <div className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}>
-              {configLoading ? 'Loading durations...' : 'No durations available'}
+            <div
+              className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+            >
+              {configLoading
+                ? 'Loading durations...'
+                : 'No durations available'}
             </div>
           ) : (
             <>
@@ -171,8 +200,12 @@ export function LoanParameters({
             ⚖️ Loan-to-Value Ratio: {ltv}%
           </label>
           {ltvOptions.length === 0 ? (
-            <div className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}>
-              {configLoading ? 'Loading LTV options...' : 'No LTV options available'}
+            <div
+              className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+            >
+              {configLoading
+                ? 'Loading LTV options...'
+                : 'No LTV options available'}
             </div>
           ) : (
             <>

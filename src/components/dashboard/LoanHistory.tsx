@@ -72,33 +72,45 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
   if (compact) {
     return (
       <div className='space-y-3'>
-        {loanHistory.filter(loan => loan).slice(0, 3).map((loan) => (
-          <div
-            key={loan.id}
-            className='flex items-center justify-between p-3 bg-muted rounded-lg'
-          >
-            <div className='flex items-center gap-3'>
-              {getStatusIcon(loan.status)}
-              <div>
+        {loanHistory
+          .filter((loan) => loan)
+          .slice(0, 3)
+          .map((loan) => (
+            <div
+              key={loan.id}
+              className='flex items-center justify-between p-3 bg-muted rounded-lg'
+            >
+              <div className='flex items-center gap-3'>
+                {getStatusIcon(loan.status)}
+                <div>
+                  <p className='font-medium'>
+                    {formatAmountWithSymbol(
+                      loan.loanAmount,
+                      tokenConfig?.loanToken.symbol || 'Token'
+                    )}
+                  </p>
+                  <p className='text-sm text-muted-foreground'>
+                    {tokenConfig
+                      ? formatPercentage(
+                          loan.interestApr,
+                          tokenConfig.aprDecimals
+                        ) + '%'
+                      : '...'}{' '}
+                    • {formatDuration(loan.duration)}
+                  </p>
+                </div>
+              </div>
+              <div className='text-right'>
                 <p className='font-medium'>
-                  {formatAmountWithSymbol(loan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
+                  {formatAmountWithSymbol(
+                    loan.paidAmount,
+                    tokenConfig?.nativeToken.symbol || 'Token'
+                  )}
                 </p>
-                <p className='text-sm text-muted-foreground'>
-                  {tokenConfig
-                    ? formatPercentage(loan.interestApr, tokenConfig.aprDecimals) + '%'
-                    : '...'}{' '}
-                  • {formatDuration(loan.duration)}
-                </p>
+                <p className='text-sm text-muted-foreground'>total paid</p>
               </div>
             </div>
-            <div className='text-right'>
-              <p className='font-medium'>
-                {formatAmountWithSymbol(loan.paidAmount, tokenConfig?.nativeToken.symbol || 'Token')}
-              </p>
-              <p className='text-sm text-muted-foreground'>total paid</p>
-            </div>
-          </div>
-        ))}
+          ))}
         {loanHistory.length > 3 && (
           <div className='text-center text-sm text-muted-foreground py-2'>
             ... and {loanHistory.length - 3} more completed loans
@@ -110,106 +122,120 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
 
   return (
     <div className='space-y-4'>
-      {loanHistory.filter(loan => loan).map((loan) => (
-        <Card key={loan.id}>
-          <CardHeader>
-            <div className='flex items-center justify-between'>
-              <div className='flex items-center gap-3'>
-                {getStatusIcon(loan.status)}
-                <div>
-                  <CardTitle className='text-lg'>
-                    Loan #{truncateAddress(loan.id)}
-                  </CardTitle>
-                  <CardDescription>
-                    Protocol Loan • {getLoanStatusLabel(loan.status)}
-                  </CardDescription>
+      {loanHistory
+        .filter((loan) => loan)
+        .map((loan) => (
+          <Card key={loan.id}>
+            <CardHeader>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-3'>
+                  {getStatusIcon(loan.status)}
+                  <div>
+                    <CardTitle className='text-lg'>
+                      Loan #{truncateAddress(loan.id)}
+                    </CardTitle>
+                    <CardDescription>
+                      Protocol Loan • {getLoanStatusLabel(loan.status)}
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className='flex items-center gap-2'>
+                  {getStatusBadge(loan.status)}
                 </div>
               </div>
-              <div className='flex items-center gap-2'>
-                {getStatusBadge(loan.status)}
+            </CardHeader>
+            <CardContent>
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                    <DollarSign className='h-3 w-3' />
+                    Original Amount
+                  </p>
+                  <p className='font-medium'>
+                    {formatAmountWithSymbol(
+                      loan.loanAmount,
+                      tokenConfig?.loanToken.symbol || 'Token'
+                    )}
+                  </p>
+                </div>
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                    <Percent className='h-3 w-3' />
+                    Interest Rate
+                  </p>
+                  <p className='font-medium'>
+                    {tokenConfig
+                      ? formatPercentage(
+                          loan.interestApr,
+                          tokenConfig.aprDecimals
+                        ) + '%'
+                      : '...'}
+                  </p>
+                </div>
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                    <Calendar className='h-3 w-3' />
+                    Start Date
+                  </p>
+                  <p className='font-medium'>
+                    {formatTimestamp(loan.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className='space-y-1'>
+                  <p className='text-sm text-muted-foreground flex items-center gap-1'>
+                    <Calendar className='h-3 w-3' />
+                    Due Date
+                  </p>
+                  <p className='font-medium'>
+                    {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-              <div className='space-y-1'>
-                <p className='text-sm text-muted-foreground flex items-center gap-1'>
-                  <DollarSign className='h-3 w-3' />
-                  Original Amount
-                </p>
-                <p className='font-medium'>
-                  {formatAmountWithSymbol(loan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
-                </p>
-              </div>
-              <div className='space-y-1'>
-                <p className='text-sm text-muted-foreground flex items-center gap-1'>
-                  <Percent className='h-3 w-3' />
-                  Interest Rate
-                </p>
-                <p className='font-medium'>
-                  {tokenConfig
-                    ? formatPercentage(loan.interestApr, tokenConfig.aprDecimals) + '%'
-                    : '...'}
-                </p>
-              </div>
-              <div className='space-y-1'>
-                <p className='text-sm text-muted-foreground flex items-center gap-1'>
-                  <Calendar className='h-3 w-3' />
-                  Start Date
-                </p>
-                <p className='font-medium'>
-                  {formatTimestamp(loan.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-              <div className='space-y-1'>
-                <p className='text-sm text-muted-foreground flex items-center gap-1'>
-                  <Calendar className='h-3 w-3' />
-                  Due Date
-                </p>
-                <p className='font-medium'>
-                  {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
 
-            <div className='mt-4 pt-4 border-t'>
-              <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
-                <div className='space-y-1'>
-                  <p className='text-sm text-muted-foreground'>Total Paid</p>
-                  <p className='text-lg font-semibold text-green-600'>
-                    {formatAmountWithSymbol(loan.paidAmount, tokenConfig?.nativeToken.symbol || 'Token')}
-                  </p>
-                </div>
-                <div className='space-y-1'>
-                  <p className='text-sm text-muted-foreground'>
-                    Remaining Balance
-                  </p>
-                  <p className='text-lg font-semibold'>
-                    {formatAmountWithSymbol(loan.remainingBalance, tokenConfig?.loanToken.symbol || 'Token')}
-                  </p>
-                </div>
-                <div className='space-y-1'>
-                  <p className='text-sm text-muted-foreground'>
-                    Payment Completion
-                  </p>
-                  <p className='text-lg font-semibold'>
-                    {loan.loanAmount + loan.interestAmount > 0n
-                      ? Number(
-                          ((loan.loanAmount +
-                            loan.interestAmount -
-                            loan.remainingBalance) *
-                            100n) /
-                            (loan.loanAmount + loan.interestAmount)
-                        ).toFixed(1)
-                      : '0'}
-                    %
-                  </p>
+              <div className='mt-4 pt-4 border-t'>
+                <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
+                  <div className='space-y-1'>
+                    <p className='text-sm text-muted-foreground'>Total Paid</p>
+                    <p className='text-lg font-semibold text-green-600'>
+                      {formatAmountWithSymbol(
+                        loan.paidAmount,
+                        tokenConfig?.nativeToken.symbol || 'Token'
+                      )}
+                    </p>
+                  </div>
+                  <div className='space-y-1'>
+                    <p className='text-sm text-muted-foreground'>
+                      Remaining Balance
+                    </p>
+                    <p className='text-lg font-semibold'>
+                      {formatAmountWithSymbol(
+                        loan.remainingBalance,
+                        tokenConfig?.loanToken.symbol || 'Token'
+                      )}
+                    </p>
+                  </div>
+                  <div className='space-y-1'>
+                    <p className='text-sm text-muted-foreground'>
+                      Payment Completion
+                    </p>
+                    <p className='text-lg font-semibold'>
+                      {loan.loanAmount + loan.interestAmount > 0n
+                        ? Number(
+                            ((loan.loanAmount +
+                              loan.interestAmount -
+                              loan.remainingBalance) *
+                              100n) /
+                              (loan.loanAmount + loan.interestAmount)
+                          ).toFixed(1)
+                        : '0'}
+                      %
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        ))}
     </div>
   )
 }

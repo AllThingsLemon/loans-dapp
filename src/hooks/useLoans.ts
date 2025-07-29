@@ -5,7 +5,6 @@ import { useLoanConfig } from './loans/useLoanConfig'
 import type { UseLoansOptions, UseLoansReturn } from './types'
 export type { LoanRequest } from './loans/useLoanOperations'
 
-
 export interface Loan {
   // From loans mapping
   id: `0x${string}`
@@ -35,8 +34,6 @@ export interface Loan {
   remainingBalance: bigint // Calculated from contract values, not manually
   dueTimestamp: bigint // Calculated from timeToDefault
 }
-
-
 
 export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   // Use focused hooks for specific concerns
@@ -84,7 +81,8 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     durationRange: config.durationRange,
 
     // Combined loading state
-    isLoading: userData.isLoading || operations.isTransacting || config.isLoading,
+    isLoading:
+      userData.isLoading || operations.isTransacting || config.isLoading,
 
     // Combined error state
     error: userData.error || operations.error || config.error

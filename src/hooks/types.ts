@@ -1,5 +1,8 @@
 import type { Loan, LoanRequest } from './useLoans'
-import type { LoanConfiguration, InterestAprConfig } from './loans/useLoanConfig'
+import type {
+  LoanConfiguration,
+  InterestAprConfig
+} from './loans/useLoanConfig'
 
 export interface UseLoansOptions {
   loanRequest?: LoanRequest
@@ -17,7 +20,10 @@ export interface UseLoansReturn {
   // Operations from useLoanOperations
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
   approveLoanFee: () => Promise<`0x${string}` | undefined>
-  payLoan: (loanId: `0x${string}`, amount: bigint) => Promise<`0x${string}` | undefined>
+  payLoan: (
+    loanId: `0x${string}`,
+    amount: bigint
+  ) => Promise<`0x${string}` | undefined>
   pullCollateral: (loanId: `0x${string}`) => Promise<`0x${string}` | undefined>
   approveTokenAllowance: (amount: bigint) => Promise<`0x${string}` | undefined>
 
@@ -28,14 +34,16 @@ export interface UseLoansReturn {
   // Loan creation & simulation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
-  calculationData: {
-    interestAmount: bigint | undefined
-    interestApr: bigint | undefined
-    originationFee: bigint | undefined
-    collateralAmount: bigint | undefined
-    loanCycleDuration: bigint | undefined
-    firstLoanPayment: bigint | undefined
-  } | undefined
+  calculationData:
+    | {
+        interestAmount: bigint | undefined
+        interestApr: bigint | undefined
+        originationFee: bigint | undefined
+        collateralAmount: bigint | undefined
+        loanCycleDuration: bigint | undefined
+        firstLoanPayment: bigint | undefined
+      }
+    | undefined
 
   // User balance info
   userLmlnBalance: bigint | undefined

@@ -1,12 +1,12 @@
 // Loan Status Constants (matching contract enum)
 export const LOAN_STATUS = {
   COMPLETED: 0, // Fully paid and collateral withdrawn
-  UNLOCKED: 1,  // Paid off but collateral not withdrawn
-  DEFAULT: 2,   // Missed payment or overdue beyond grace period
-  ACTIVE: 3     // Currently in repayment
+  UNLOCKED: 1, // Paid off but collateral not withdrawn
+  DEFAULT: 2, // Missed payment or overdue beyond grace period
+  ACTIVE: 3 // Currently in repayment
 } as const
 
-export type LoanStatus = typeof LOAN_STATUS[keyof typeof LOAN_STATUS]
+export type LoanStatus = (typeof LOAN_STATUS)[keyof typeof LOAN_STATUS]
 
 // Default Decimals
 export const DEFAULT_DECIMALS = {

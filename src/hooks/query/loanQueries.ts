@@ -8,12 +8,11 @@ export const loanKeys = {
   loanIds: (account: string) =>
     [...loanKeys.byAccount(account), 'ids'] as const,
   // This matches the actual pattern used in useUserLoans: ['loan', loanId, 'fullData']
-  loanDetails: (loanId: string) =>
-    ['loan', loanId, 'fullData'] as const,
+  loanDetails: (loanId: string) => ['loan', loanId, 'fullData'] as const,
   loanConfig: () => [...loanKeys.all, 'config'] as const,
   // Helper to get all loan detail keys for an account
   allLoanDetails: (loanIds: string[]) =>
-    loanIds.map(id => loanKeys.loanDetails(id))
+    loanIds.map((id) => loanKeys.loanDetails(id))
 }
 
 // Query options for loan IDs

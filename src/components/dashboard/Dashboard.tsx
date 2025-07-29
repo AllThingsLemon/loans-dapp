@@ -74,11 +74,16 @@ export function Dashboard() {
             <CardTitle className='text-sm font-medium'>
               Total Borrowed
             </CardTitle>
-            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>
+              {tokenConfig?.loanToken.symbol || 'Loading...'}
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalBorrowed, tokenConfig?.loanToken.symbol || 'Token')}
+              {formatAmountWithSymbol(
+                totalBorrowed,
+                tokenConfig?.loanToken.symbol || 'Token'
+              )}
             </div>
             <p className='text-xs text-muted-foreground'>
               Total amount borrowed
@@ -91,11 +96,16 @@ export function Dashboard() {
             <CardTitle className='text-sm font-medium'>
               Remaining Balance
             </CardTitle>
-            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>
+              {tokenConfig?.loanToken.symbol || 'Loading...'}
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalRemaining, tokenConfig?.loanToken.symbol || 'Token')}
+              {formatAmountWithSymbol(
+                totalRemaining,
+                tokenConfig?.loanToken.symbol || 'Token'
+              )}
             </div>
             <p className='text-xs text-muted-foreground'>Outstanding balance</p>
           </CardContent>
@@ -104,11 +114,16 @@ export function Dashboard() {
         <Card>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
             <CardTitle className='text-sm font-medium'>Total Paid</CardTitle>
-            <Badge variant='yellow'>{tokenConfig?.loanToken.symbol || 'Loading...'}</Badge>
+            <Badge variant='yellow'>
+              {tokenConfig?.loanToken.symbol || 'Loading...'}
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className='text-2xl font-bold'>
-              {formatAmountWithSymbol(totalPaid, tokenConfig?.loanToken.symbol || 'Token')}
+              {formatAmountWithSymbol(
+                totalPaid,
+                tokenConfig?.loanToken.symbol || 'Token'
+              )}
             </div>
             <p className='text-xs text-muted-foreground'>Total amount repaid</p>
           </CardContent>

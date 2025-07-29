@@ -2,7 +2,15 @@
 
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '../ui/dialog'
 import { AlertTriangle, Plus } from 'lucide-react'
 import { formatTokenAmount } from '../../utils/decimals'
 
@@ -59,7 +67,8 @@ export function LoanSummary({
             <span
               className={`text-2xl font-bold ${!isDashboard ? 'text-white' : ''}`}
             >
-              ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
+              ${calculation.loanAmount.toLocaleString()}{' '}
+              {tokenConfig?.loanToken.symbol || 'Token'}
             </span>
           </div>
 
@@ -78,21 +87,23 @@ export function LoanSummary({
                   : calculation.priceError || 'Calculating...'}
               </span>
             </div>
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                Origination Fee - payable in {tokenConfig?.feeToken.symbol || 'Token'}
+                Origination Fee - payable in{' '}
+                {tokenConfig?.feeToken.symbol || 'Token'}
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
               >
-                {calculation.originationFeeLmln?.toFixed(2) || '0'} {tokenConfig?.feeToken.symbol || 'Token'}
+                {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
+                {tokenConfig?.feeToken.symbol || 'Token'}
                 {hasInsufficientLmln && ' ⚠️'}
               </span>
             </div>
-            
+
             {hasInsufficientLmln && (
               <div className='text-red-500 text-xs mt-1'>
                 Balance:{' '}
@@ -107,7 +118,7 @@ export function LoanSummary({
                 {tokenConfig?.feeToken.symbol || 'Token'}
               </div>
             )}
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
@@ -120,7 +131,7 @@ export function LoanSummary({
                 {calculation.ltv}%
               </span>
             </div>
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
@@ -133,7 +144,7 @@ export function LoanSummary({
                 {calculation.apr.toFixed(1)}%
               </span>
             </div>
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
@@ -146,7 +157,7 @@ export function LoanSummary({
                 ${calculation.monthlyPayment.toFixed(2)}
               </span>
             </div>
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
@@ -163,7 +174,7 @@ export function LoanSummary({
                 })}
               </span>
             </div>
-            
+
             <div className='flex justify-between'>
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
@@ -214,7 +225,8 @@ export function LoanSummary({
                     <div className='flex justify-between'>
                       <span className='font-medium'>Loan Amount:</span>
                       <span>
-                        ${calculation.loanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}
+                        ${calculation.loanAmount.toLocaleString()}{' '}
+                        {tokenConfig?.loanToken.symbol || 'Token'}
                       </span>
                     </div>
                     <div className='flex justify-between'>
@@ -230,9 +242,7 @@ export function LoanSummary({
                       <span>{calculation.apr.toFixed(1)}%</span>
                     </div>
                     <div className='flex justify-between'>
-                      <span className='font-medium'>
-                        Collateral Required:
-                      </span>
+                      <span className='font-medium'>Collateral Required:</span>
                       <span>
                         {calculation.lemonRequired.toLocaleString('en-US', {
                           minimumFractionDigits: 2,
@@ -268,7 +278,11 @@ export function LoanSummary({
                   {needsApproval ? (
                     <Button
                       onClick={handleApproveLoanFee}
-                      disabled={isApprovingLoanFee || isCreatingLoan || !calculation.isValid}
+                      disabled={
+                        isApprovingLoanFee ||
+                        isCreatingLoan ||
+                        !calculation.isValid
+                      }
                       className='bg-gradient-to-r from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 text-white'
                     >
                       {isApprovingLoanFee ? 'Approving...' : 'Approve LMLN Fee'}
@@ -276,10 +290,16 @@ export function LoanSummary({
                   ) : (
                     <Button
                       onClick={handleCreateLoan}
-                      disabled={isApprovingLoanFee || isCreatingLoan || !calculation.isValid}
+                      disabled={
+                        isApprovingLoanFee ||
+                        isCreatingLoan ||
+                        !calculation.isValid
+                      }
                       className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
                     >
-                      {isCreatingLoan ? 'Creating Loan...' : 'Confirm & Create Loan'}
+                      {isCreatingLoan
+                        ? 'Creating Loan...'
+                        : 'Confirm & Create Loan'}
                     </Button>
                   )}
                 </DialogFooter>

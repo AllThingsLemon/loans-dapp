@@ -2,7 +2,7 @@
 
 export interface LoanStructResponse {
   readonly [0]: string // account
-  readonly [1]: bigint // createdAt  
+  readonly [1]: bigint // createdAt
   readonly [2]: bigint // loanAmount
   readonly [3]: bigint // duration
   readonly [4]: bigint // interestAmount

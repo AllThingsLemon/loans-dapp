@@ -8,7 +8,10 @@ import {
 } from 'date-fns'
 import { formatUnits } from 'viem'
 
-export const formatBalance = (balance: bigint, decimals: number = 18): string => {
+export const formatBalance = (
+  balance: bigint,
+  decimals: number = 18
+): string => {
   const formattedBalance = formatUnits(balance, decimals)
   return parseFloat(formattedBalance).toFixed(2)
 }

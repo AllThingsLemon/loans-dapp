@@ -1,6 +1,5 @@
 import { formatUnits, parseUnits } from 'viem'
 
-
 export class DecimalError extends Error {
   constructor(message: string) {
     super(message)
@@ -36,10 +35,7 @@ export function parsePercentage(
  * @param decimals - Number of decimals for the specific precision type
  * @returns Formatted percentage value (e.g., "20" for 20%)
  */
-export function formatPercentage(
-  value: bigint,
-  decimals: number
-): string {
+export function formatPercentage(value: bigint, decimals: number): string {
   if (value < 0n) {
     throw new DecimalError('Percentage value cannot be negative')
   }
@@ -80,7 +76,6 @@ export function formatTokenAmount(value: bigint, decimals: number): string {
   }
   return formatUnits(value, decimals)
 }
-
 
 /**
  * Format display value with appropriate decimal places

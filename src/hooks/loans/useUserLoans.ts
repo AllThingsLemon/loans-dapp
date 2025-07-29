@@ -101,14 +101,12 @@ export const useUserLoans = (): UseUserLoansReturn => {
     args: address ? [address] : undefined
   })
 
-
   // Create queries for each loan's data
   const loanQueries = useQueries({
     queries: (loanIds || []).map((loanId) => ({
       queryKey: ['loan', loanId, 'fullData'],
       queryFn: async () => {
         if (!config) throw new Error('Wagmi config not available')
-
 
         try {
           // First, get basic loan info and status (these should work for all loans)
@@ -117,9 +115,14 @@ export const useUserLoans = (): UseUserLoansReturn => {
             readLoansLoanStatus(config, { args: [loanId] })
           ])
 
-
           // For active loans (status 3), fetch additional data
-          let paymentAmount, transpiredCycles, totalCycles, remainingCycles, cyclesAhead, timeToDefault, elapsedTimeInCycle
+          let paymentAmount,
+            transpiredCycles,
+            totalCycles,
+            remainingCycles,
+            cyclesAhead,
+            timeToDefault,
+            elapsedTimeInCycle
 
           if (status === LOAN_STATUS.ACTIVE) {
             ;[
@@ -150,7 +153,6 @@ export const useUserLoans = (): UseUserLoansReturn => {
             elapsedTimeInCycle = 0n
           }
 
-
           return combineLoanData(
             loanId,
             loanInfo,
@@ -176,23 +178,28 @@ export const useUserLoans = (): UseUserLoansReturn => {
   // Extract loans data
   const loans = useMemo(() => {
     return loanQueries
-      .map(query => query.data)
+      .map((query) => query.data)
       .filter((loan): loan is Loan => loan !== null)
   }, [loanQueries])
 
   // Aggregate loading and error states
-  const isLoading = loadingIds || loanQueries.some(query => query.isLoading)
-  const error = idsError || loanQueries.find(query => query.error)?.error
+  const isLoading = loadingIds || loanQueries.some((query) => query.isLoading)
+  const error = idsError || loanQueries.find((query) => query.error)?.error
 
   // Filter loans by status
   const activeLoans = useMemo(() => {
-    return loans.filter((loan) => loan?.status === LOAN_STATUS.ACTIVE || loan?.status === LOAN_STATUS.UNLOCKED)
+    return loans.filter(
+      (loan) =>
+        loan?.status === LOAN_STATUS.ACTIVE ||
+        loan?.status === LOAN_STATUS.UNLOCKED
+    )
   }, [loans])
 
   const loanHistory = useMemo(() => {
-    return loans.filter((loan) => 
-      loan?.status === LOAN_STATUS.COMPLETED || 
-      loan?.status === LOAN_STATUS.DEFAULT
+    return loans.filter(
+      (loan) =>
+        loan?.status === LOAN_STATUS.COMPLETED ||
+        loan?.status === LOAN_STATUS.DEFAULT
     )
   }, [loans])
 
@@ -204,12 +211,14 @@ export const useUserLoans = (): UseUserLoansReturn => {
   const refetch = useCallback(async () => {
     // First refetch loan IDs to catch new loans
     await refetchLoanIds()
-    
+
     // Then invalidate all loan queries to trigger refetch
     if (loanIds) {
       await Promise.all(
-        loanIds.map(loanId => 
-          queryClient.invalidateQueries({ queryKey: ['loan', loanId, 'fullData'] })
+        loanIds.map((loanId) =>
+          queryClient.invalidateQueries({
+            queryKey: ['loan', loanId, 'fullData']
+          })
         )
       )
     }

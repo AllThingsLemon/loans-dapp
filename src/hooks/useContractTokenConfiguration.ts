@@ -43,10 +43,12 @@ export interface UseContractTokenConfigurationResult {
  */
 export function useContractTokenConfiguration(): UseContractTokenConfigurationResult {
   const publicClient = usePublicClient()
-  
+
   // Get native token info from chain config
-  const nativeTokenSymbol = publicClient?.chain?.nativeCurrency?.symbol ?? "LEMX"
-  const nativeTokenDecimals = publicClient?.chain?.nativeCurrency?.decimals ?? 18
+  const nativeTokenSymbol =
+    publicClient?.chain?.nativeCurrency?.symbol ?? 'LEMX'
+  const nativeTokenDecimals =
+    publicClient?.chain?.nativeCurrency?.decimals ?? 18
 
   // Fetch precision constants from Loans contract
   const {
@@ -54,19 +56,19 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     isLoading: ltvDecimalsLoading,
     error: ltvDecimalsError
   } = useReadLoansLtvDecimals()
-  
+
   const {
     data: aprDecimals,
     isLoading: aprDecimalsLoading,
     error: aprDecimalsError
   } = useReadLoansAprDecimals()
-  
+
   const {
     data: collateralTokenDecimals,
     isLoading: collateralTokenDecimalsLoading,
     error: collateralTokenDecimalsError
   } = useReadLoansCollateralTokenDecimals()
-  
+
   const {
     data: collateralTokenPriceDecimals,
     isLoading: collateralTokenPriceDecimalsLoading,
