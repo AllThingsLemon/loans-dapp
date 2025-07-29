@@ -120,6 +120,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
   // Helper function to handle payment type changes
   const handlePaymentTypeChange = (
+    loan: Loan,
     newType: 'balance' | 'minimum' | 'custom'
   ) => {
     setPaymentType(newType)
@@ -127,24 +128,24 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       setCustomAmount('')
     }
     // Update paymentAmount for validation/approval logic
-    const loan = activeLoans.find((l) => l.id === selectedLoan)
-    if (loan) {
-      if (newType === 'balance') {
-        setPaymentAmount(
-          formatTokenAmount(
-            loan.remainingBalance,
-            tokenConfig?.loanToken.decimals || 18
-          )
+    if (newType === 'balance') {
+      setPaymentAmount(
+        formatTokenAmount(
+          loan.remainingBalance,
+          tokenConfig?.loanToken.decimals || 18
         )
-      } else if (newType === 'minimum') {
-        setPaymentAmount(calculateMinimumPayment(loan))
-      }
+      )
+    } else if (newType === 'minimum') {
+      setPaymentAmount(calculateMinimumPayment(loan))
     }
   }
 
   const handleApproval = async () => {
-    const currentPaymentAmount =
-      paymentType === 'custom' ? customAmount : paymentAmount
+    // Find the loan being approved for
+    const loan = activeLoans.find((l) => l.id === selectedLoan)
+    if (!loan) return
+    
+    const currentPaymentAmount = getPaymentAmount(loan)
 
     if (
       !currentPaymentAmount ||
@@ -210,8 +211,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       return
     }
 
-    const currentPaymentAmount =
-      paymentType === 'custom' ? customAmount : paymentAmount
+    const currentPaymentAmount = getPaymentAmount(loan)
 
     if (
       !currentPaymentAmount ||
@@ -546,7 +546,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             <Label>Payment Options</Label>
                             <RadioGroup
                               value={paymentType}
-                              onValueChange={handlePaymentTypeChange}
+                              onValueChange={(value) => handlePaymentTypeChange(loan, value as 'balance' | 'minimum' | 'custom')}
                               className='space-y-3'
                             >
                               <div className='flex items-center space-x-2'>
@@ -626,10 +626,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         <div className='flex gap-2'>
                           {(() => {
                             // Check if approval is needed
-                            const currentPaymentAmount =
-                              paymentType === 'custom'
-                                ? customAmount
-                                : paymentAmount
+                            const currentPaymentAmount = getPaymentAmount(loan)
                             const paymentWei =
                               currentPaymentAmount &&
                               tokenConfig?.loanToken.decimals
