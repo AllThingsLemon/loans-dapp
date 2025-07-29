@@ -25,8 +25,6 @@ import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
-  formatPercentage,
-  formatWithPrecision,
   formatDuration,
   formatTimestamp,
   getLoanStatusLabel,
@@ -35,7 +33,7 @@ import {
 } from '@/src/utils/format'
 import {
   parseTokenAmount,
-  formatPercentage as formatContractPercentage,
+  formatPercentage,
   formatTokenAmount
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
@@ -228,9 +226,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 </p>
                 <p className='text-sm text-muted-foreground'>
                   {tokenConfig
-                    ? formatContractPercentage(
+                    ? formatPercentage(
                         loan.interestApr,
-                        tokenConfig.interestRateDecimals
+                        tokenConfig.aprDecimals
                       ) + '%'
                     : '...'}{' '}
                   • {formatDuration(loan.duration)}
@@ -308,9 +306,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </p>
                   <p className='font-medium'>
                     {tokenConfig
-                      ? formatContractPercentage(
+                      ? formatPercentage(
                           loan.interestApr,
-                          tokenConfig.interestRateDecimals
+                          tokenConfig.aprDecimals
                         ) + '%'
                       : '...'}
                   </p>
@@ -389,7 +387,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='text-xs text-muted-foreground'>LTV</p>
                   <p className='text-sm font-medium'>
                     {tokenConfig
-                      ? formatContractPercentage(
+                      ? formatPercentage(
                           loan.ltv,
                           tokenConfig.ltvDecimals
                         ) + '%'
