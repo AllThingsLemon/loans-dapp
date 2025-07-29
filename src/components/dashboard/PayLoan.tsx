@@ -22,13 +22,11 @@ import { useLoans } from '@/src/hooks/useLoans'
 import { useContractDecimals } from '@/src/hooks/useContractDecimals'
 import {
   formatAmountWithSymbol,
-  formatPercentage,
-  formatWithPrecision,
   truncateAddress
 } from '@/src/utils/format'
 import {
   parseTokenAmount,
-  formatPercentage as formatContractPercentage
+  formatPercentage
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { CreditCard, DollarSign, AlertCircle } from 'lucide-react'
@@ -155,10 +153,10 @@ export function PayLoan() {
               <div>
                 <span className='text-muted-foreground'>Interest Rate:</span>
                 <p className='font-medium'>
-                  {tokenConfig?.interestRateDecimals
-                    ? formatContractPercentage(
+                  {tokenConfig
+                    ? formatPercentage(
                         selectedLoan.interestApr,
-                        tokenConfig.interestRateDecimals
+                        tokenConfig.aprDecimals
                       ) + '%'
                     : '...'}
                 </p>

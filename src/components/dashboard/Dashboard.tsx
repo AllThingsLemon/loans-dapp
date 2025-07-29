@@ -128,7 +128,7 @@ export function Dashboard() {
         </CardHeader>
         <CardContent>
           <Web3ErrorBoundary>
-            <CalculatorSection isDashboard={true} onLoanCreated={refetch} />
+            <CalculatorSection isDashboard={true} />
           </Web3ErrorBoundary>
         </CardContent>
       </Card>

@@ -21,6 +21,16 @@ import { type LoanStructResponse, parseLoanStruct } from '@/src/types/contracts'
 import { usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 
+export interface UseUserLoansReturn {
+  loans: Loan[]
+  activeLoans: Loan[]
+  loanHistory: Loan[]
+  isLoading: boolean
+  error: Error | null
+  getLoanById: (id: `0x${string}`) => Loan | undefined
+  refetch: () => Promise<void>
+}
+
 // Helper function to combine loan data using proper parsing
 const combineLoanData = (
   loanId: `0x${string}`,
@@ -75,7 +85,7 @@ const combineLoanData = (
   }
 }
 
-export const useUserLoans = () => {
+export const useUserLoans = (): UseUserLoansReturn => {
   const { address } = useAccount()
   const { loanConfig } = useLoanConfig()
   const publicClient = usePublicClient()
@@ -210,7 +220,7 @@ export const useUserLoans = () => {
     activeLoans,
     loanHistory,
     isLoading,
-    error,
+    error: error || null,
     getLoanById,
     refetch
   }

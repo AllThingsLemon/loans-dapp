@@ -9,18 +9,16 @@ import {
 } from '@/src/components/ui/card'
 import { Badge } from '@/src/components/ui/badge'
 import { useLoans } from '@/src/hooks/useLoans'
-import { useReadLoansPrecision } from '@/src/generated'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
-  formatPercentage,
-  formatWithPrecision,
   formatDuration,
   formatTimestamp,
   getLoanStatusLabel,
   getLoanStatusVariant,
   truncateAddress
 } from '@/src/utils/format'
+import { formatPercentage } from '@/src/utils/decimals'
 import {
   History,
   CheckCircle,
@@ -36,7 +34,6 @@ interface LoanHistoryProps {
 
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const { loanHistory } = useLoans()
-  const { data: contractPrecision } = useReadLoansPrecision()
   const { tokenConfig } = useContractTokenConfiguration()
 
   const getStatusIcon = (status: number) => {
@@ -87,8 +84,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                   {formatAmountWithSymbol(loan.loanAmount, tokenConfig?.loanToken.symbol || 'Token')}
                 </p>
                 <p className='text-sm text-muted-foreground'>
-                  {contractPrecision
-                    ? formatWithPrecision(loan.interestApr, contractPrecision)
+                  {tokenConfig
+                    ? formatPercentage(loan.interestApr, tokenConfig.aprDecimals) + '%'
                     : '...'}{' '}
                   • {formatDuration(loan.duration)}
                 </p>
@@ -150,8 +147,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                   Interest Rate
                 </p>
                 <p className='font-medium'>
-                  {contractPrecision
-                    ? formatWithPrecision(loan.interestApr, contractPrecision)
+                  {tokenConfig
+                    ? formatPercentage(loan.interestApr, tokenConfig.aprDecimals) + '%'
                     : '...'}
                 </p>
               </div>

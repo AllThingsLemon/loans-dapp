@@ -1,6 +1,9 @@
 import { useCallback } from 'react'
 import { useUserLoans } from './loans/useUserLoans'
 import { useLoanOperations } from './loans/useLoanOperations'
+import { useLoanConfig } from './loans/useLoanConfig'
+import type { UseLoansOptions, UseLoansReturn } from './types'
+export type { LoanRequest } from './loans/useLoanOperations'
 
 
 export interface Loan {
@@ -33,19 +36,13 @@ export interface Loan {
   dueTimestamp: bigint // Calculated from timeToDefault
 }
 
-// Re-export types and interfaces for backward compatibility
-export type { LoanRequest } from './loans/useLoanOperations'
 
-export const useLoans = (options?: {
-  loanRequest?: import('./loans/useLoanOperations').LoanRequest,
-  selectedLtvOption?: { ltv: bigint; fee: bigint }
-}) => {
+
+export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   // Use focused hooks for specific concerns
   const userData = useUserLoans()
-  const operations = useLoanOperations({ 
-    onDataChange: userData.refetch,
-    ...options
-  })
+  const config = useLoanConfig()
+  const operations = useLoanOperations(options)
 
   return {
     // Data from useUserLoans
@@ -57,6 +54,7 @@ export const useLoans = (options?: {
 
     // Operations from useLoanOperations
     createLoan: operations.createLoan,
+    approveLoanFee: operations.approveLoanFee,
     payLoan: operations.payLoan,
     pullCollateral: operations.pullCollateral,
     approveTokenAllowance: operations.approveTokenAllowance,
@@ -68,17 +66,28 @@ export const useLoans = (options?: {
     // Loan creation & simulation data
     requiredCollateral: operations.requiredCollateral,
     hasInsufficientLmln: operations.hasInsufficientLmln,
+    calculationData: operations.calculationData,
 
     // User balance info
     userLmlnBalance: operations.userLmlnBalance,
     userLoanTokenBalance: operations.userLoanTokenBalance,
     currentAllowance: operations.currentAllowance,
+    currentLmlnAllowance: operations.currentLmlnAllowance,
+
+    // Contract addresses
+    loansContractAddress: operations.loansContractAddress,
+
+    // Loan configuration
+    loanConfig: config.loanConfig,
+    ltvOptions: config.ltvOptions,
+    interestAprConfigs: config.interestAprConfigs,
+    durationRange: config.durationRange,
 
     // Combined loading state
-    isLoading: userData.isLoading || operations.isTransacting,
+    isLoading: userData.isLoading || operations.isTransacting || config.isLoading,
 
     // Combined error state
-    error: userData.error || operations.error
+    error: userData.error || operations.error || config.error
   }
 }
 
