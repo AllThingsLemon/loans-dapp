@@ -1,25 +1,5 @@
 import { formatUnits, parseUnits } from 'viem'
 
-export interface ContractDecimals {
-  precision: bigint
-  precisionDecimals: number
-  loanTokenDecimals: number
-  feeTokenDecimals: number
-  ltvDecimals: number
-  interestRateDecimals: number
-}
-
-export interface TokenAmount {
-  value: bigint
-  decimals: number
-  formatted: string
-}
-
-export interface Percentage {
-  value: bigint
-  precisionDecimals: number
-  formatted: string
-}
 
 export class DecimalError extends Error {
   constructor(message: string) {
@@ -29,21 +9,9 @@ export class DecimalError extends Error {
 }
 
 /**
- * Calculate decimal places from a precision value
- * @param precision - The precision value (e.g., 1e8)
- * @returns Number of decimal places (e.g., 8)
- */
-export function calculateDecimalPlaces(precision: bigint): number {
-  if (precision <= 0n) {
-    throw new DecimalError('Precision must be greater than 0')
-  }
-  return Math.log10(Number(precision))
-}
-
-/**
  * Convert percentage to contract format (scaled by precision)
  * @param percentage - Percentage as string (e.g., "50")
- * @param precisionDecimals - Number of precision decimals
+ * @param decimals - Number of decimals for the specific precision type
  * @returns BigInt value for contract
  */
 export function parsePercentage(
@@ -65,17 +33,20 @@ export function parsePercentage(
 /**
  * Convert contract percentage value to display format
  * @param value - BigInt value from contract
- * @param precisionDecimals - Number of precision decimals
- * @returns Formatted percentage string
+ * @param decimals - Number of decimals for the specific precision type
+ * @returns Formatted percentage value (e.g., "20" for 20%)
  */
 export function formatPercentage(
   value: bigint,
-  precisionDecimals: number
+  decimals: number
 ): string {
   if (value < 0n) {
     throw new DecimalError('Percentage value cannot be negative')
   }
-  return formatUnits(value, precisionDecimals)
+  // Convert to decimal then multiply by 100 to get percentage
+  const decimal = formatUnits(value, decimals)
+  const percentage = (Number(decimal) * 100).toString()
+  return percentage
 }
 
 /**
@@ -110,72 +81,6 @@ export function formatTokenAmount(value: bigint, decimals: number): string {
   return formatUnits(value, decimals)
 }
 
-/**
- * Create a TokenAmount object with formatted display
- * @param value - BigInt value
- * @param decimals - Token decimals
- * @returns TokenAmount object
- */
-export function createTokenAmount(
-  value: bigint,
-  decimals: number
-): TokenAmount {
-  return {
-    value,
-    decimals,
-    formatted: formatTokenAmount(value, decimals)
-  }
-}
-
-/**
- * Create a Percentage object with formatted display
- * @param value - BigInt value from contract
- * @param precisionDecimals - Precision decimals
- * @returns Percentage object
- */
-export function createPercentage(
-  value: bigint,
-  precisionDecimals: number
-): Percentage {
-  return {
-    value,
-    precisionDecimals,
-    formatted: formatPercentage(value, precisionDecimals)
-  }
-}
-
-/**
- * Validate decimal configuration
- * @param decimals - Decimal configuration to validate
- */
-export function validateContractDecimals(decimals: ContractDecimals): void {
-  if (decimals.precision <= 0n) {
-    throw new DecimalError('Invalid precision value')
-  }
-
-  if (decimals.precisionDecimals <= 0 || decimals.precisionDecimals > 18) {
-    throw new DecimalError('Invalid precision decimals')
-  }
-
-  if (decimals.loanTokenDecimals <= 0 || decimals.loanTokenDecimals > 18) {
-    throw new DecimalError('Invalid loan token decimals')
-  }
-
-  if (decimals.feeTokenDecimals <= 0 || decimals.feeTokenDecimals > 18) {
-    throw new DecimalError('Invalid fee token decimals')
-  }
-
-  if (decimals.ltvDecimals <= 0 || decimals.ltvDecimals > 18) {
-    throw new DecimalError('Invalid LTV decimals')
-  }
-
-  if (
-    decimals.interestRateDecimals <= 0 ||
-    decimals.interestRateDecimals > 18
-  ) {
-    throw new DecimalError('Invalid interest rate decimals')
-  }
-}
 
 /**
  * Format display value with appropriate decimal places
