@@ -88,22 +88,37 @@ export const useLoanPayment = (
     return Number((paid * 100n) / totalOwed)
   }, [loan])
 
-  // Utility functions for loan calculations
-  const getTimeUntilDue = useCallback((loanData: Loan) => {
-    // Only calculate time until due for loans that require payments
-    if (loanData.status !== LOAN_STATUS.ACTIVE) {
-      return null
-    }
+  // Calculate display due date with truncation logic
+  const getDisplayDueDate = useCallback((loanData: Loan): Date => {
+    // Get the actual contract due date
+    const contractDueDate = new Date(Number(loanData.dueTimestamp) * 1000)
 
-    const secondsRemaining = Number(loanData.timeToDefault)
-    const daysRemaining = Math.floor(secondsRemaining / (24 * 60 * 60))
+    // TODO: Truncation logic (commented out for now - using real contract value)
+    // // Subtract 1 hour from contract due date
+    // const adjustedDate = new Date(contractDueDate.getTime() - (60 * 60 * 1000))
+    //
+    // // Truncate to start of previous day at 00:00 UTC
+    // const truncatedDate = new Date(adjustedDate)
+    // truncatedDate.setUTCDate(truncatedDate.getUTCDate() - 1)
+    // truncatedDate.setUTCHours(0, 0, 0, 0)
+    //
+    // return truncatedDate
 
-    if (daysRemaining >= 1) {
-      return { value: daysRemaining, unit: 'days' as const }
-    } else {
-      return { value: secondsRemaining, unit: 'seconds' as const }
-    }
+    // Use real contract due date for now
+    return contractDueDate
   }, [])
+
+  // Simple check if loan payment is overdue (for UI state only)
+  const isLoanOverdue = useCallback(
+    (loanData: Loan): boolean => {
+      if (loanData.status !== LOAN_STATUS.ACTIVE) {
+        return false
+      }
+      const displayDueDate = getDisplayDueDate(loanData)
+      return displayDueDate.getTime() < Date.now()
+    },
+    [getDisplayDueDate]
+  )
 
   const getPaymentProgress = useCallback((loanData: Loan) => {
     const totalOwed = loanData.loanAmount + loanData.interestAmount
@@ -126,7 +141,8 @@ export const useLoanPayment = (
     validatePayment,
     isValidAmount,
     paymentProgress,
-    getTimeUntilDue,
+    isLoanOverdue,
+    getDisplayDueDate,
     getPaymentProgress,
     // New status-aware properties
     isPaymentRequired,
