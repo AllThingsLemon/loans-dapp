@@ -2,6 +2,10 @@ import { useCallback, useMemo } from 'react'
 import type { Loan } from '../useLoans'
 import { LOAN_STATUS } from '@/src/constants'
 
+// Constants for percentage calculations with BigInt
+const PERCENTAGE_DECIMALS = 2 // Support 2 decimal places (e.g., 12.34%)
+const PERCENTAGE_SCALE = 10n ** BigInt(PERCENTAGE_DECIMALS + 2) // Scale factor for BigInt math
+
 interface PaymentValidation {
   isValid: boolean
   error?: string
@@ -79,14 +83,6 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-  // Calculate payment progress as percentage
-  const paymentProgress = useMemo(() => {
-    if (!loan || loan.loanAmount + loan.interestAmount === 0n) return 0
-
-    const totalOwed = loan.loanAmount + loan.interestAmount
-    const paid = totalOwed - loan.remainingBalance
-    return Number((paid * 100n) / totalOwed)
-  }, [loan])
 
   // Calculate display due date with truncation logic
   const getDisplayDueDate = useCallback((loanData: Loan): Date => {
@@ -120,10 +116,25 @@ export const useLoanPayment = (
     [getDisplayDueDate]
   )
 
+  // Check if loan is in grace period (all interest paid, only principal remains)
+  const isLoanInGracePeriod = useCallback((loanData: Loan): boolean => {
+    if (loanData.status !== LOAN_STATUS.ACTIVE) {
+      return false
+    }
+    return loanData.paidAmount >= loanData.interestAmount
+  }, [])
+
   const getPaymentProgress = useCallback((loanData: Loan) => {
     const totalOwed = loanData.loanAmount + loanData.interestAmount
     const paid = loanData.paidAmount
-    return totalOwed > 0n ? Number((paid * 100n) / totalOwed) : 0
+    
+    if (totalOwed === 0n) return 0
+    
+    // Calculate percentage with proper precision for BigInt division
+    const scaledProgress = (paid * PERCENTAGE_SCALE) / totalOwed
+    
+    // Convert back to percentage with decimals
+    return Number(scaledProgress) / 100
   }, [])
 
   // Get payment status for UI display
@@ -140,8 +151,8 @@ export const useLoanPayment = (
     parsePaymentAmount,
     validatePayment,
     isValidAmount,
-    paymentProgress,
     isLoanOverdue,
+    isLoanInGracePeriod,
     getDisplayDueDate,
     getPaymentProgress,
     // New status-aware properties
