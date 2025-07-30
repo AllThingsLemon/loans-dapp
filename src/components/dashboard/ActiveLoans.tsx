@@ -23,6 +23,7 @@ import { Input } from '@/src/components/ui/input'
 import { Label } from '@/src/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/src/components/ui/radio-group'
 import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
+import { CountdownTimer } from '@/src/components/ui/countdown-timer'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
@@ -76,6 +77,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const { tokenConfig } = useContractTokenConfiguration()
   const {
     getTimeUntilDue,
+    getDisplayDueDate,
     getPaymentProgress,
     isPaymentRequired,
     isCollateralWithdrawable,
@@ -431,8 +433,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     <div className='space-y-4'>
       {activeLoans.map((loan) => {
         const timeUntilDue = getTimeUntilDue(loan)
+        const displayDueDate = getDisplayDueDate(loan)
         const progress = getPaymentProgress(loan)
-        const isOverdue = timeUntilDue ? timeUntilDue.value <= 0 : false
+        const isOverdue = timeUntilDue ? timeUntilDue.isOverdue : false
 
         return (
           <Card key={loan.id}>
@@ -491,7 +494,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Due Date
                   </p>
                   <p className='font-medium'>
-                    {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
+                    {displayDueDate.toLocaleDateString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -499,13 +502,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     <Clock className='h-3 w-3' />
                     {isOverdue ? 'Overdue' : 'Time Until Due'}
                   </p>
-                  <p
-                    className={`font-medium ${isOverdue ? 'text-red-600' : ''}`}
-                  >
-                    {timeUntilDue
-                      ? `${Math.abs(timeUntilDue.value)} ${timeUntilDue.unit}`
-                      : 'N/A'}
-                  </p>
+                  <div className='font-medium'>
+                    {loan.status === LOAN_STATUS.ACTIVE ? (
+                      <CountdownTimer
+                        targetDate={displayDueDate}
+                        compact
+                        showIcon={false}
+                        animate
+                      />
+                    ) : (
+                      <span className='text-muted-foreground'>N/A</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -880,7 +888,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 {isOverdue && loan.status === LOAN_STATUS.ACTIVE && (
                   <div className='flex items-center gap-2 text-sm text-red-600'>
                     <AlertCircle className='h-4 w-4' />
-                    <span>Payment overdue</span>
+                    <div className='flex flex-col'>
+                      <span>Payment overdue</span>
+                      <span className='text-xs text-orange-600'>
+                        Payment still possible until contract default
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
