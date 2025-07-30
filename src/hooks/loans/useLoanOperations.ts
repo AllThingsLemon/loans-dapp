@@ -9,7 +9,8 @@ import {
   useReadLoansCollateralTokenPrice,
   useReadLoansCalculateLoanDetails,
   loansAddress,
-  useWriteLoansWithdrawCollateral
+  useWriteLoansWithdrawCollateral,
+  useWriteLoansExtendLoan
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
@@ -31,13 +32,14 @@ export interface UseLoanOperationsOptions {
 export interface UseLoanOperationsReturn {
   // Operations
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
-  approveLoanFee: () => Promise<`0x${string}` | undefined>
+  approveLoanFee: (feeAmount?: bigint) => Promise<`0x${string}` | undefined>
   payLoan: (
     loanId: `0x${string}`,
     amount: bigint
   ) => Promise<`0x${string}` | undefined>
   pullCollateral: (loanId: `0x${string}`) => Promise<`0x${string}` | undefined>
   approveTokenAllowance: (amount: bigint) => Promise<`0x${string}` | undefined>
+  extendLoan: (loanId: `0x${string}`, maxExtension: bigint) => Promise<`0x${string}` | undefined>
 
   // Transaction states
   isTransacting: boolean
@@ -188,6 +190,12 @@ export const useLoanOperations = (
       retry: false // Disable retries to prevent double MetaMask popups
     }
   })
+  const { writeContractAsync: extendLoanContract, isPending: isExtendingLoan } =
+    useWriteLoansExtendLoan({
+      mutation: {
+        retry: false // Disable retries to prevent double MetaMask popups
+      }
+    })
 
   // Check if user has sufficient LMLN for origination fee
   const hasInsufficientLmln =
@@ -219,10 +227,14 @@ export const useLoanOperations = (
     firstLoanPayment
   ] = calculationData || []
 
-  // Function to approve LMLN tokens for loan creation
-  const approveLoanFee = useCallback(async () => {
+  // Function to approve LMLN tokens for loan creation or extension
+  const approveLoanFee = useCallback(async (feeAmount?: bigint) => {
     if (!address) throw new Error('Wallet not connected')
-    if (!originationFee) throw new Error('Origination fee not calculated')
+    
+    // Use provided fee amount (for extensions) or calculated origination fee (for new loans)
+    const fee = feeAmount || originationFee
+    if (!fee) throw new Error('Fee amount not provided or calculated')
+    
     if (!feeTokenAddress || !loansContractAddress) {
       throw new Error('Missing token addresses for approval')
     }
@@ -232,7 +244,7 @@ export const useLoanOperations = (
       address: feeTokenAddress,
       abi: erc20Abi,
       functionName: 'approve',
-      args: [loansContractAddress, originationFee]
+      args: [loansContractAddress, fee]
     })
 
     // Wait for approval transaction to be confirmed
@@ -499,6 +511,61 @@ export const useLoanOperations = (
     },
     [address, withdrawCollateral, publicClient, queryClient]
   )
+
+
+  // Function to extend a loan by max allowed extension
+  const extendLoan = useCallback(
+    async (loanId: `0x${string}`, maxExtension: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
+      if (!maxExtension) throw new Error('Max extension not provided')
+
+      // Use the max loan extension from config
+      const extensionTime = maxExtension
+
+      // The contract will handle the fee transfer, but we need to ensure allowance is set
+      const txHash = await extendLoanContract({
+        args: [loanId, extensionTime]
+      })
+
+      // Wait for transaction to be confirmed
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+      }
+
+      // If extension was successful, invalidate queries
+      if (txHash && address) {
+        await Promise.all([
+          // Invalidate wagmi-generated queries
+          queryClient.invalidateQueries({
+            predicate: (query) => {
+              const key = query.queryKey
+              return (
+                Array.isArray(key) &&
+                key.some(
+                  (part) =>
+                    typeof part === 'object' &&
+                    part !== null &&
+                    'args' in part &&
+                    Array.isArray(part.args) &&
+                    part.args[0] === address
+                )
+              )
+            }
+          }),
+          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
+          queryClient.invalidateQueries({
+            predicate: (query) =>
+              Array.isArray(query.queryKey) && query.queryKey[0] === 'loan'
+          }),
+          queryClient.invalidateQueries()
+        ])
+      }
+
+      return txHash
+    },
+    [address, extendLoanContract, publicClient, queryClient]
+  )
+
   return {
     // Operations
     createLoan,
@@ -506,13 +573,15 @@ export const useLoanOperations = (
     payLoan,
     pullCollateral,
     approveTokenAllowance,
+    extendLoan,
 
     // Transaction states
     isTransacting:
       isCreatingLoan ||
       isPayingLoan ||
       isWithdrawingCollateral ||
-      isApprovingToken,
+      isApprovingToken ||
+      isExtendingLoan,
     isSimulating: isCalculating || decimalsLoading,
 
     // Loan creation data
