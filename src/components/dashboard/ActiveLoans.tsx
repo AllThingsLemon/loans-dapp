@@ -76,7 +76,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
   const {
-    getTimeUntilDue,
+    isLoanOverdue,
     getDisplayDueDate,
     getPaymentProgress,
     isPaymentRequired,
@@ -95,7 +95,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isApprovingPayment, setIsApprovingPayment] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [isExtensionDialogOpen, setIsExtensionDialogOpen] = useState(false)
-  const [selectedLoanForExtension, setSelectedLoanForExtension] = useState<`0x${string}` | null>(null)
+  const [selectedLoanForExtension, setSelectedLoanForExtension] = useState<
+    `0x${string}` | null
+  >(null)
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
 
@@ -155,7 +157,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     // Find the loan being approved for
     const loan = activeLoans.find((l) => l.id === selectedLoan)
     if (!loan) return
-    
+
     const currentPaymentAmount = getPaymentAmount(loan)
 
     if (
@@ -432,10 +434,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   return (
     <div className='space-y-4'>
       {activeLoans.map((loan) => {
-        const timeUntilDue = getTimeUntilDue(loan)
         const displayDueDate = getDisplayDueDate(loan)
         const progress = getPaymentProgress(loan)
-        const isOverdue = timeUntilDue ? timeUntilDue.isOverdue : false
+        const isOverdue = isLoanOverdue(loan)
 
         return (
           <Card key={loan.id}>
@@ -634,7 +635,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             <Label>Payment Options</Label>
                             <RadioGroup
                               value={paymentType}
-                              onValueChange={(value) => handlePaymentTypeChange(loan, value as 'balance' | 'minimum' | 'custom')}
+                              onValueChange={(value) =>
+                                handlePaymentTypeChange(
+                                  loan,
+                                  value as 'balance' | 'minimum' | 'custom'
+                                )
+                              }
                               className='space-y-3'
                             >
                               <div className='flex items-center space-x-2'>
@@ -720,7 +726,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               return (
                                 <Button
                                   onClick={handleApproval}
-                                  disabled={isApprovingPayment || isProcessingPayment || !hasValidAmount}
+                                  disabled={
+                                    isApprovingPayment ||
+                                    isProcessingPayment ||
+                                    !hasValidAmount
+                                  }
                                   className='flex-1'
                                 >
                                   {isApprovingPayment
@@ -768,9 +778,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 )}
 
                 {/* Extend Loan Button - for active and unlocked loans only */}
-                {(loan.status === LOAN_STATUS.ACTIVE || loan.status === LOAN_STATUS.UNLOCKED) && (
+                {(loan.status === LOAN_STATUS.ACTIVE ||
+                  loan.status === LOAN_STATUS.UNLOCKED) && (
                   <Dialog
-                    open={isExtensionDialogOpen && selectedLoanForExtension === loan.id}
+                    open={
+                      isExtensionDialogOpen &&
+                      selectedLoanForExtension === loan.id
+                    }
                     onOpenChange={(open) => {
                       setIsExtensionDialogOpen(open)
                       if (!open) {
@@ -796,31 +810,55 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       <DialogHeader>
                         <DialogTitle>Extend Loan</DialogTitle>
                         <DialogDescription>
-                          Extend loan #{truncateAddress(loan.id)} by {loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'max allowed time'}
+                          Extend loan #{truncateAddress(loan.id)} by{' '}
+                          {loanConfig
+                            ? formatDuration(loanConfig.maxLoanExtension)
+                            : 'max allowed time'}
                         </DialogDescription>
                       </DialogHeader>
                       <div className='space-y-4'>
                         <div className='bg-muted/50 p-4 rounded-lg space-y-3'>
-                          <h4 className='font-medium text-sm'>What is a loan extension?</h4>
+                          <h4 className='font-medium text-sm'>
+                            What is a loan extension?
+                          </h4>
                           <p className='text-sm text-muted-foreground'>
-                            A loan extension adds {loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'additional time'} to your loan duration, giving you more time to repay. 
-                            This extension applies to the end of your loan term, not the balloon payment grace period.
+                            A loan extension adds{' '}
+                            {loanConfig
+                              ? formatDuration(loanConfig.maxLoanExtension)
+                              : 'additional time'}{' '}
+                            to your loan duration, giving you more time to
+                            repay. This extension applies to the end of your
+                            loan term, not the balloon payment grace period.
                           </p>
                           <div className='space-y-2 pt-2'>
                             <div className='flex justify-between text-sm'>
-                              <span className='text-muted-foreground'>Current Due Date:</span>
-                              <span className='font-medium'>{formatTimestamp(loan.dueTimestamp).toLocaleDateString()}</span>
+                              <span className='text-muted-foreground'>
+                                Current Due Date:
+                              </span>
+                              <span className='font-medium'>
+                                {formatTimestamp(
+                                  loan.dueTimestamp
+                                ).toLocaleDateString()}
+                              </span>
                             </div>
                             <div className='flex justify-between text-sm'>
-                              <span className='text-muted-foreground'>New Due Date:</span>
+                              <span className='text-muted-foreground'>
+                                New Due Date:
+                              </span>
                               <span className='font-medium'>
-                                {loanConfig 
-                                  ? new Date(Number(loan.dueTimestamp) * 1000 + Number(loanConfig.maxLoanExtension) * 1000).toLocaleDateString()
+                                {loanConfig
+                                  ? new Date(
+                                      Number(loan.dueTimestamp) * 1000 +
+                                        Number(loanConfig.maxLoanExtension) *
+                                          1000
+                                    ).toLocaleDateString()
                                   : 'Calculating...'}
                               </span>
                             </div>
                             <div className='flex justify-between text-sm pt-2 border-t'>
-                              <span className='text-muted-foreground'>Extension Fee:</span>
+                              <span className='text-muted-foreground'>
+                                Extension Fee:
+                              </span>
                               <span className='font-medium'>
                                 {formatAmountWithSymbol(
                                   loan.originationFee,
@@ -834,14 +872,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         <div className='flex gap-2'>
                           {(() => {
                             // Check if approval is needed for extension fee
-                            const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
-                            const hasInsufficientBalance = userLmlnBalance && userLmlnBalance < loan.originationFee
+                            const needsApproval =
+                              !currentLmlnAllowance ||
+                              currentLmlnAllowance < loan.originationFee
+                            const hasInsufficientBalance =
+                              userLmlnBalance &&
+                              userLmlnBalance < loan.originationFee
 
                             if (hasInsufficientBalance) {
                               return (
                                 <div className='text-sm text-red-600 flex items-center gap-2'>
                                   <AlertCircle className='h-4 w-4' />
-                                  <span>Insufficient LMLN balance for extension fee</span>
+                                  <span>
+                                    Insufficient LMLN balance for extension fee
+                                  </span>
                                 </div>
                               )
                             }
@@ -850,20 +894,31 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               return (
                                 <Button
                                   onClick={() => handleExtensionApproval(loan)}
-                                  disabled={isApprovingExtension || isProcessingExtension}
+                                  disabled={
+                                    isApprovingExtension ||
+                                    isProcessingExtension
+                                  }
                                   className='flex-1'
                                 >
-                                  {isApprovingExtension ? 'Approving...' : 'Approve LMLN'}
+                                  {isApprovingExtension
+                                    ? 'Approving...'
+                                    : 'Approve LMLN'}
                                 </Button>
                               )
                             } else {
                               return (
                                 <Button
                                   onClick={() => handleExtension(loan)}
-                                  disabled={isApprovingExtension || isProcessingExtension || needsApproval}
+                                  disabled={
+                                    isApprovingExtension ||
+                                    isProcessingExtension ||
+                                    needsApproval
+                                  }
                                   className='flex-1'
                                 >
-                                  {isProcessingExtension ? 'Processing...' : 'Confirm Extension'}
+                                  {isProcessingExtension
+                                    ? 'Processing...'
+                                    : 'Confirm Extension'}
                                 </Button>
                               )
                             }
