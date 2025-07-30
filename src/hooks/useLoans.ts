@@ -51,6 +51,7 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
 
     // Operations from useLoanOperations
     createLoan: operations.createLoan,
+    extendLoan: operations.extendLoan,
     approveLoanFee: operations.approveLoanFee,
     payLoan: operations.payLoan,
     pullCollateral: operations.pullCollateral,
