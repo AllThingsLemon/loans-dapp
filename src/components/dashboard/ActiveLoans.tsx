@@ -61,12 +61,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     activeLoans,
     payLoan,
     pullCollateral,
+    extendLoan,
+    approveLoanFee,
     isLoading,
     refetch,
     currentAllowance,
+    currentLmlnAllowance,
     approveTokenAllowance,
     isTransacting,
-    userLoanTokenBalance
+    userLoanTokenBalance,
+    userLmlnBalance,
+    loanConfig
   } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
   const {
@@ -87,6 +92,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isApprovingPayment, setIsApprovingPayment] = useState(false)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [isExtensionDialogOpen, setIsExtensionDialogOpen] = useState(false)
+  const [selectedLoanForExtension, setSelectedLoanForExtension] = useState<`0x${string}` | null>(null)
+  const [isApprovingExtension, setIsApprovingExtension] = useState(false)
+  const [isProcessingExtension, setIsProcessingExtension] = useState(false)
 
   // Helper function to calculate rounded-up minimum payment (to nearest 0.10)
   const calculateMinimumPayment = (loan: Loan): string => {
@@ -196,6 +205,77 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       }
     } catch (error: any) {
       handleContractError(error as ContractError, toast, 'Withdrawal Failed')
+    }
+  }
+
+  const handleExtensionApproval = async (loan: Loan) => {
+    if (!loan.originationFee) {
+      toast({
+        title: 'Invalid Fee',
+        description: 'Origination fee not found for this loan',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setIsApprovingExtension(true)
+    try {
+      await approveLoanFee(loan.originationFee)
+
+      toast({
+        title: 'Approval Successful',
+        description: 'You can now extend your loan!'
+      })
+    } catch (error: any) {
+      handleContractError(error as ContractError, toast, 'Approval Failed')
+    } finally {
+      setIsApprovingExtension(false)
+    }
+  }
+
+  const handleExtension = async (loan: Loan) => {
+    // Check if we have sufficient LMLN allowance
+    if (!currentLmlnAllowance || currentLmlnAllowance < loan.originationFee) {
+      toast({
+        title: 'Insufficient Allowance',
+        description: 'Please approve LMLN tokens first',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Check if we have loan config
+    if (!loanConfig?.maxLoanExtension) {
+      toast({
+        title: 'Configuration Error',
+        description: 'Loan configuration not loaded',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setIsProcessingExtension(true)
+    try {
+      const result = await extendLoan(loan.id, loanConfig.maxLoanExtension)
+
+      if (result) {
+        await refetch()
+
+        toast({
+          title: 'Extension Successful',
+          description: `Your loan has been extended by ${loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'the maximum allowed time'}!`
+        })
+
+        // Close the dialog and clear state
+        setSelectedLoanForExtension(null)
+        setIsApprovingExtension(false)
+        setIsProcessingExtension(false)
+        setIsExtensionDialogOpen(false)
+      }
+    } catch (error: any) {
+      handleContractError(error as ContractError, toast, 'Extension Failed')
+    } finally {
+      setIsProcessingExtension(false)
     }
   }
 
@@ -669,6 +749,124 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               setIsApprovingPayment(false)
                               setIsProcessingPayment(false)
                               setIsPaymentDialogOpen(false)
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+
+                {/* Extend Loan Button - for active and unlocked loans only */}
+                {(loan.status === LOAN_STATUS.ACTIVE || loan.status === LOAN_STATUS.UNLOCKED) && (
+                  <Dialog
+                    open={isExtensionDialogOpen && selectedLoanForExtension === loan.id}
+                    onOpenChange={(open) => {
+                      setIsExtensionDialogOpen(open)
+                      if (!open) {
+                        setSelectedLoanForExtension(null)
+                        setIsApprovingExtension(false)
+                        setIsProcessingExtension(false)
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => {
+                          setSelectedLoanForExtension(loan.id)
+                          setIsExtensionDialogOpen(true)
+                        }}
+                      >
+                        Extend Loan
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Extend Loan</DialogTitle>
+                        <DialogDescription>
+                          Extend loan #{truncateAddress(loan.id)} by {loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'max allowed time'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className='space-y-4'>
+                        <div className='bg-muted/50 p-4 rounded-lg space-y-3'>
+                          <h4 className='font-medium text-sm'>What is a loan extension?</h4>
+                          <p className='text-sm text-muted-foreground'>
+                            A loan extension adds {loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'additional time'} to your loan duration, giving you more time to repay. 
+                            This extension applies to the end of your loan term, not the balloon payment grace period.
+                          </p>
+                          <div className='space-y-2 pt-2'>
+                            <div className='flex justify-between text-sm'>
+                              <span className='text-muted-foreground'>Current Due Date:</span>
+                              <span className='font-medium'>{formatTimestamp(loan.dueTimestamp).toLocaleDateString()}</span>
+                            </div>
+                            <div className='flex justify-between text-sm'>
+                              <span className='text-muted-foreground'>New Due Date:</span>
+                              <span className='font-medium'>
+                                {loanConfig 
+                                  ? new Date(Number(loan.dueTimestamp) * 1000 + Number(loanConfig.maxLoanExtension) * 1000).toLocaleDateString()
+                                  : 'Calculating...'}
+                              </span>
+                            </div>
+                            <div className='flex justify-between text-sm pt-2 border-t'>
+                              <span className='text-muted-foreground'>Extension Fee:</span>
+                              <span className='font-medium'>
+                                {formatAmountWithSymbol(
+                                  loan.originationFee,
+                                  tokenConfig?.feeToken.symbol || 'LMLN'
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className='flex gap-2'>
+                          {(() => {
+                            // Check if approval is needed for extension fee
+                            const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
+                            const hasInsufficientBalance = userLmlnBalance && userLmlnBalance < loan.originationFee
+
+                            if (hasInsufficientBalance) {
+                              return (
+                                <div className='text-sm text-red-600 flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4' />
+                                  <span>Insufficient LMLN balance for extension fee</span>
+                                </div>
+                              )
+                            }
+
+                            if (needsApproval) {
+                              return (
+                                <Button
+                                  onClick={() => handleExtensionApproval(loan)}
+                                  disabled={isApprovingExtension || isProcessingExtension}
+                                  className='flex-1'
+                                >
+                                  {isApprovingExtension ? 'Approving...' : 'Approve LMLN'}
+                                </Button>
+                              )
+                            } else {
+                              return (
+                                <Button
+                                  onClick={() => handleExtension(loan)}
+                                  disabled={isApprovingExtension || isProcessingExtension || needsApproval}
+                                  className='flex-1'
+                                >
+                                  {isProcessingExtension ? 'Processing...' : 'Confirm Extension'}
+                                </Button>
+                              )
+                            }
+                          })()}
+                          <Button
+                            variant='outline'
+                            onClick={() => {
+                              setSelectedLoanForExtension(null)
+                              setIsApprovingExtension(false)
+                              setIsProcessingExtension(false)
+                              setIsExtensionDialogOpen(false)
                             }}
                           >
                             Cancel
