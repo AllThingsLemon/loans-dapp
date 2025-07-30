@@ -77,8 +77,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const { tokenConfig } = useContractTokenConfiguration()
   const {
     isLoanOverdue,
+    isLoanInGracePeriod,
     getDisplayDueDate,
     getPaymentProgress,
+    minimumPayment,
     isPaymentRequired,
     isCollateralWithdrawable,
     getPaymentStatus
@@ -101,8 +103,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
 
-  // Helper function to calculate rounded-up minimum payment (to nearest 0.10)
-  const calculateMinimumPayment = (loan: Loan): string => {
+  // Helper function to format minimum payment with rounding (to nearest 0.10)
+  const formatMinimumPayment = (loan: Loan): string => {
     if (!loan || !tokenConfig?.loanToken.decimals) return '0'
     const minPayment = formatTokenAmount(
       loan.paymentAmount,
@@ -123,7 +125,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           tokenConfig.loanToken.decimals
         )
       case 'minimum':
-        return calculateMinimumPayment(loan)
+        return formatMinimumPayment(loan)
       case 'custom':
         return customAmount
       default:
@@ -149,7 +151,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         )
       )
     } else if (newType === 'minimum') {
-      setPaymentAmount(calculateMinimumPayment(loan))
+      setPaymentAmount(formatMinimumPayment(loan))
     }
   }
 
@@ -437,6 +439,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const displayDueDate = getDisplayDueDate(loan)
         const progress = getPaymentProgress(loan)
         const isOverdue = isLoanOverdue(loan)
+        const isInGracePeriod = isLoanInGracePeriod(loan)
 
         return (
           <Card key={loan.id}>
@@ -457,6 +460,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <Badge variant={getLoanStatusVariant(loan.status)}>
                     {getLoanStatusLabel(loan.status)}
                   </Badge>
+                  {isInGracePeriod && loan.status === LOAN_STATUS.ACTIVE && (
+                    <Badge variant='secondary' className='bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'>
+                      Grace Period
+                    </Badge>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -521,7 +529,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
               {/* Payment Progress */}
               <div className='space-y-2'>
                 <div className='flex items-center justify-between text-sm'>
-                  <span>Payment Progress</span>
+                  <span>{isInGracePeriod ? 'Balloon Payment Due' : 'Payment Progress'}</span>
                   <span>{progress.toFixed(1)}%</span>
                 </div>
                 <Progress value={progress} className='h-2' />
@@ -534,20 +542,25 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     )}
                   </span>
                   <span>
-                    Remaining:{' '}
+                    {isInGracePeriod ? 'Principal' : 'Remaining'}:{' '}
                     {formatAmountWithSymbol(
-                      loan.remainingBalance,
+                      isInGracePeriod ? loan.loanAmount : loan.remainingBalance,
                       tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </span>
                 </div>
+                {isInGracePeriod && (
+                  <div className='text-xs text-blue-600 dark:text-blue-400 mt-2'>
+                    All interest paid. Pay principal to unlock collateral.
+                  </div>
+                )}
               </div>
 
               {/* Contract Details */}
               <div className='grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t'>
                 <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>
-                    Payment Cycles
+                    Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
                     {loan.transpiredCycles.toString()}/
@@ -613,7 +626,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         onClick={() => {
                           setSelectedLoan(loan.id)
                           setPaymentType('minimum')
-                          setPaymentAmount(calculateMinimumPayment(loan))
+                          setPaymentAmount(formatMinimumPayment(loan))
                           setCustomAmount('')
                           setIsPaymentDialogOpen(true)
                         }}
@@ -651,7 +664,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                     <span className='text-sm text-muted-foreground'>
                                       {formatAmountWithSymbol(
                                         parseTokenAmount(
-                                          calculateMinimumPayment(loan),
+                                          formatMinimumPayment(loan),
                                           tokenConfig?.loanToken.decimals || 18
                                         ),
                                         tokenConfig?.loanToken.symbol || 'Token'
