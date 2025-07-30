@@ -39,7 +39,10 @@ export interface UseLoanOperationsReturn {
   ) => Promise<`0x${string}` | undefined>
   pullCollateral: (loanId: `0x${string}`) => Promise<`0x${string}` | undefined>
   approveTokenAllowance: (amount: bigint) => Promise<`0x${string}` | undefined>
-  extendLoan: (loanId: `0x${string}`, maxExtension: bigint) => Promise<`0x${string}` | undefined>
+  extendLoan: (
+    loanId: `0x${string}`,
+    maxExtension: bigint
+  ) => Promise<`0x${string}` | undefined>
 
   // Transaction states
   isTransacting: boolean
@@ -228,43 +231,46 @@ export const useLoanOperations = (
   ] = calculationData || []
 
   // Function to approve LMLN tokens for loan creation or extension
-  const approveLoanFee = useCallback(async (feeAmount?: bigint) => {
-    if (!address) throw new Error('Wallet not connected')
-    
-    // Use provided fee amount (for extensions) or calculated origination fee (for new loans)
-    const fee = feeAmount || originationFee
-    if (!fee) throw new Error('Fee amount not provided or calculated')
-    
-    if (!feeTokenAddress || !loansContractAddress) {
-      throw new Error('Missing token addresses for approval')
-    }
+  const approveLoanFee = useCallback(
+    async (feeAmount?: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
 
-    // Approve LMLN tokens for origination fee
-    const approvalTxHash = await approveToken({
-      address: feeTokenAddress,
-      abi: erc20Abi,
-      functionName: 'approve',
-      args: [loansContractAddress, fee]
-    })
+      // Use provided fee amount (for extensions) or calculated origination fee (for new loans)
+      const fee = feeAmount || originationFee
+      if (!fee) throw new Error('Fee amount not provided or calculated')
 
-    // Wait for approval transaction to be confirmed
-    if (publicClient) {
-      await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
-    }
+      if (!feeTokenAddress || !loansContractAddress) {
+        throw new Error('Missing token addresses for approval')
+      }
 
-    // Refetch allowance after approval
-    await refetchLmlnAllowance()
+      // Approve LMLN tokens for origination fee
+      const approvalTxHash = await approveToken({
+        address: feeTokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [loansContractAddress, fee]
+      })
 
-    return approvalTxHash
-  }, [
-    address,
-    originationFee,
-    feeTokenAddress,
-    loansContractAddress,
-    approveToken,
-    publicClient,
-    refetchLmlnAllowance
-  ])
+      // Wait for approval transaction to be confirmed
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
+      }
+
+      // Refetch allowance after approval
+      await refetchLmlnAllowance()
+
+      return approvalTxHash
+    },
+    [
+      address,
+      originationFee,
+      feeTokenAddress,
+      loansContractAddress,
+      approveToken,
+      publicClient,
+      refetchLmlnAllowance
+    ]
+  )
 
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
@@ -511,7 +517,6 @@ export const useLoanOperations = (
     },
     [address, withdrawCollateral, publicClient, queryClient]
   )
-
 
   // Function to extend a loan by max allowed extension
   const extendLoan = useCallback(
