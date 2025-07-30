@@ -19,7 +19,8 @@ export interface UseLoansReturn {
 
   // Operations from useLoanOperations
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
-  approveLoanFee: () => Promise<`0x${string}` | undefined>
+  extendLoan: (loanId: `0x${string}`, maxExtension: bigint) => Promise<`0x${string}` | undefined>
+  approveLoanFee: (feeAmount?: bigint) => Promise<`0x${string}` | undefined>
   payLoan: (
     loanId: `0x${string}`,
     amount: bigint
