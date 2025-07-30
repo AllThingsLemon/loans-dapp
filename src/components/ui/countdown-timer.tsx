@@ -44,21 +44,25 @@ export function CountdownTimer({
 
     // Full format with units
     const parts: string[] = []
-    
+
     if (countdown.days > 0) {
       parts.push(`${countdown.days} day${countdown.days !== 1 ? 's' : ''}`)
     }
-    
+
     if (countdown.hours > 0 || countdown.days > 0) {
       parts.push(`${countdown.hours} hour${countdown.hours !== 1 ? 's' : ''}`)
     }
-    
+
     if (countdown.minutes > 0 || countdown.hours > 0 || countdown.days > 0) {
-      parts.push(`${countdown.minutes} minute${countdown.minutes !== 1 ? 's' : ''}`)
+      parts.push(
+        `${countdown.minutes} minute${countdown.minutes !== 1 ? 's' : ''}`
+      )
     }
-    
+
     if (showSeconds && (countdown.seconds > 0 || parts.length === 0)) {
-      parts.push(`${countdown.seconds} second${countdown.seconds !== 1 ? 's' : ''}`)
+      parts.push(
+        `${countdown.seconds} second${countdown.seconds !== 1 ? 's' : ''}`
+      )
     }
 
     return parts.join(', ')
@@ -67,7 +71,7 @@ export function CountdownTimer({
   return (
     <div className={cn('flex items-center gap-2', className)}>
       {showIcon && (
-        <div className="flex-shrink-0">
+        <div className='flex-shrink-0'>
           {countdown.isOverdue ? (
             <AlertCircle className={cn('h-4 w-4', urgencyStyles.color)} />
           ) : (
@@ -75,27 +79,28 @@ export function CountdownTimer({
           )}
         </div>
       )}
-      
-      <div className="flex flex-col">
-        <span 
+
+      <div className='flex flex-col'>
+        <span
           className={cn(
             'font-medium transition-colors duration-300',
             urgencyStyles.color
           )}
         >
-          {countdown.isOverdue ? 'Overdue by ' : ''}{formatTime()}
+          {countdown.isOverdue ? 'Overdue by ' : ''}
+          {formatTime()}
         </span>
-        
-        {!compact && countdown.urgencyLevel === 'critical' && !countdown.isOverdue && (
-          <span className="text-xs text-muted-foreground">
-            Payment due soon!
-          </span>
-        )}
-        
+
+        {!compact &&
+          countdown.urgencyLevel === 'critical' &&
+          !countdown.isOverdue && (
+            <span className='text-xs text-muted-foreground'>
+              Payment due soon!
+            </span>
+          )}
+
         {!compact && countdown.isOverdue && (
-          <span className="text-xs text-red-500">
-            Payment still possible
-          </span>
+          <span className='text-xs text-red-500'>Payment still possible</span>
         )}
       </div>
     </div>
@@ -119,7 +124,7 @@ export function InlineCountdownTimer({
 
   const urgencyStyles = getUrgencyStyles()
 
-  // Simple inline format: "2d 4h 30m" or "30m 15s" 
+  // Simple inline format: "2d 4h 30m" or "30m 15s"
   const formatInline = () => {
     if (countdown.days > 0) {
       return `${countdown.days}d ${countdown.hours}h ${countdown.minutes}m`
@@ -133,14 +138,15 @@ export function InlineCountdownTimer({
   }
 
   return (
-    <span 
+    <span
       className={cn(
         'font-medium transition-colors duration-300',
         urgencyStyles.color,
         className
       )}
     >
-      {countdown.isOverdue ? '-' : ''}{formatInline()}
+      {countdown.isOverdue ? '-' : ''}
+      {formatInline()}
     </span>
   )
 }
@@ -165,26 +171,36 @@ export function CountdownWithProgress({
   const urgencyStyles = getUrgencyStyles()
 
   // Calculate progress percentage
-  const progressPercentage = countdown.isOverdue 
-    ? 100 
-    : Math.max(0, Math.min(100, ((originalDuration - countdown.totalSeconds) / originalDuration) * 100))
+  const progressPercentage = countdown.isOverdue
+    ? 100
+    : Math.max(
+        0,
+        Math.min(
+          100,
+          ((originalDuration - countdown.totalSeconds) / originalDuration) * 100
+        )
+      )
 
   return (
     <div className={cn('space-y-2', className)}>
-      <CountdownTimer 
+      <CountdownTimer
         targetDate={targetDate}
         onComplete={onComplete}
         compact
         showIcon={false}
       />
-      
-      <div className="w-full bg-gray-200 rounded-full h-1.5">
-        <div 
+
+      <div className='w-full bg-gray-200 rounded-full h-1.5'>
+        <div
           className={cn(
             'h-1.5 rounded-full transition-all duration-300',
-            countdown.urgencyLevel === 'critical' ? 'bg-red-500' :
-            countdown.urgencyLevel === 'high' ? 'bg-orange-500' :
-            countdown.urgencyLevel === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+            countdown.urgencyLevel === 'critical'
+              ? 'bg-red-500'
+              : countdown.urgencyLevel === 'high'
+                ? 'bg-orange-500'
+                : countdown.urgencyLevel === 'medium'
+                  ? 'bg-yellow-500'
+                  : 'bg-green-500'
           )}
           style={{ width: `${progressPercentage}%` }}
         />
