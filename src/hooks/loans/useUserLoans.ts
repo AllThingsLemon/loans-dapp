@@ -87,10 +87,6 @@ const combineLoanData = (
 
 export const useUserLoans = (): UseUserLoansReturn => {
   const { address } = useAccount()
-  const { loanConfig } = useLoanConfig()
-  const publicClient = usePublicClient()
-  // Use the imported queryClient directly
-
   // Get user's loan IDs
   const {
     data: loanIds,
@@ -98,7 +94,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
     error: idsError,
     refetch: refetchLoanIds
   } = useReadLoansGetAccountLoanIds({
-    args: address ? [address] : undefined
+    args: address ? [address, 0n, 25n] : undefined
   })
 
   // Create queries for each loan's data
