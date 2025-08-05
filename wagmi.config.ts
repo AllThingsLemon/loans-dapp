@@ -8,6 +8,7 @@ import { Abi } from 'viem'
 
 // Import contract ABIs when available
 import LoansAbi from './src/abis/Loans.json'
+import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
 
 // Chain configuration following wagmi best practices
 const CHAINS = {
@@ -34,6 +35,11 @@ export default defineConfig({
       address: {
         [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].loans,
       }
+    },
+    {
+      name: 'PriceDataFeed',
+      abi: PriceDataFeedAbi as Abi,
+      // Address will be dynamically obtained from Loans contract
     },
   ],
   plugins: [
