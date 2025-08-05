@@ -41,7 +41,7 @@ export function formatPercentage(value: bigint, decimals: number): string {
   }
   // Convert to decimal then multiply by 100 to get percentage
   const decimal = formatUnits(value, decimals)
-  const percentage = (Number(decimal) * 100).toString()
+  const percentage = Math.round(Number(decimal) * 100).toString()
   return percentage
 }
 
@@ -146,3 +146,4 @@ export function formatDurationRange(
 
   return `${min} - ${max}`
 }
+
