@@ -80,6 +80,31 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "oldToken",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newToken",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "CollateralTokenUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "bytes32",
         "name": "loanId",
         "type": "bytes32"
@@ -457,6 +482,31 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "oldPriceFeed",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newPriceFeed",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "PriceFeedUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "bytes32",
         "name": "role",
         "type": "bytes32"
@@ -735,12 +785,12 @@
   },
   {
     "inputs": [],
-    "name": "collateralTokenDecimals",
+    "name": "collateralToken",
     "outputs": [
       {
-        "internalType": "uint256",
+        "internalType": "address",
         "name": "",
-        "type": "uint256"
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -748,7 +798,7 @@
   },
   {
     "inputs": [],
-    "name": "collateralTokenPrice",
+    "name": "collateralTokenDecimals",
     "outputs": [
       {
         "internalType": "uint256",
@@ -860,6 +910,16 @@
         "internalType": "address",
         "name": "account",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "offset",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "limit",
+        "type": "uint256"
       }
     ],
     "name": "getAccountLoanIds",
@@ -1016,6 +1076,16 @@
       {
         "internalType": "address",
         "name": "defaultCollateralReceiverAddress",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "priceDataFeedAddress",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "collateralTokenAddress",
         "type": "address"
       }
     ],
@@ -1347,6 +1417,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "priceDataFeed",
+    "outputs": [
+      {
+        "internalType": "contract IPriceDataFeed",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "bytes32[]",
@@ -1475,12 +1558,12 @@
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "newPrice",
-        "type": "uint256"
+        "internalType": "address",
+        "name": "newCollateralToken",
+        "type": "address"
       }
     ],
-    "name": "setCollateralTokenPrice",
+    "name": "setCollateralToken",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1537,6 +1620,19 @@
       }
     ],
     "name": "setLoanConfiguration",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newPriceFeed",
+        "type": "address"
+      }
+    ],
+    "name": "setPriceFeed",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
