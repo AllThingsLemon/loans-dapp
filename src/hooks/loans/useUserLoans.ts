@@ -94,7 +94,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
     error: idsError,
     refetch: refetchLoanIds
   } = useReadLoansGetAccountLoanIds({
-    args: address ? [address, 0n, 25n] : undefined
+    args: address ? [address, 0n, 50n] : undefined
   })
 
   // Create queries for each loan's data
