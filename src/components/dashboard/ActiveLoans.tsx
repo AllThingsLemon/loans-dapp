@@ -104,7 +104,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
-  const [selectedLoanForWithdrawal, setSelectedLoanForWithdrawal] = useState<
+  const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] = useState<
     `0x${string}` | null
   >(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
@@ -202,22 +202,22 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   }
 
   const openWithdrawalModal = (loanId: `0x${string}`) => {
-    setSelectedLoanForWithdrawal(loanId)
+    setSelectedLoanIdForWithdrawal(loanId)
     setIsWithdrawalModalOpen(true)
   }
 
   const closeWithdrawalModal = () => {
     setIsWithdrawalModalOpen(false)
-    setSelectedLoanForWithdrawal(null)
+    setSelectedLoanIdForWithdrawal(null)
     setIsWithdrawingCollateral(false)
   }
 
   const confirmWithdrawal = async () => {
-    if (!selectedLoanForWithdrawal) return
+    if (!selectedLoanIdForWithdrawal) return
 
     setIsWithdrawingCollateral(true)
     try {
-      const result = await pullCollateral(selectedLoanForWithdrawal)
+      const result = await pullCollateral(selectedLoanIdForWithdrawal)
 
       // Only show success if we actually get a successful result
       if (result) {
@@ -1037,11 +1037,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       })}
 
       {/* Loan Completion Modal */}
-      {selectedLoanForWithdrawal && (
+      {selectedLoanIdForWithdrawal && (
         <LoanCompletionModal
           isOpen={isWithdrawalModalOpen}
           onClose={closeWithdrawalModal}
-          loan={activeLoans.find((l) => l.id === selectedLoanForWithdrawal)}
+          loan={activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)}
           tokenConfig={tokenConfig}
           isWithdrawing={isWithdrawingCollateral}
           onConfirmWithdrawal={confirmWithdrawal}
