@@ -17,20 +17,38 @@ export const formatAmountWithSymbol = (
 }
 
 export const formatDuration = (seconds: bigint): string => {
-  const totalSeconds = Number(seconds)
-  const days = Math.floor(totalSeconds / (24 * 60 * 60))
-  const months = Math.round(days / 30)
-  const years = Math.round(days / 365)
+  // Define constants once
+  const SECONDS_PER_MINUTE = 60
+  const SECONDS_PER_HOUR = 60 * 60
+  const SECONDS_PER_DAY = 24 * 60 * 60
+  const SECONDS_PER_MONTH = 30 * SECONDS_PER_DAY // Financial calendar
+  const SECONDS_PER_YEAR = 360 * SECONDS_PER_DAY // Financial calendar
 
-  if (years > 0) return `${years} year${years > 1 ? 's' : ''}`
-  if (months > 0) return `${months} month${months > 1 ? 's' : ''}`
-  if (days > 0) return `${days} day${days > 1 ? 's' : ''}`
+  let remaining = Number(seconds)
 
-  const hours = Math.floor(totalSeconds / (60 * 60))
-  if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''}`
+  // Define units in descending order
+  const units = [
+    { name: 'year', seconds: SECONDS_PER_YEAR },
+    { name: 'month', seconds: SECONDS_PER_MONTH },
+    { name: 'day', seconds: SECONDS_PER_DAY },
+    { name: 'hour', seconds: SECONDS_PER_HOUR },
+    { name: 'minute', seconds: SECONDS_PER_MINUTE }
+  ]
 
-  const minutes = Math.floor(totalSeconds / 60)
-  return `${minutes} minute${minutes > 1 ? 's' : ''}`
+  const parts: string[] = []
+
+  for (const unit of units) {
+    const count = Math.floor(remaining / unit.seconds)
+    if (count > 0) {
+      parts.push(`${count} ${unit.name}${count > 1 ? 's' : ''}`)
+      remaining -= count * unit.seconds
+    }
+
+    // Stop after 2 significant units
+    if (parts.length >= 2) break
+  }
+
+  return parts.length > 0 ? parts.join(' ') : '0 minutes'
 }
 
 export const formatTimestamp = (timestamp: bigint): Date => {
