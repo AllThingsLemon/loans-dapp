@@ -1,16 +1,16 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
-import { DEFAULT_DECIMALS } from '@/src/constants'
+import { DEFAULT_DECIMALS, LOAN_STATUS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
   useWriteLoansMakeLoanPayment,
   useReadLoansOriginationFeeToken,
-  useReadLoansCollateralTokenPrice,
   useReadLoansCalculateLoanDetails,
   loansAddress,
   useWriteLoansWithdrawCollateral,
-  useWriteLoansExtendLoan
+  useWriteLoansExtendLoan,
+  readLoansLoanStatus
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
@@ -86,11 +86,6 @@ export const useLoanOperations = (
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
 
-  // Get native token decimals from chain config
-  const nativeTokenDecimals =
-    publicClient?.chain?.nativeCurrency?.decimals ??
-    DEFAULT_DECIMALS.NATIVE_TOKEN
-
   // Get loans contract address for current chain
   const loansContractAddress =
     loansAddress[chainId as keyof typeof loansAddress]
@@ -104,9 +99,6 @@ export const useLoanOperations = (
 
   // Get the fee token address from contract
   const { data: feeTokenAddress } = useReadLoansOriginationFeeToken()
-
-  // Get the collateral token price from contract
-  const { data: collateralTokenPrice } = useReadLoansCollateralTokenPrice()
 
   // Get user's LMLN balance
   const { data: userLmlnBalance } = useReadContract({
@@ -390,6 +382,24 @@ export const useLoanOperations = (
     async (loanId: `0x${string}`, amount: bigint) => {
       if (!address) {
         throw new Error('Wallet not connected')
+      }
+
+      // Fetch fresh loan status from blockchain to avoid stale data
+      const currentStatus = await readLoansLoanStatus(config, {
+        args: [loanId]
+      })
+
+      // Validate loan status before proceeding
+      if (currentStatus !== LOAN_STATUS.ACTIVE) {
+        const statusLabels: { [key: number]: string } = {
+          [LOAN_STATUS.COMPLETED]: 'completed',
+          [LOAN_STATUS.UNLOCKED]: 'unlocked',
+          [LOAN_STATUS.DEFAULT]: 'defaulted'
+        }
+        const statusLabel = statusLabels[currentStatus] || 'unknown'
+        throw new Error(
+          `Cannot make payments on ${statusLabel} loans. Only active loans can receive payments.`
+        )
       }
 
       if (!loanTokenAddress) {
