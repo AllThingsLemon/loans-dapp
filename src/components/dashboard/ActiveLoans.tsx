@@ -52,6 +52,7 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react'
+import { LoanCompletionModal } from '../common/LoanCompletionModal'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -102,6 +103,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   >(null)
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
+  const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
+  const [selectedLoanForWithdrawal, setSelectedLoanForWithdrawal] = useState<
+    `0x${string}` | null
+  >(null)
+  const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)
   const formatMinimumPayment = (loan: Loan): string => {
@@ -195,9 +201,23 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     }
   }
 
-  const handleWithdrawal = async (loanId: `0x${string}`) => {
+  const openWithdrawalModal = (loanId: `0x${string}`) => {
+    setSelectedLoanForWithdrawal(loanId)
+    setIsWithdrawalModalOpen(true)
+  }
+
+  const closeWithdrawalModal = () => {
+    setIsWithdrawalModalOpen(false)
+    setSelectedLoanForWithdrawal(null)
+    setIsWithdrawingCollateral(false)
+  }
+
+  const confirmWithdrawal = async () => {
+    if (!selectedLoanForWithdrawal) return
+
+    setIsWithdrawingCollateral(true)
     try {
-      const result = await pullCollateral(loanId)
+      const result = await pullCollateral(selectedLoanForWithdrawal)
 
       // Only show success if we actually get a successful result
       if (result) {
@@ -208,9 +228,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           title: 'Withdrawal Successful',
           description: 'Your collateral has been withdrawn successfully!'
         })
+
+        // Close modal and reset state
+        closeWithdrawalModal()
       }
     } catch (error: any) {
       handleContractError(error as ContractError, toast, 'Withdrawal Failed')
+    } finally {
+      setIsWithdrawingCollateral(false)
     }
   }
 
@@ -292,6 +317,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       toast({
         title: 'Loan Not Found',
         description: 'Could not find the loan to make payment on',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    // Validate loan status before proceeding
+    if (loan.status !== LOAN_STATUS.ACTIVE) {
+      const statusLabel = getLoanStatusLabel(loan.status)
+      toast({
+        title: 'Payment Not Allowed',
+        description: `Cannot make payments on ${statusLabel.toLowerCase()} loans. Only active loans can receive payments.`,
         variant: 'destructive'
       })
       return
@@ -461,8 +497,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     {getLoanStatusLabel(loan.status)}
                   </Badge>
                   {isInGracePeriod && loan.status === LOAN_STATUS.ACTIVE && (
-                    <Badge variant='secondary' className='bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'>
-                      Grace Period
+                    <Badge
+                      variant='secondary'
+                      className='bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                    >
+                      Payoff Period
                     </Badge>
                   )}
                 </div>
@@ -529,7 +568,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
               {/* Payment Progress */}
               <div className='space-y-2'>
                 <div className='flex items-center justify-between text-sm'>
-                  <span>{isInGracePeriod ? 'Balloon Payment Due' : 'Payment Progress'}</span>
+                  <span>
+                    {isInGracePeriod
+                      ? 'Principle Payment Due'
+                      : 'Payment Progress'}
+                  </span>
                   <span>{progress.toFixed(1)}%</span>
                 </div>
                 <Progress value={progress} className='h-2' />
@@ -559,18 +602,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
               {/* Contract Details */}
               <div className='grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t'>
                 <div className='space-y-1'>
+                  <p className='text-xs text-muted-foreground'>Loan Duration</p>
+                  <p className='text-sm font-medium'>
+                    {formatDuration(loan.duration)}
+                  </p>
+                </div>
+                <div className='space-y-1'>
                   <p className='text-xs text-muted-foreground'>
                     Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
                     {loan.transpiredCycles.toString()}/
                     {loan.totalCycles.toString()}
-                  </p>
-                </div>
-                <div className='space-y-1'>
-                  <p className='text-xs text-muted-foreground'>Cycles Ahead</p>
-                  <p className='text-sm font-medium'>
-                    {loan.cyclesAhead.toString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -599,10 +642,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <Button
                     variant='outline'
                     size='sm'
-                    onClick={() => handleWithdrawal(loan.id)}
+                    onClick={() => openWithdrawalModal(loan.id)}
                     disabled={isTransacting}
                   >
-                    {isTransacting ? 'Processing...' : 'Withdraw Collateral'}
+                    Withdraw Collateral
                   </Button>
                 ) : (
                   <Dialog
@@ -624,6 +667,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         variant='outline'
                         size='sm'
                         onClick={() => {
+                          // Validate loan status before opening dialog
+                          if (loan.status !== LOAN_STATUS.ACTIVE) {
+                            const statusLabel = getLoanStatusLabel(loan.status)
+                            toast({
+                              title: 'Payment Not Available',
+                              description: `Cannot make payments on ${statusLabel.toLowerCase()} loans. Only active loans can receive payments.`,
+                              variant: 'destructive'
+                            })
+                            return
+                          }
+
                           setSelectedLoan(loan.id)
                           setPaymentType('minimum')
                           setPaymentAmount(formatMinimumPayment(loan))
@@ -790,9 +844,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </Dialog>
                 )}
 
-                {/* Extend Loan Button - for active and unlocked loans only */}
-                {(loan.status === LOAN_STATUS.ACTIVE ||
-                  loan.status === LOAN_STATUS.UNLOCKED) && (
+                {/* Extend Loan Button - for active loans only */}
+                {loan.status === LOAN_STATUS.ACTIVE && (
                   <Dialog
                     open={
                       isExtensionDialogOpen &&
@@ -841,7 +894,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               : 'additional time'}{' '}
                             to your loan duration, giving you more time to
                             repay. This extension applies to the end of your
-                            loan term, not the balloon payment grace period.
+                            loan term, not the principle payment payoff period.
                           </p>
                           <div className='space-y-2 pt-2'>
                             <div className='flex justify-between text-sm'>
@@ -866,6 +919,19 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                           1000
                                     ).toLocaleDateString()
                                   : 'Calculating...'}
+                              </span>
+                            </div>
+                            <div className='flex justify-between text-sm'>
+                              <span className='text-muted-foreground'>
+                                APR:
+                              </span>
+                              <span className='font-medium'>
+                                {tokenConfig
+                                  ? formatPercentage(
+                                      loan.interestApr,
+                                      tokenConfig.aprDecimals
+                                    ) + '%'
+                                  : '...'}
                               </span>
                             </div>
                             <div className='flex justify-between text-sm pt-2 border-t'>
@@ -969,6 +1035,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           </Card>
         )
       })}
+
+      {/* Loan Completion Modal */}
+      {selectedLoanForWithdrawal && (
+        <LoanCompletionModal
+          isOpen={isWithdrawalModalOpen}
+          onClose={closeWithdrawalModal}
+          loan={activeLoans.find((l) => l.id === selectedLoanForWithdrawal)}
+          tokenConfig={tokenConfig}
+          isWithdrawing={isWithdrawingCollateral}
+          onConfirmWithdrawal={confirmWithdrawal}
+        />
+      )}
     </div>
   )
 }
