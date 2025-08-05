@@ -23,7 +23,6 @@ export interface ContractTokenConfiguration {
   feeToken: TokenInfo
   nativeToken: {
     symbol: string
-    decimals: number
   }
   ltvDecimals: number
   aprDecimals: number
@@ -47,8 +46,6 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
   // Get native token info from chain config
   const nativeTokenSymbol =
     publicClient?.chain?.nativeCurrency?.symbol ?? 'LEMX'
-  const nativeTokenDecimals =
-    publicClient?.chain?.nativeCurrency?.decimals ?? 18
 
   // Fetch precision constants from Loans contract
   const {
@@ -201,8 +198,7 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
           decimals: Number(feeTokenDecimals)
         },
         nativeToken: {
-          symbol: nativeTokenSymbol,
-          decimals: nativeTokenDecimals
+          symbol: nativeTokenSymbol
         },
         ltvDecimals: Number(ltvDecimals),
         aprDecimals: Number(aprDecimals),
@@ -225,8 +221,7 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     loanTokenSymbol,
     feeTokenDecimals,
     feeTokenSymbol,
-    nativeTokenSymbol,
-    nativeTokenDecimals
+    nativeTokenSymbol
   ])
 
   return {
