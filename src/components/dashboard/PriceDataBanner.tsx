@@ -48,7 +48,6 @@ function PriceDataBannerError({ error }: { error: Error }) {
               </p>
             </div>
           </div>
-          <p className='text-sm text-red-600'>Error: {error.message}</p>
         </div>
       </CardContent>
     </Card>
