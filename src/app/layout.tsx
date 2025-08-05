@@ -4,7 +4,7 @@ import { Providers } from '@/src/components/common/Providers'
 import { Toaster } from '@/src/components/ui/toaster'
 
 export const metadata = {
-  title: 'Loans DApp'
+  title: 'LemLoans'
 }
 
 export default function RootLayout({
@@ -17,6 +17,8 @@ export default function RootLayout({
       <head>
         <meta charSet='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+        <link rel='icon' href='/images/lemloans-logo.png' />
+        <link rel='apple-touch-icon' href='/images/lemloans-logo.png' />
       </head>
       <body>
         <Providers>
