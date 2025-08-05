@@ -6,7 +6,7 @@ import { BarChart } from 'lucide-react'
 
 function PriceDataBannerSkeleton() {
   return (
-    <Card className='col-span-1 md:col-span-2'>
+    <Card>
       <CardContent className='p-6'>
         <div className='animate-pulse flex items-center justify-between'>
           <div className='flex items-center gap-4'>
@@ -34,7 +34,7 @@ function PriceDataBannerSkeleton() {
 
 function PriceDataBannerError({ error }: { error: Error }) {
   return (
-    <Card className='col-span-1 md:col-span-2'>
+    <Card>
       <CardContent className='p-6'>
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-4'>
@@ -68,37 +68,30 @@ export function PriceDataBanner() {
   if (error) return <PriceDataBannerError error={error} />
 
   return (
-    <Card className='col-span-1 md:col-span-2'>
-      <CardContent className='p-6'>
-        <div className='flex items-center justify-between mb-4'>
-          <div className='flex items-center gap-3'>
-            <BarChart className='h-6 w-6 text-blue-600 dark:text-blue-400' />
-            <div>
-              <h3 className='text-base font-semibold text-gray-900 dark:text-gray-100'>
-                {tokenSymbol} Price Data
-              </h3>
-              <p className='text-xs text-gray-600 dark:text-gray-400'>
-                Current market information
-              </p>
-            </div>
+    <Card>
+      <CardContent className='flex items-center justify-between p-4 pr-8'>
+        <div className='flex items-center gap-3'>
+          <BarChart className='h-5 w-5 text-blue-600 dark:text-blue-400' />
+          <div>
+            <h3 className='text-sm font-semibold text-gray-900 dark:text-gray-100'>
+              {tokenSymbol} Price Data
+            </h3>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>
+              Current market information
+            </p>
           </div>
         </div>
-
-        <div className='grid grid-cols-2 gap-6 items-end'>
+        
+        <div className='flex items-center gap-12'>
           <div className='text-center'>
-            <p className='text-xs text-gray-600 dark:text-gray-400 mb-1'>
-              Current
-            </p>
-            <p className='text-lg font-bold text-gray-900 dark:text-gray-100'>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>Current</p>
+            <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
               ${spotPrice}
             </p>
           </div>
-          
           <div className='text-center'>
-            <p className='text-xs text-gray-600 dark:text-gray-400 mb-1'>
-              30-Day Avg
-            </p>
-            <p className='text-lg font-bold text-gray-900 dark:text-gray-100'>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>Monthly Avg</p>
+            <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
               ${monthlyAverage}
             </p>
           </div>
