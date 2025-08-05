@@ -4,6 +4,7 @@ import { Input } from '../ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { formatUnits } from 'viem'
 import { formatPercentage, formatDurationRange } from '../../utils/decimals'
+import { formatDuration } from '../../utils/format'
 
 interface LoanParametersProps {
   loanAmount: number
@@ -54,8 +55,6 @@ export function LoanParameters({
   const maxLtvPercentage =
     ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
 
-  // Display duration in hours for readability
-  const durationHours = Math.floor(duration / (60 * 60))
   return (
     <Card
       className={`${!isDashboard ? 'animate-slide-in-left bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
@@ -157,7 +156,7 @@ export function LoanParameters({
           <label
             className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
           >
-            📅 Loan Duration: {durationHours} hours
+            📅 Loan Duration: {formatDuration(BigInt(duration))}
           </label>
           {interestAprConfigs.length === 0 ? (
             <div
@@ -185,8 +184,8 @@ export function LoanParameters({
               <div
                 className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
               >
-                <span>{Math.floor(minDuration / (60 * 60))} hours</span>
-                <span>{Math.floor(maxDuration / (60 * 60))} hours</span>
+                <span>{formatDuration(BigInt(minDuration))}</span>
+                <span>{formatDuration(BigInt(maxDuration))}</span>
               </div>
             </>
           )}
