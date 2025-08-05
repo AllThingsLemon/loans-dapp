@@ -83,25 +83,19 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-
   // Calculate display due date with truncation logic
   const getDisplayDueDate = useCallback((loanData: Loan): Date => {
     // Get the actual contract due date
     const contractDueDate = new Date(Number(loanData.dueTimestamp) * 1000)
 
-    // TODO: Truncation logic (commented out for now - using real contract value)
-    // // Subtract 1 hour from contract due date
-    // const adjustedDate = new Date(contractDueDate.getTime() - (60 * 60 * 1000))
-    //
-    // // Truncate to start of previous day at 00:00 UTC
-    // const truncatedDate = new Date(adjustedDate)
-    // truncatedDate.setUTCDate(truncatedDate.getUTCDate() - 1)
-    // truncatedDate.setUTCHours(0, 0, 0, 0)
-    //
-    // return truncatedDate
+    // Subtract 1 hour from contract due date
+    const adjustedDate = new Date(contractDueDate.getTime() - (60 * 60 * 1000))
 
-    // Use real contract due date for now
-    return contractDueDate
+    // Truncate to start of day at 00:00 UTC
+    const truncatedDate = new Date(adjustedDate)
+    truncatedDate.setUTCHours(0, 0, 0, 0)
+
+    return truncatedDate
   }, [])
 
   // Simple check if loan payment is overdue (for UI state only)
@@ -127,12 +121,12 @@ export const useLoanPayment = (
   const getPaymentProgress = useCallback((loanData: Loan) => {
     const totalOwed = loanData.loanAmount + loanData.interestAmount
     const paid = loanData.paidAmount
-    
+
     if (totalOwed === 0n) return 0
-    
+
     // Calculate percentage with proper precision for BigInt division
     const scaledProgress = (paid * PERCENTAGE_SCALE) / totalOwed
-    
+
     // Convert back to percentage with decimals
     return Number(scaledProgress) / 100
   }, [])
