@@ -87,8 +87,7 @@ export function CountdownTimer({
             urgencyStyles.color
           )}
         >
-          {countdown.isOverdue ? 'Overdue by ' : ''}
-          {formatTime()}
+          {countdown.isOverdue ? 'Make Payment Now' : formatTime()}
         </span>
 
         {!compact &&
