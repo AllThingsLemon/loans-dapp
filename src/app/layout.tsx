@@ -5,11 +5,14 @@ import { Toaster } from '@/src/components/ui/toaster'
 
 export const metadata = {
   title: 'LemLoans - DeFi Lending on LemonChain',
-  description: 'Decentralized lending and borrowing platform on LemonChain. Create loans, lend funds, and earn interest with transparent, secure smart contracts.',
-  keywords: 'DeFi, lending, borrowing, LemonChain, cryptocurrency, loans, decentralized finance',
+  description:
+    'Decentralized lending and borrowing platform on LemonChain. Create loans, lend funds, and earn interest with transparent, secure smart contracts.',
+  keywords:
+    'DeFi, lending, borrowing, LemonChain, cryptocurrency, loans, decentralized finance',
   openGraph: {
     title: 'LemLoans - DeFi Lending on LemonChain',
-    description: 'Decentralized lending and borrowing platform on LemonChain. Create loans, lend funds, and earn interest with transparent, secure smart contracts.',
+    description:
+      'Decentralized lending and borrowing platform on LemonChain. Create loans, lend funds, and earn interest with transparent, secure smart contracts.',
     url: 'https://www.lemloans.io/',
     siteName: 'LemLoans',
     images: [

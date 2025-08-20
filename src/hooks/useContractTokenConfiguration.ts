@@ -5,8 +5,7 @@ import {
   useReadLoansOriginationFeeToken,
   useReadLoansLtvDecimals,
   useReadLoansAprDecimals,
-  useReadLoansCollateralTokenDecimals,
-  useReadLoansCollateralTokenPriceDecimals
+  useReadLoansCollateralTokenDecimals
 } from '../generated'
 import erc20Abi from '../abis/ERC20.json'
 
@@ -27,7 +26,6 @@ export interface ContractTokenConfiguration {
   ltvDecimals: number
   aprDecimals: number
   collateralTokenDecimals: number
-  collateralTokenPriceDecimals: number
 }
 
 export interface UseContractTokenConfigurationResult {
@@ -65,12 +63,6 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     isLoading: collateralTokenDecimalsLoading,
     error: collateralTokenDecimalsError
   } = useReadLoansCollateralTokenDecimals()
-
-  const {
-    data: collateralTokenPriceDecimals,
-    isLoading: collateralTokenPriceDecimalsLoading,
-    error: collateralTokenPriceDecimalsError
-  } = useReadLoansCollateralTokenPriceDecimals()
 
   // Fetch loan token address
   const {
@@ -147,7 +139,6 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     ltvDecimalsLoading ||
     aprDecimalsLoading ||
     collateralTokenDecimalsLoading ||
-    collateralTokenPriceDecimalsLoading ||
     loanTokenLoading ||
     feeTokenLoading ||
     loanDecimalsLoading ||
@@ -160,7 +151,6 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     ltvDecimalsError ||
     aprDecimalsError ||
     collateralTokenDecimalsError ||
-    collateralTokenPriceDecimalsError ||
     loanTokenError ||
     feeTokenError ||
     loanDecimalsError ||
@@ -170,11 +160,12 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
 
   // Memoize the token configuration
   const tokenConfig = useMemo((): ContractTokenConfiguration | undefined => {
+
+
     if (
       ltvDecimals === undefined ||
       aprDecimals === undefined ||
       collateralTokenDecimals === undefined ||
-      collateralTokenPriceDecimals === undefined ||
       !loanTokenAddress ||
       !feeTokenAddress ||
       loanTokenDecimals === undefined ||
@@ -182,6 +173,7 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
       !loanTokenSymbol ||
       !feeTokenSymbol
     ) {
+  
       return undefined
     }
 
@@ -202,19 +194,19 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
         },
         ltvDecimals: Number(ltvDecimals),
         aprDecimals: Number(aprDecimals),
-        collateralTokenDecimals: Number(collateralTokenDecimals),
-        collateralTokenPriceDecimals: Number(collateralTokenPriceDecimals)
+        collateralTokenDecimals: Number(collateralTokenDecimals)
       }
 
+  
       return config
     } catch (err) {
+      console.error('❌ Error creating tokenConfig:', err)
       return undefined
     }
   }, [
     ltvDecimals,
     aprDecimals,
     collateralTokenDecimals,
-    collateralTokenPriceDecimals,
     loanTokenAddress,
     feeTokenAddress,
     loanTokenDecimals,

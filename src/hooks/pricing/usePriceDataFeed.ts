@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import {
   useReadPriceDataFeedGetSpotPrice,
   useReadPriceDataFeedGetMonthlyAverage,
+  useReadPriceDataFeedDecimals,
   useReadLoansPriceDataFeed,
   useReadLoansCollateralToken
 } from '@/src/generated'
@@ -14,6 +15,7 @@ export interface UsePriceDataFeedReturn {
   // Price data
   spotPrice: bigint | undefined
   monthlyAverage: bigint | undefined
+  decimals: bigint | undefined
 
   // Loading states
   isLoading: boolean
@@ -71,10 +73,24 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     }
   })
 
+  // Get decimals from PriceDataFeed contract
+  const {
+    data: decimals,
+    isLoading: isDecimalsLoading,
+    error: decimalsError,
+    refetch: refetchDecimals
+  } = useReadPriceDataFeedDecimals({
+    address: priceDataFeedAddress,
+    query: {
+      enabled: !!priceDataFeedAddress
+    }
+  })
+
   // Combined loading states
   const isLoadingAddresses =
     isPriceDataFeedAddressLoading || isCollateralTokenAddressLoading
-  const isLoadingPrices = isSpotPriceLoading || isMonthlyAverageLoading
+  const isLoadingPrices =
+    isSpotPriceLoading || isMonthlyAverageLoading || isDecimalsLoading
   const isLoading = isLoadingAddresses || isLoadingPrices
 
   // Combined error state
@@ -82,7 +98,8 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     priceDataFeedAddressError ||
     collateralTokenAddressError ||
     spotPriceError ||
-    monthlyAverageError
+    monthlyAverageError ||
+    decimalsError
 
   // Refetch all data
   const refetch = useCallback(async () => {
@@ -90,13 +107,15 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
       refetchPriceDataFeedAddress(),
       refetchCollateralTokenAddress(),
       refetchSpotPrice(),
-      refetchMonthlyAverage()
+      refetchMonthlyAverage(),
+      refetchDecimals()
     ])
   }, [
     refetchPriceDataFeedAddress,
     refetchCollateralTokenAddress,
     refetchSpotPrice,
-    refetchMonthlyAverage
+    refetchMonthlyAverage,
+    refetchDecimals
   ])
 
   return {
@@ -107,6 +126,7 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     // Price data
     spotPrice,
     monthlyAverage,
+    decimals,
 
     // Loading states
     isLoading,

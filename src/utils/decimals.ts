@@ -146,4 +146,3 @@ export function formatDurationRange(
 
   return `${min} - ${max}`
 }
-

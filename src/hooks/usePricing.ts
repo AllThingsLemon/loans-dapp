@@ -17,7 +17,6 @@ export interface PriceData {
   spotPrice: string | undefined
   monthlyAverage: string | undefined
 
-
   // Contract addresses
   priceDataFeedAddress: `0x${string}` | undefined
   collateralTokenAddress: `0x${string}` | undefined
@@ -48,7 +47,9 @@ export const usePricing = (): PriceData => {
   const error = priceDataFeed.error || tokenConfigError
 
   // Get token decimals for price formatting
-  const priceDecimals = tokenConfig?.collateralTokenPriceDecimals
+  const priceDecimals = priceDataFeed.decimals
+    ? Number(priceDataFeed.decimals)
+    : undefined
   const tokenSymbol = tokenConfig?.nativeToken.symbol
   const tokenDecimals = tokenConfig?.collateralTokenDecimals
 
@@ -63,10 +64,12 @@ export const usePricing = (): PriceData => {
   const monthlyAverage = useMemo(() => {
     if (!priceDataFeed.monthlyAverage || priceDecimals === undefined)
       return undefined
-    const rawPrice = formatTokenAmount(priceDataFeed.monthlyAverage, priceDecimals)
+    const rawPrice = formatTokenAmount(
+      priceDataFeed.monthlyAverage,
+      priceDecimals
+    )
     return formatDisplayValue(rawPrice, 2, 2)
   }, [priceDataFeed.monthlyAverage, priceDecimals])
-
 
   return {
     // Raw values from usePriceDataFeed

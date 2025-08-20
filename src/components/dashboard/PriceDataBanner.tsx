@@ -55,13 +55,8 @@ function PriceDataBannerError({ error }: { error: Error }) {
 }
 
 export function PriceDataBanner() {
-  const {
-    spotPrice,
-    monthlyAverage,
-    tokenSymbol,
-    isLoading,
-    error
-  } = usePricing()
+  const { spotPrice, monthlyAverage, tokenSymbol, isLoading, error } =
+    usePricing()
 
   if (isLoading) return <PriceDataBannerSkeleton />
   if (error) return <PriceDataBannerError error={error} />
@@ -80,7 +75,7 @@ export function PriceDataBanner() {
             </p>
           </div>
         </div>
-        
+
         <div className='flex items-center gap-12'>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>Current</p>
@@ -89,7 +84,9 @@ export function PriceDataBanner() {
             </p>
           </div>
           <div className='text-center'>
-            <p className='text-xs text-gray-600 dark:text-gray-400'>Monthly Avg</p>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>
+              Monthly Avg
+            </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
               ${monthlyAverage}
             </p>

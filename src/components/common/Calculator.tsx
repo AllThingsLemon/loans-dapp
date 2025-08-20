@@ -79,14 +79,7 @@ const buildPriceError = (
   }
 
   if (hasInsufficientLmln) {
-    const userBalance =
-      userLmlnBalance && tokenConfig
-        ? Number(
-            formatTokenAmount(userLmlnBalance, tokenConfig.feeToken.decimals)
-          ).toFixed(2)
-        : '0'
-    const symbol = tokenConfig?.feeToken.symbol || 'Token'
-    return `Insufficient ${symbol} balance. Need ${originationFeeLmln.toFixed(2)} ${symbol}, have ${userBalance} ${symbol}`
+    return `Insufficient ${tokenConfig?.feeToken.symbol || 'LMLN'} balance`
   }
 
   return undefined
