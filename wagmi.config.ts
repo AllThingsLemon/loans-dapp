@@ -34,6 +34,7 @@ export default defineConfig({
       abi: LoansAbi as Abi,
       address: {
         [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].loans,
+        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].loans,
       }
     },
     {
