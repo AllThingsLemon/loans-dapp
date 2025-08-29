@@ -161,7 +161,7 @@ export function Dashboard() {
                 </div>
               </div>
               <Button
-                size="sm"
+                size='sm'
                 onClick={handlePaymentNavigation}
                 className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
               >
@@ -170,9 +170,15 @@ export function Dashboard() {
             </CardContent>
           </Card>
         )}
-        
+
         {/* Price Data Banner - Dynamic width based on active loans */}
-        <div className={totalActiveLoans > 0 ? 'col-span-1 md:col-span-2' : 'col-span-1 md:col-span-4'}>
+        <div
+          className={
+            totalActiveLoans > 0
+              ? 'col-span-1 md:col-span-2'
+              : 'col-span-1 md:col-span-4'
+          }
+        >
           <Web3ErrorBoundary>
             <PriceDataBanner />
           </Web3ErrorBoundary>

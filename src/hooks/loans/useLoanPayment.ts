@@ -89,7 +89,7 @@ export const useLoanPayment = (
     const contractDueDate = new Date(Number(loanData.dueTimestamp) * 1000)
 
     // Subtract 1 hour from contract due date
-    const adjustedDate = new Date(contractDueDate.getTime() - (60 * 60 * 1000))
+    const adjustedDate = new Date(contractDueDate.getTime() - 60 * 60 * 1000)
 
     // Truncate to start of day at 00:00 UTC
     const truncatedDate = new Date(adjustedDate)

@@ -192,23 +192,22 @@ export const useLoanOperations = (
       }
     })
 
-  // Check if user has sufficient LMLN for origination fee
-  const hasInsufficientLmln =
-    selectedLtvOption && userLmlnBalance !== undefined
-      ? userLmlnBalance < selectedLtvOption.fee
-      : false
-
   // Calculate loan details using the view function (no token interactions)
   const {
     data: calculationData,
     isLoading: isCalculating,
-    error: calculationError
+    error: calculationError,
+    failureCount,
+    failureReason,
+    status
   } = useReadLoansCalculateLoanDetails({
     args: loanRequest
       ? [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv]
       : undefined,
     query: {
-      enabled: !!loanRequest
+      enabled: !!loanRequest,
+      retry: 3,
+      retryDelay: 1000
     }
   })
 
@@ -222,6 +221,15 @@ export const useLoanOperations = (
     firstLoanPayment
   ] = calculationData || []
 
+  // Check if user has sufficient LMLN for origination fee
+  // Use the actual origination fee from contract calculation if available, otherwise fall back to selectedLtvOption
+  const hasInsufficientLmln =
+    originationFee && userLmlnBalance !== undefined
+      ? userLmlnBalance < originationFee
+      : selectedLtvOption && userLmlnBalance !== undefined
+      ? userLmlnBalance < selectedLtvOption.fee
+      : false
+
   // Function to approve LMLN tokens for loan creation or extension
   const approveLoanFee = useCallback(
     async (feeAmount?: bigint) => {
@@ -229,10 +237,20 @@ export const useLoanOperations = (
 
       // Use provided fee amount (for extensions) or calculated origination fee (for new loans)
       const fee = feeAmount || originationFee
-      if (!fee) throw new Error('Fee amount not provided or calculated')
+      
+      if (!fee || fee === 0n) {
+        throw new Error('Origination fee not calculated. Please try again.')
+      }
 
       if (!feeTokenAddress || !loansContractAddress) {
-        throw new Error('Missing token addresses for approval')
+        throw new Error('Contract configuration not loaded. Please refresh and try again.')
+      }
+
+      // Check if user has sufficient LMLN balance
+      if (userLmlnBalance !== undefined && userLmlnBalance < fee) {
+        const requiredFormatted = (Number(fee) / 1e18).toFixed(4)
+        const availableFormatted = (Number(userLmlnBalance) / 1e18).toFixed(4)
+        throw new Error(`Insufficient LMLN balance. You need ${requiredFormatted} LMLN but only have ${availableFormatted} LMLN.`)
       }
 
       // Approve LMLN tokens for origination fee
@@ -267,15 +285,30 @@ export const useLoanOperations = (
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
       if (!address) throw new Error('Wallet not connected')
-      if (!collateralAmount) throw new Error('Collateral amount not calculated')
-      if (!originationFee) throw new Error('Origination fee not calculated')
+      
+      if (!collateralAmount || collateralAmount === 0n) {
+        throw new Error('Unable to calculate collateral amount. Please try again.')
+      }
+      
+      if (!originationFee || originationFee === 0n) {
+        throw new Error('Unable to calculate origination fee. Please try again.')
+      }
+
+      // Check if user has sufficient LMLN balance for the fee
+      if (userLmlnBalance !== undefined && userLmlnBalance < originationFee) {
+        const requiredFormatted = (Number(originationFee) / 1e18).toFixed(4)
+        const availableFormatted = (Number(userLmlnBalance) / 1e18).toFixed(4)
+        throw new Error(`Insufficient LMLN balance for origination fee. You need ${requiredFormatted} LMLN but only have ${availableFormatted} LMLN.`)
+      }
 
       // Check if we have sufficient allowance (approval should be done before calling this)
       if (
         currentLmlnAllowance === undefined ||
         currentLmlnAllowance < originationFee
       ) {
-        throw new Error('Insufficient LMLN allowance. Please approve first.')
+        const requiredFormatted = (Number(originationFee) / 1e18).toFixed(4)
+        const currentFormatted = currentLmlnAllowance ? (Number(currentLmlnAllowance) / 1e18).toFixed(4) : '0'
+        throw new Error(`Insufficient LMLN allowance. You need to approve ${requiredFormatted} LMLN (current allowance: ${currentFormatted} LMLN).`)
       }
 
       // Execute the transaction directly with calculated parameters

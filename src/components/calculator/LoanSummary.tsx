@@ -109,20 +109,6 @@ export function LoanSummary({
               </span>
             </div>
 
-            {hasInsufficientLmln && (
-              <div className='text-red-500 text-xs mt-1'>
-                Balance:{' '}
-                {userLmlnBalance && tokenConfig
-                  ? Number(
-                      formatTokenAmount(
-                        userLmlnBalance,
-                        tokenConfig.feeToken.decimals
-                      )
-                    ).toFixed(2)
-                  : '0'}{' '}
-                {tokenConfig?.feeToken.symbol || 'Token'}
-              </div>
-            )}
 
             <div className='flex justify-between'>
               <span

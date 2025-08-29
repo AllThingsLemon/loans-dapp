@@ -104,9 +104,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
-  const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] = useState<
-    `0x${string}` | null
-  >(null)
+  const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
+    useState<`0x${string}` | null>(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)
