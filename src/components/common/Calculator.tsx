@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '../../components/ui/button'
-import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
-import { useLoanOperations } from '../../hooks/loans/useLoanOperations'
+import { useLoans } from '../../hooks/useLoans'
+import type { UseLoansReturn } from '../../hooks/types'
 import { formatUnits, parseUnits } from 'viem'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
@@ -13,61 +13,161 @@ import {
 } from '../../utils/decimals'
 import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
-import { handleContractError, isUserRejection, type ContractError } from '../../utils/errorHandling'
+import {
+  handleContractError,
+  isUserRejection,
+  type ContractError
+} from '../../utils/errorHandling'
+
+const SECONDS_PER_DAY = 24 * 60 * 60
+
+// Helper function to format contract calculation data
+const formatContractCalculation = (
+  calculationData: {
+    interestApr?: bigint
+    collateralAmount?: bigint
+    originationFee?: bigint
+    firstLoanPayment?: bigint
+  },
+  tokenConfig: any
+) => {
+  if (!calculationData || !tokenConfig) return null
+
+  return {
+    apr: calculationData.interestApr
+      ? Number(
+          formatPercentage(calculationData.interestApr, tokenConfig.aprDecimals)
+        )
+      : 0,
+    lemonRequired: calculationData.collateralAmount
+      ? Number(
+          formatTokenAmount(
+            calculationData.collateralAmount,
+            tokenConfig.nativeToken.decimals
+          )
+        )
+      : 0,
+    originationFeeLmln: calculationData.originationFee
+      ? Number(
+          formatTokenAmount(
+            calculationData.originationFee,
+            tokenConfig.feeToken.decimals
+          )
+        )
+      : 0,
+    monthlyPayment: calculationData.firstLoanPayment
+      ? Number(
+          formatTokenAmount(
+            calculationData.firstLoanPayment,
+            tokenConfig.loanToken.decimals
+          )
+        )
+      : 0
+  }
+}
+
+// Helper function to build price error messages
+const buildPriceError = (
+  isSimulating: boolean,
+  hasInsufficientLmln: boolean,
+  originationFeeLmln: number,
+  userLmlnBalance: bigint | undefined,
+  tokenConfig: any
+): string | undefined => {
+  if (isSimulating) {
+    return 'Calculating collateral...'
+  }
+
+  if (hasInsufficientLmln) {
+    return `Insufficient ${tokenConfig?.feeToken.symbol || 'LMLN'} balance`
+  }
+
+  return undefined
+}
+
+// Helper to create base calculation structure
+const createBaseCalculation = (
+  loanAmount: number,
+  selectedDuration: bigint,
+  duration: number,
+  ltv: number
+) => ({
+  loanAmount,
+  loanDuration: selectedDuration,
+  durationDisplay: `${Math.floor(duration / 3600)} hours`,
+  ltv,
+  lemonRequired: 0,
+  apr: 0,
+  originationFeeLmln: 0,
+  monthlyPayment: 0,
+  balloonPayment: loanAmount,
+  isValid: false
+})
 
 interface CalculatorSectionProps {
   isDashboard?: boolean
-  onLoanCreated?: () => Promise<void>
 }
 
-const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSectionProps) => {
-  const {
-    loanConfig,
-    ltvOptions,
-    interestAprConfigs,
-    isLoading: configLoading,
-    error: configError
-  } = useLoanConfig()
-
+const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
+  // UI loading states for transactions
+  const [isApprovingLoanFee, setIsApprovingLoanFee] = useState(false)
+  const [isCreatingLoan, setIsCreatingLoan] = useState(false)
 
   // Initialize with contract values when available
   const [loanAmount, setLoanAmount] = useState(0)
-  const [selectedConfigIndex, setSelectedConfigIndex] = useState<number>(0)
+  const [duration, setDuration] = useState<number>(0)
   const [ltv, setLtv] = useState(0)
+
+  // Get initial loan config and options - moved up to avoid initialization error
+  const initialHookData: UseLoansReturn = useLoans()
 
   // Set initial values from contract config
   useEffect(() => {
-    if (loanConfig && loanConfig.minLoanAmount && loanAmount === 0) {
-      setLoanAmount(Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)))
+    if (
+      initialHookData.loanConfig &&
+      initialHookData.loanConfig.minLoanAmount &&
+      loanAmount === 0
+    ) {
+      setLoanAmount(
+        Number(
+          formatUnits(
+            initialHookData.loanConfig.minLoanAmount,
+            tokenConfig?.loanToken.decimals || 18
+          )
+        )
+      )
     }
-    if (ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
+    if (initialHookData.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
       const ltvPercentage = Number(
-        formatPercentage(ltvOptions[0].ltv, tokenConfig.ltvDecimals)
+        formatPercentage(
+          initialHookData.ltvOptions[0].ltv,
+          tokenConfig.ltvDecimals
+        )
       )
       setLtv(ltvPercentage)
     }
-  }, [loanConfig, ltvOptions, interestAprConfigs, loanAmount, ltv])
+    if (initialHookData.interestAprConfigs.length > 0 && duration === 0) {
+      // Set initial duration to the midpoint of the first config
+      const firstConfig = initialHookData.interestAprConfigs[0]
+      setDuration(Number(firstConfig.minDuration))
+    }
+  }, [
+    initialHookData.loanConfig,
+    initialHookData.ltvOptions,
+    initialHookData.interestAprConfigs,
+    tokenConfig
+  ])
 
-  // Get selected interest config
-  const selectedConfig = useMemo(() => {
-    if (!interestAprConfigs || interestAprConfigs.length === 0) return null
-    return interestAprConfigs[selectedConfigIndex] || interestAprConfigs[0]
-  }, [interestAprConfigs, selectedConfigIndex])
-
-  // Use the midpoint of the selected duration range for calculations
+  // Use the selected duration directly (already in seconds)
   const selectedDuration = useMemo(() => {
-    if (!selectedConfig) return 0n
-    return (selectedConfig.minDuration + selectedConfig.maxDuration) / 2n
-  }, [selectedConfig])
-
-  // Get current interest rate from selected config
-  const contractApr = selectedConfig?.interestApr
+    return BigInt(Math.floor(duration))
+  }, [duration])
 
   // Create loan request for simulation
   const loanRequest = useMemo(() => {
@@ -77,133 +177,167 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       selectedDuration === 0n ||
       !ltv ||
       !tokenConfig
-    
     )
       return undefined
+
     const request = {
-      loanAmount: parseUnits(loanAmount.toString(), tokenConfig.loanToken.decimals),
+      loanAmount: parseUnits(
+        loanAmount.toString(),
+        tokenConfig.loanToken.decimals
+      ),
       duration: selectedDuration,
-      ltv: parsePercentage(ltv.toString(), tokenConfig.ltvDecimals)
+      ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
     }
     return request
-  }, [loanAmount, selectedDuration, ltv])
+  }, [loanAmount, selectedDuration, ltv, tokenConfig])
 
   // Get origination fee for selected LTV
   const selectedLtvOption = useMemo(() => {
     if (!tokenConfig) return undefined
 
-    // Convert ltv percentage to contract format using dynamic LTV precision
-    const ltvInContractFormat = parsePercentage(
-      ltv.toString(),
-      tokenConfig.ltvDecimals
-    )
+    // Convert ltv percentage (50) to decimal (0.5) then to contract format
+    const ltvDecimal = (ltv / 100).toString()
+    const ltvInContractFormat = parseUnits(ltvDecimal, tokenConfig.ltvDecimals)
 
-    const found = ltvOptions.find(
+    const found = initialHookData.ltvOptions.find(
       (option) => option.ltv === ltvInContractFormat
     )
 
     return found
-  }, [ltvOptions, ltv, tokenConfig])
+  }, [initialHookData.ltvOptions, ltv, tokenConfig])
 
-  const {
-    createLoan,
-    isTransacting,
-    isSimulating,
-    requiredCollateral,
-    userLmlnBalance,
-    hasInsufficientLmln,
-    error: rawOperationError
-  } = useLoanOperations({ 
-    loanRequest, 
-    selectedLtvOption,
-    onDataChange: onLoanCreated
+  // Get the loan operations with the calculated request
+  const loanOperations = useLoans({
+    loanRequest,
+    selectedLtvOption
   })
 
   // Filter out user rejections from operation errors - don't show them in UI
-  const operationError = rawOperationError && !isUserRejection(rawOperationError) 
-    ? rawOperationError 
-    : null
+  const operationError =
+    loanOperations.error && !isUserRejection(loanOperations.error)
+      ? loanOperations.error
+      : null
 
-  // Calculate loan details using contract values
+  // Calculate loan details using contract calculation data
   const calculation = useMemo(() => {
-    if (!contractApr || !selectedLtvOption || !selectedConfig || !tokenConfig) {
+    // Create base structure
+    const base = createBaseCalculation(
+      loanAmount,
+      selectedDuration,
+      duration,
+      ltv
+    )
+
+    // Check if we're still loading contract configuration
+    if (!tokenConfig || initialHookData.interestAprConfigs.length === 0) {
       return {
-        loanAmount,
-        loanDuration: selectedDuration,
-        durationDisplay: selectedConfig
-          ? formatDurationRange(
-              selectedConfig.minDuration,
-              selectedConfig.maxDuration
-            )
-          : 'Select duration',
-        ltv,
-        lemonRequired: 0,
-        apr: 0,
-        originationFeeLmln: 0,
-        monthlyPayment: 0,
-        balloonPayment: 0,
-        isValid: false,
+        ...base,
         priceError: 'Loading contract data...'
       }
     }
 
-    // Convert contract APR from precision scaled to percentage
-    const aprPercentage = Number(
-      formatPercentage(contractApr, tokenConfig.interestRateDecimals)
-    )
-
-    // Get required collateral from simulation (in wei)
-    const lemonRequired = requiredCollateral
-      ? Number(formatTokenAmount(requiredCollateral, tokenConfig?.nativeToken.decimals || 18)) // Native token decimals
-      : 0
-
-    // Convert origination fee from wei to LMLN amount
-    const originationFeeLmln = Number(
-      formatTokenAmount(selectedLtvOption.fee, tokenConfig.feeToken.decimals)
-    )
-
-    // Calculate monthly interest payment
-    const monthlyRate = aprPercentage / 100 / 12
-    const monthlyPayment = loanAmount * monthlyRate
-
-    // Balloon payment is the principal
-    const balloonPayment = loanAmount
-
-    const result = {
-      loanAmount,
-      loanDuration: selectedDuration,
-      durationDisplay: formatDurationRange(
-        selectedConfig.minDuration,
-        selectedConfig.maxDuration
-      ),
-      ltv,
-      lemonRequired,
-      apr: aprPercentage,
-      originationFeeLmln,
-      monthlyPayment,
-      balloonPayment,
-      isValid: !isSimulating && !!requiredCollateral && !hasInsufficientLmln,
-      priceError: isSimulating
-        ? 'Calculating collateral...'
-        : hasInsufficientLmln
-          ? `Insufficient ${tokenConfig?.feeToken.symbol || 'Token'} balance. Need ${originationFeeLmln.toFixed(2)} ${tokenConfig?.feeToken.symbol || 'Token'}, have ${userLmlnBalance ? Number(formatTokenAmount(userLmlnBalance, tokenConfig.feeToken.decimals)).toFixed(2) : '0'} ${tokenConfig?.feeToken.symbol || 'Token'}`
-          : undefined
+    // Check if we have calculation data from contract
+    if (!loanOperations.calculationData) {
+      return {
+        ...base,
+        priceError: loanOperations.isSimulating
+          ? 'Calculating collateral...'
+          : 'Contract calculation not available'
+      }
     }
 
-    return result
+    // Format the contract calculation data
+    const formatted = formatContractCalculation(
+      loanOperations.calculationData,
+      tokenConfig
+    )
+
+    if (!formatted) {
+      return {
+        ...base,
+        priceError: 'Error formatting calculation data'
+      }
+    }
+
+    // Build the final calculation with all values
+    const isValid =
+      !loanOperations.isSimulating &&
+      !!loanOperations.calculationData &&
+      !loanOperations.hasInsufficientLmln
+
+    const priceError = buildPriceError(
+      loanOperations.isSimulating,
+      loanOperations.hasInsufficientLmln,
+      formatted.originationFeeLmln,
+      loanOperations.userLmlnBalance,
+      tokenConfig
+    )
+
+    return {
+      ...base,
+      ...formatted,
+      balloonPayment: loanAmount,
+      isValid,
+      priceError
+    }
   }, [
     loanAmount,
     selectedDuration,
-    selectedConfig,
+    duration,
     ltv,
-    contractApr,
-    selectedLtvOption,
-    requiredCollateral,
-    isSimulating,
+    loanOperations.calculationData,
+    loanOperations.isSimulating,
     tokenConfig,
-    hasInsufficientLmln,
-    userLmlnBalance
+    loanOperations.hasInsufficientLmln,
+    initialHookData.interestAprConfigs,
+    loanOperations.userLmlnBalance
   ])
+
+  // Check if approval is needed for loan creation
+  const needsApproval = useMemo(() => {
+    if (!loanOperations.calculationData?.originationFee) {
+      return false
+    }
+    // If allowance is not loaded yet, assume approval is needed
+    if (loanOperations.currentLmlnAllowance === undefined) {
+      return true
+    }
+    return (
+      loanOperations.currentLmlnAllowance <
+      loanOperations.calculationData.originationFee
+    )
+  }, [
+    loanOperations.calculationData?.originationFee,
+    loanOperations.currentLmlnAllowance
+  ])
+
+  // Handle loan fee approval
+  const handleApproveLoanFee = async () => {
+    setIsApprovingLoanFee(true)
+    try {
+      const result = await loanOperations.approveLoanFee()
+
+      if (result) {
+        toast({
+          title: 'Approval Successful',
+          description:
+            'LMLN tokens approved for loan fee. You can now create the loan!'
+        })
+      }
+    } catch (error) {
+      const contractError = error as ContractError
+
+      // For user rejections, just close the modal - no error feedback needed
+      if (isUserRejection(contractError)) {
+        setIsDialogOpen(false)
+      } else {
+        // Use our shared error handling utility for actual errors
+        handleContractError(contractError, toast, 'Approval Failed')
+      }
+    } finally {
+      setIsApprovingLoanFee(false)
+    }
+  }
 
   // Handle loan creation
   const handleCreateLoan = async () => {
@@ -211,20 +345,22 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       return
     }
 
+    setIsCreatingLoan(true)
     try {
-      const result = await createLoan(loanRequest)
-      
+      const result = await loanOperations.createLoan(loanRequest)
+
       // Only show success if we actually get a successful result
       if (result) {
         setIsDialogOpen(false)
         toast({
           title: 'Loan Created Successfully',
-          description: 'Your loan has been created and will appear in your active loans!'
+          description:
+            'Your loan has been created and will appear in your active loans!'
         })
       }
     } catch (error) {
       const contractError = error as ContractError
-      
+
       // For user rejections, just close the modal - no error feedback needed
       if (isUserRejection(contractError)) {
         setIsDialogOpen(false)
@@ -232,11 +368,13 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
         // Use our shared error handling utility for actual errors
         handleContractError(contractError, toast, 'Loan Creation Failed')
       }
+    } finally {
+      setIsCreatingLoan(false)
     }
   }
 
   // Show loading state while fetching contract config
-  if (configLoading) {
+  if (initialHookData.isLoading && !initialHookData.loanConfig) {
     return (
       <div className='text-center py-8'>
         <p>Loading loan configuration...</p>
@@ -244,7 +382,7 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
     )
   }
 
-  if (configError || !loanConfig) {
+  if (initialHookData.error || !initialHookData.loanConfig) {
     return (
       <div className='text-center py-8'>
         <p className='text-red-600'>Error loading loan configuration</p>
@@ -257,28 +395,32 @@ const CalculatorSection = ({ isDashboard = false, onLoanCreated }: CalculatorSec
       <LoanParameters
         loanAmount={loanAmount}
         setLoanAmount={setLoanAmount}
-        selectedConfigIndex={selectedConfigIndex}
-        setSelectedConfigIndex={setSelectedConfigIndex}
+        duration={duration}
+        setDuration={setDuration}
         ltv={ltv}
         setLtv={setLtv}
-        loanConfig={loanConfig}
+        loanConfig={initialHookData.loanConfig}
         tokenConfig={tokenConfig}
-        interestAprConfigs={interestAprConfigs}
-        selectedConfig={selectedConfig}
-        configLoading={configLoading}
+        interestAprConfigs={initialHookData.interestAprConfigs}
+        ltvOptions={initialHookData.ltvOptions}
+        durationRange={initialHookData.durationRange}
+        configLoading={initialHookData.isLoading}
         isDashboard={isDashboard}
       />
-      
+
       <LoanSummary
         calculation={calculation}
         tokenConfig={tokenConfig}
-        hasInsufficientLmln={hasInsufficientLmln}
-        userLmlnBalance={userLmlnBalance}
+        hasInsufficientLmln={loanOperations.hasInsufficientLmln}
+        userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
-        isTransacting={isTransacting}
+        isApprovingLoanFee={isApprovingLoanFee}
+        isCreatingLoan={isCreatingLoan}
         isDialogOpen={isDialogOpen}
         setIsDialogOpen={setIsDialogOpen}
         handleCreateLoan={handleCreateLoan}
+        handleApproveLoanFee={handleApproveLoanFee}
+        needsApproval={needsApproval}
         isDashboard={isDashboard}
       />
     </div>

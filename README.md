@@ -111,14 +111,18 @@ After having configured it make sure to re-deploy your application.
 This project uses Cloudflare Pages for deployment. Environment variables are configured as follows:
 
 ### Public Variables (wrangler.toml)
+
 Non-sensitive configuration that's safe to expose in code:
+
 ```toml
 [vars]
 NEXT_PUBLIC_BSC_TESTNET_LOANS_ADDRESS = "0x..."
 ```
 
 ### Secrets (Wrangler CLI)
+
 Sensitive data like API keys and project IDs:
+
 ```bash
 npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-name=loans-dapp
 ```

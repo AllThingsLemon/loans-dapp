@@ -1,5 +1,5 @@
 import * as dotenv from 'dotenv'
-dotenv.config({ path: '.env.local' })
+dotenv.config({ path: '.env' })
 dotenv.config() // Also load .env if it exists
 
 import { defineConfig } from '@wagmi/cli'
@@ -8,6 +8,7 @@ import { Abi } from 'viem'
 
 // Import contract ABIs when available
 import LoansAbi from './src/abis/Loans.json'
+import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
 
 // Chain configuration following wagmi best practices
 const CHAINS = {
@@ -33,7 +34,13 @@ export default defineConfig({
       abi: LoansAbi as Abi,
       address: {
         [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].loans,
+        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].loans,
       }
+    },
+    {
+      name: 'PriceDataFeed',
+      abi: PriceDataFeedAbi as Abi,
+      // Address will be dynamically obtained from Loans contract
     },
   ],
   plugins: [

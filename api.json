@@ -1,890 +1,806 @@
 {
-    "openapi": "3.0.3",
-    "info": {
-      "title": "Elysia Documentation",
-      "description": "Development documentation",
-      "version": "0.0.0"
-    },
-    "paths": {
-      "/api/v1/healthcheck": {
-        "get": {
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "status"
-                    ]
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "status"
-                    ]
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "status"
-                    ]
-                  }
-                }
-              }
-            }
-          },
-          "operationId": "getApiV1Healthcheck",
-          "tags": [
-            "/api/v1"
-          ]
-        }
-      },
-      "/api/v1/token-stats/": {
-        "get": {
-          "parameters": [
-            {
-              "schema": {
-                "anyOf": [
-                  {
-                    "const": "token_holder_count",
-                    "type": "string"
-                  },
-                  {
-                    "const": "token_price",
-                    "type": "string"
-                  },
-                  {
-                    "const": "nft_total_supply",
-                    "type": "string"
-                  }
-                ]
-              },
-              "in": "query",
-              "name": "type",
-              "required": true
-            },
-            {
-              "schema": {
-                "type": "string"
-              },
-              "in": "query",
-              "name": "key",
-              "required": true
-            },
-            {
-              "schema": {
-                "anyOf": [
-                  {
-                    "const": "daily",
-                    "type": "string"
-                  },
-                  {
-                    "const": "weekly",
-                    "type": "string"
-                  },
-                  {
-                    "const": "monthly",
-                    "type": "string"
-                  },
-                  {
-                    "const": "yearly",
-                    "type": "string"
-                  }
-                ]
-              },
-              "in": "query",
-              "name": "aggregate",
-              "required": false
-            },
-            {
-              "schema": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "in": "query",
-              "name": "startDate",
-              "required": false
-            },
-            {
-              "schema": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "in": "query",
-              "name": "endDate",
-              "required": false
-            }
-          ],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "value": {
-                              "type": "string"
-                            },
-                            "date": {
-                              "anyOf": [
-                                {
-                                  "type": "Date"
-                                },
-                                {
-                                  "format": "date",
-                                  "default": "2024-10-02T20:26:15.690Z",
-                                  "type": "string"
-                                },
-                                {
-                                  "format": "date-time",
-                                  "default": "2024-10-02T20:26:15.691Z",
-                                  "type": "string"
-                                }
-                              ]
-                            },
-                            "key": {
-                              "type": "string"
-                            },
-                            "type": {
-                              "anyOf": [
-                                {
-                                  "const": "token_holder_count",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "token_price",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "nft_total_supply",
-                                  "type": "string"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "value",
-                            "date",
-                            "key",
-                            "type"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "value": {
-                              "type": "string"
-                            },
-                            "date": {
-                              "anyOf": [
-                                {
-                                  "type": "Date"
-                                },
-                                {
-                                  "format": "date",
-                                  "default": "2024-10-02T20:26:15.690Z",
-                                  "type": "string"
-                                },
-                                {
-                                  "format": "date-time",
-                                  "default": "2024-10-02T20:26:15.691Z",
-                                  "type": "string"
-                                }
-                              ]
-                            },
-                            "key": {
-                              "type": "string"
-                            },
-                            "type": {
-                              "anyOf": [
-                                {
-                                  "const": "token_holder_count",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "token_price",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "nft_total_supply",
-                                  "type": "string"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "value",
-                            "date",
-                            "key",
-                            "type"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "value": {
-                              "type": "string"
-                            },
-                            "date": {
-                              "anyOf": [
-                                {
-                                  "type": "Date"
-                                },
-                                {
-                                  "format": "date",
-                                  "default": "2024-10-02T20:26:15.690Z",
-                                  "type": "string"
-                                },
-                                {
-                                  "format": "date-time",
-                                  "default": "2024-10-02T20:26:15.691Z",
-                                  "type": "string"
-                                }
-                              ]
-                            },
-                            "key": {
-                              "type": "string"
-                            },
-                            "type": {
-                              "anyOf": [
-                                {
-                                  "const": "token_holder_count",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "token_price",
-                                  "type": "string"
-                                },
-                                {
-                                  "const": "nft_total_supply",
-                                  "type": "string"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "value",
-                            "date",
-                            "key",
-                            "type"
-                          ]
-                        }
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                }
-              }
-            },
-            "500": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                }
-              }
-            }
-          },
-          "operationId": "getApiV1Token-stats",
-          "tags": [
-            "/api/v1/token-stats"
-          ]
-        },
-        "post": {
-          "parameters": [],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "null"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "null"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "null"
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                }
-              }
-            },
-            "500": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                }
-              }
-            }
-          },
-          "operationId": "postApiV1Token-stats",
-          "tags": [
-            "/api/v1/token-stats"
-          ],
-          "requestBody": {
-            "required": true,
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Elysia Documentation",
+    "description": "Development documentation",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/v1/healthcheck": {
+      "get": {
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": {
-                      "anyOf": [
-                        {
-                          "const": "token_holder_count",
-                          "type": "string"
-                        },
-                        {
-                          "const": "token_price",
-                          "type": "string"
-                        },
-                        {
-                          "const": "nft_total_supply",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "key": {
+                    "status": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "type",
-                    "key"
-                  ],
-                  "additionalProperties": false
+                  "required": ["status"]
                 }
               },
               "multipart/form-data": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": {
-                      "anyOf": [
-                        {
-                          "const": "token_holder_count",
-                          "type": "string"
-                        },
-                        {
-                          "const": "token_price",
-                          "type": "string"
-                        },
-                        {
-                          "const": "nft_total_supply",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "key": {
+                    "status": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "type",
-                    "key"
-                  ],
-                  "additionalProperties": false
+                  "required": ["status"]
                 }
               },
               "text/plain": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": {
-                      "anyOf": [
-                        {
-                          "const": "token_holder_count",
-                          "type": "string"
-                        },
-                        {
-                          "const": "token_price",
-                          "type": "string"
-                        },
-                        {
-                          "const": "nft_total_supply",
-                          "type": "string"
-                        }
-                      ]
-                    },
-                    "key": {
+                    "status": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "type",
-                    "key"
-                  ],
-                  "additionalProperties": false
+                  "required": ["status"]
                 }
               }
             }
           }
-        }
-      },
-      "/api/v1/token-stats/latest": {
-        "get": {
-          "parameters": [
-            {
-              "schema": {
-                "anyOf": [
-                  {
-                    "const": "token_holder_count",
-                    "type": "string"
-                  },
-                  {
-                    "const": "token_price",
-                    "type": "string"
-                  },
-                  {
-                    "const": "nft_total_supply",
-                    "type": "string"
-                  }
-                ]
-              },
-              "in": "query",
-              "name": "type",
-              "required": true
-            },
-            {
-              "schema": {
-                "type": "string"
-              },
-              "in": "query",
-              "name": "key",
-              "required": true
-            }
-          ],
-          "responses": {
-            "200": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "object",
-                        "properties": {
-                          "value": {
-                            "type": "string"
-                          },
-                          "date": {
-                            "anyOf": [
-                              {
-                                "type": "Date"
-                              },
-                              {
-                                "format": "date",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              },
-                              {
-                                "format": "date-time",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              }
-                            ]
-                          },
-                          "key": {
-                            "type": "string"
-                          },
-                          "type": {
-                            "anyOf": [
-                              {
-                                "const": "token_holder_count",
-                                "type": "string"
-                              },
-                              {
-                                "const": "token_price",
-                                "type": "string"
-                              },
-                              {
-                                "const": "nft_total_supply",
-                                "type": "string"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "value",
-                          "date",
-                          "key",
-                          "type"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "object",
-                        "properties": {
-                          "value": {
-                            "type": "string"
-                          },
-                          "date": {
-                            "anyOf": [
-                              {
-                                "type": "Date"
-                              },
-                              {
-                                "format": "date",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              },
-                              {
-                                "format": "date-time",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              }
-                            ]
-                          },
-                          "key": {
-                            "type": "string"
-                          },
-                          "type": {
-                            "anyOf": [
-                              {
-                                "const": "token_holder_count",
-                                "type": "string"
-                              },
-                              {
-                                "const": "token_price",
-                                "type": "string"
-                              },
-                              {
-                                "const": "nft_total_supply",
-                                "type": "string"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "value",
-                          "date",
-                          "key",
-                          "type"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "type": "object",
-                    "properties": {
-                      "status": {
-                        "const": "success",
-                        "type": "string"
-                      },
-                      "data": {
-                        "type": "object",
-                        "properties": {
-                          "value": {
-                            "type": "string"
-                          },
-                          "date": {
-                            "anyOf": [
-                              {
-                                "type": "Date"
-                              },
-                              {
-                                "format": "date",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              },
-                              {
-                                "format": "date-time",
-                                "default": "2024-10-02T20:26:15.691Z",
-                                "type": "string"
-                              }
-                            ]
-                          },
-                          "key": {
-                            "type": "string"
-                          },
-                          "type": {
-                            "anyOf": [
-                              {
-                                "const": "token_holder_count",
-                                "type": "string"
-                              },
-                              {
-                                "const": "token_price",
-                                "type": "string"
-                              },
-                              {
-                                "const": "nft_total_supply",
-                                "type": "string"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "value",
-                          "date",
-                          "key",
-                          "type"
-                        ]
-                      }
-                    },
-                    "required": [
-                      "status",
-                      "data"
-                    ]
-                  }
-                }
-              }
-            },
-            "500": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "multipart/form-data": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                },
-                "text/plain": {
-                  "schema": {
-                    "$ref": "#/components/schemas/error"
-                  }
-                }
-              }
-            }
-          },
-          "operationId": "getApiV1Token-statsLatest",
-          "tags": [
-            "/api/v1/token-stats"
-          ]
-        }
+        },
+        "operationId": "getApiV1Healthcheck",
+        "tags": ["/api/v1"]
       }
     },
-    "components": {
-      "schemas": {
-        "error": {
-          "type": "object",
-          "properties": {
-            "status": {
-              "const": "error",
-              "type": "string"
-            },
-            "message": {
-              "type": "string"
-            },
-            "errorCode": {
+    "/api/v1/token-stats/": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
               "anyOf": [
                 {
-                  "const": "user_exists",
+                  "const": "token_holder_count",
                   "type": "string"
                 },
                 {
-                  "const": "not_found",
+                  "const": "token_price",
                   "type": "string"
                 },
                 {
-                  "const": "invalid_email_password",
-                  "type": "string"
-                },
-                {
-                  "const": "email_not_verified",
-                  "type": "string"
-                },
-                {
-                  "const": "invalid_token",
-                  "type": "string"
-                },
-                {
-                  "const": "unauthorized",
-                  "type": "string"
-                },
-                {
-                  "const": "too_many_requests",
-                  "type": "string"
-                },
-                {
-                  "const": "internal_server_error",
-                  "type": "string"
-                },
-                {
-                  "const": "route_not_found",
-                  "type": "string"
-                },
-                {
-                  "const": "validation_error",
-                  "type": "string"
-                },
-                {
-                  "const": "email_already_verified",
+                  "const": "nft_total_supply",
                   "type": "string"
                 }
               ]
             },
-            "errors": {
-              "type": "array",
-              "items": {}
+            "in": "query",
+            "name": "type",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "key",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "daily",
+                  "type": "string"
+                },
+                {
+                  "const": "weekly",
+                  "type": "string"
+                },
+                {
+                  "const": "monthly",
+                  "type": "string"
+                },
+                {
+                  "const": "yearly",
+                  "type": "string"
+                }
+              ]
+            },
+            "in": "query",
+            "name": "aggregate",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "startDate",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "endDate",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "Date"
+                              },
+                              {
+                                "format": "date",
+                                "default": "2024-10-02T20:26:15.690Z",
+                                "type": "string"
+                              },
+                              {
+                                "format": "date-time",
+                                "default": "2024-10-02T20:26:15.691Z",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "const": "token_holder_count",
+                                "type": "string"
+                              },
+                              {
+                                "const": "token_price",
+                                "type": "string"
+                              },
+                              {
+                                "const": "nft_total_supply",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["value", "date", "key", "type"]
+                      }
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "Date"
+                              },
+                              {
+                                "format": "date",
+                                "default": "2024-10-02T20:26:15.690Z",
+                                "type": "string"
+                              },
+                              {
+                                "format": "date-time",
+                                "default": "2024-10-02T20:26:15.691Z",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "const": "token_holder_count",
+                                "type": "string"
+                              },
+                              {
+                                "const": "token_price",
+                                "type": "string"
+                              },
+                              {
+                                "const": "nft_total_supply",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["value", "date", "key", "type"]
+                      }
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "anyOf": [
+                              {
+                                "type": "Date"
+                              },
+                              {
+                                "format": "date",
+                                "default": "2024-10-02T20:26:15.690Z",
+                                "type": "string"
+                              },
+                              {
+                                "format": "date-time",
+                                "default": "2024-10-02T20:26:15.691Z",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "anyOf": [
+                              {
+                                "const": "token_holder_count",
+                                "type": "string"
+                              },
+                              {
+                                "const": "token_price",
+                                "type": "string"
+                              },
+                              {
+                                "const": "nft_total_supply",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["value", "date", "key", "type"]
+                      }
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              }
             }
           },
-          "required": [
-            "status",
-            "message",
-            "errorCode"
-          ]
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getApiV1Token-stats",
+        "tags": ["/api/v1/token-stats"]
+      },
+      "post": {
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "null"
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postApiV1Token-stats",
+        "tags": ["/api/v1/token-stats"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "token_holder_count",
+                        "type": "string"
+                      },
+                      {
+                        "const": "token_price",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nft_total_supply",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "key"],
+                "additionalProperties": false
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "token_holder_count",
+                        "type": "string"
+                      },
+                      {
+                        "const": "token_price",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nft_total_supply",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "key"],
+                "additionalProperties": false
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "token_holder_count",
+                        "type": "string"
+                      },
+                      {
+                        "const": "token_price",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nft_total_supply",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "key"],
+                "additionalProperties": false
+              }
+            }
+          }
         }
+      }
+    },
+    "/api/v1/token-stats/latest": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "token_holder_count",
+                  "type": "string"
+                },
+                {
+                  "const": "token_price",
+                  "type": "string"
+                },
+                {
+                  "const": "nft_total_supply",
+                  "type": "string"
+                }
+              ]
+            },
+            "in": "query",
+            "name": "type",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "key",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "anyOf": [
+                            {
+                              "type": "Date"
+                            },
+                            {
+                              "format": "date",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            },
+                            {
+                              "format": "date-time",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "anyOf": [
+                            {
+                              "const": "token_holder_count",
+                              "type": "string"
+                            },
+                            {
+                              "const": "token_price",
+                              "type": "string"
+                            },
+                            {
+                              "const": "nft_total_supply",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["value", "date", "key", "type"]
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "anyOf": [
+                            {
+                              "type": "Date"
+                            },
+                            {
+                              "format": "date",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            },
+                            {
+                              "format": "date-time",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "anyOf": [
+                            {
+                              "const": "token_holder_count",
+                              "type": "string"
+                            },
+                            {
+                              "const": "token_price",
+                              "type": "string"
+                            },
+                            {
+                              "const": "nft_total_supply",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["value", "date", "key", "type"]
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "const": "success",
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "value": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "anyOf": [
+                            {
+                              "type": "Date"
+                            },
+                            {
+                              "format": "date",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            },
+                            {
+                              "format": "date-time",
+                              "default": "2024-10-02T20:26:15.691Z",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "anyOf": [
+                            {
+                              "const": "token_holder_count",
+                              "type": "string"
+                            },
+                            {
+                              "const": "token_price",
+                              "type": "string"
+                            },
+                            {
+                              "const": "nft_total_supply",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["value", "date", "key", "type"]
+                    }
+                  },
+                  "required": ["status", "data"]
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "multipart/form-data": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getApiV1Token-statsLatest",
+        "tags": ["/api/v1/token-stats"]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "error": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "error",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "const": "user_exists",
+                "type": "string"
+              },
+              {
+                "const": "not_found",
+                "type": "string"
+              },
+              {
+                "const": "invalid_email_password",
+                "type": "string"
+              },
+              {
+                "const": "email_not_verified",
+                "type": "string"
+              },
+              {
+                "const": "invalid_token",
+                "type": "string"
+              },
+              {
+                "const": "unauthorized",
+                "type": "string"
+              },
+              {
+                "const": "too_many_requests",
+                "type": "string"
+              },
+              {
+                "const": "internal_server_error",
+                "type": "string"
+              },
+              {
+                "const": "route_not_found",
+                "type": "string"
+              },
+              {
+                "const": "validation_error",
+                "type": "string"
+              },
+              {
+                "const": "email_already_verified",
+                "type": "string"
+              }
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": ["status", "message", "errorCode"]
       }
     }
   }
+}

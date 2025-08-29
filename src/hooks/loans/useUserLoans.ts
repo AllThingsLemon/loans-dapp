@@ -21,6 +21,16 @@ import { type LoanStructResponse, parseLoanStruct } from '@/src/types/contracts'
 import { usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 
+export interface UseUserLoansReturn {
+  loans: Loan[]
+  activeLoans: Loan[]
+  loanHistory: Loan[]
+  isLoading: boolean
+  error: Error | null
+  getLoanById: (id: `0x${string}`) => Loan | undefined
+  refetch: () => Promise<void>
+}
+
 // Helper function to combine loan data using proper parsing
 const combineLoanData = (
   loanId: `0x${string}`,
@@ -75,12 +85,8 @@ const combineLoanData = (
   }
 }
 
-export const useUserLoans = () => {
+export const useUserLoans = (): UseUserLoansReturn => {
   const { address } = useAccount()
-  const { loanConfig } = useLoanConfig()
-  const publicClient = usePublicClient()
-  // Use the imported queryClient directly
-
   // Get user's loan IDs
   const {
     data: loanIds,
@@ -88,9 +94,8 @@ export const useUserLoans = () => {
     error: idsError,
     refetch: refetchLoanIds
   } = useReadLoansGetAccountLoanIds({
-    args: address ? [address] : undefined
+    args: address ? [address, 0n, 50n] : undefined
   })
-
 
   // Create queries for each loan's data
   const loanQueries = useQueries({
@@ -99,7 +104,6 @@ export const useUserLoans = () => {
       queryFn: async () => {
         if (!config) throw new Error('Wagmi config not available')
 
-
         try {
           // First, get basic loan info and status (these should work for all loans)
           const [loanInfo, status] = await Promise.all([
@@ -107,9 +111,14 @@ export const useUserLoans = () => {
             readLoansLoanStatus(config, { args: [loanId] })
           ])
 
-
           // For active loans (status 3), fetch additional data
-          let paymentAmount, transpiredCycles, totalCycles, remainingCycles, cyclesAhead, timeToDefault, elapsedTimeInCycle
+          let paymentAmount,
+            transpiredCycles,
+            totalCycles,
+            remainingCycles,
+            cyclesAhead,
+            timeToDefault,
+            elapsedTimeInCycle
 
           if (status === LOAN_STATUS.ACTIVE) {
             ;[
@@ -140,7 +149,6 @@ export const useUserLoans = () => {
             elapsedTimeInCycle = 0n
           }
 
-
           return combineLoanData(
             loanId,
             loanInfo,
@@ -154,10 +162,6 @@ export const useUserLoans = () => {
             elapsedTimeInCycle
           )
         } catch (error) {
-          // Log error for debugging but don't pollute production console
-          if (process.env.NODE_ENV === 'development') {
-            console.error(`Failed to fetch loan data for ${loanId}:`, error)
-          }
           return null
         }
       },
@@ -170,23 +174,28 @@ export const useUserLoans = () => {
   // Extract loans data
   const loans = useMemo(() => {
     return loanQueries
-      .map(query => query.data)
+      .map((query) => query.data)
       .filter((loan): loan is Loan => loan !== null)
   }, [loanQueries])
 
   // Aggregate loading and error states
-  const isLoading = loadingIds || loanQueries.some(query => query.isLoading)
-  const error = idsError || loanQueries.find(query => query.error)?.error
+  const isLoading = loadingIds || loanQueries.some((query) => query.isLoading)
+  const error = idsError || loanQueries.find((query) => query.error)?.error
 
   // Filter loans by status
   const activeLoans = useMemo(() => {
-    return loans.filter((loan) => loan?.status === LOAN_STATUS.ACTIVE || loan?.status === LOAN_STATUS.UNLOCKED)
+    return loans.filter(
+      (loan) =>
+        loan?.status === LOAN_STATUS.ACTIVE ||
+        loan?.status === LOAN_STATUS.UNLOCKED
+    )
   }, [loans])
 
   const loanHistory = useMemo(() => {
-    return loans.filter((loan) => 
-      loan?.status === LOAN_STATUS.COMPLETED || 
-      loan?.status === LOAN_STATUS.DEFAULT
+    return loans.filter(
+      (loan) =>
+        loan?.status === LOAN_STATUS.COMPLETED ||
+        loan?.status === LOAN_STATUS.DEFAULT
     )
   }, [loans])
 
@@ -198,12 +207,14 @@ export const useUserLoans = () => {
   const refetch = useCallback(async () => {
     // First refetch loan IDs to catch new loans
     await refetchLoanIds()
-    
+
     // Then invalidate all loan queries to trigger refetch
     if (loanIds) {
       await Promise.all(
-        loanIds.map(loanId => 
-          queryClient.invalidateQueries({ queryKey: ['loan', loanId, 'fullData'] })
+        loanIds.map((loanId) =>
+          queryClient.invalidateQueries({
+            queryKey: ['loan', loanId, 'fullData']
+          })
         )
       )
     }
@@ -214,7 +225,7 @@ export const useUserLoans = () => {
     activeLoans,
     loanHistory,
     isLoading,
-    error,
+    error: error || null,
     getLoanById,
     refetch
   }

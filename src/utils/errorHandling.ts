@@ -29,15 +29,15 @@ export const extractErrorMessage = (error: ContractError): string => {
   if (error?.reason) {
     return error.reason
   }
-  
+
   if (error?.data?.message) {
     return error.data.message
   }
-  
+
   if (error?.message?.includes('insufficient funds')) {
     return 'Contract validation failed - this may be due to loan state, timing, or other contract rules'
   }
-  
+
   return error?.message || 'Unknown error'
 }
 
@@ -46,7 +46,11 @@ export const extractErrorMessage = (error: ContractError): string => {
  */
 export const handleContractError = (
   error: ContractError,
-  showToast: (options: { title: string; description: string; variant?: 'destructive' }) => void,
+  showToast: (options: {
+    title: string
+    description: string
+    variant?: 'destructive'
+  }) => void,
   successTitle: string = 'Operation Failed'
 ): void => {
   // Don't show error toast for user rejections - user knows they cancelled
@@ -55,7 +59,7 @@ export const handleContractError = (
   }
 
   const errorMessage = extractErrorMessage(error)
-  
+
   showToast({
     title: successTitle,
     description: errorMessage,

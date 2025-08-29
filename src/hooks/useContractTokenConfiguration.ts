@@ -1,17 +1,13 @@
 import { useMemo } from 'react'
 import { useReadContract, usePublicClient } from 'wagmi'
 import {
-  useReadLoansPrecision,
   useReadLoansLoanToken,
-  useReadLoansOriginationFeeToken
+  useReadLoansOriginationFeeToken,
+  useReadLoansLtvDecimals,
+  useReadLoansAprDecimals,
+  useReadLoansCollateralTokenDecimals
 } from '../generated'
 import erc20Abi from '../abis/ERC20.json'
-import {
-  ContractDecimals,
-  calculateDecimalPlaces,
-  validateContractDecimals,
-  DecimalError
-} from '../utils/decimals'
 
 // Export types for use in other hooks
 export interface TokenInfo {
@@ -26,12 +22,10 @@ export interface ContractTokenConfiguration {
   feeToken: TokenInfo
   nativeToken: {
     symbol: string
-    decimals: number
   }
-  precision: bigint
-  precisionDecimals: number
   ltvDecimals: number
-  interestRateDecimals: number
+  aprDecimals: number
+  collateralTokenDecimals: number
 }
 
 export interface UseContractTokenConfigurationResult {
@@ -42,21 +36,33 @@ export interface UseContractTokenConfigurationResult {
 
 /**
  * Hook to fetch and cache all contract token configuration including symbols and decimals
- * Fetches PRECISION from Loans contract, token addresses, and ERC20 metadata
+ * Fetches precision constants, token addresses, and ERC20 metadata from Loans contract
  */
 export function useContractTokenConfiguration(): UseContractTokenConfigurationResult {
   const publicClient = usePublicClient()
-  
-  // Get native token info from chain config
-  const nativeTokenSymbol = publicClient?.chain?.nativeCurrency?.symbol ?? 'ETH'
-  const nativeTokenDecimals = publicClient?.chain?.nativeCurrency?.decimals ?? 18
 
-  // Fetch PRECISION constant from Loans contract
+  // Get native token info from chain config
+  const nativeTokenSymbol =
+    publicClient?.chain?.nativeCurrency?.symbol ?? 'LEMX'
+
+  // Fetch precision constants from Loans contract
   const {
-    data: precision,
-    isLoading: precisionLoading,
-    error: precisionError
-  } = useReadLoansPrecision()
+    data: ltvDecimals,
+    isLoading: ltvDecimalsLoading,
+    error: ltvDecimalsError
+  } = useReadLoansLtvDecimals()
+
+  const {
+    data: aprDecimals,
+    isLoading: aprDecimalsLoading,
+    error: aprDecimalsError
+  } = useReadLoansAprDecimals()
+
+  const {
+    data: collateralTokenDecimals,
+    isLoading: collateralTokenDecimalsLoading,
+    error: collateralTokenDecimalsError
+  } = useReadLoansCollateralTokenDecimals()
 
   // Fetch loan token address
   const {
@@ -130,7 +136,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
 
   // Calculate loading state
   const isLoading =
-    precisionLoading ||
+    ltvDecimalsLoading ||
+    aprDecimalsLoading ||
+    collateralTokenDecimalsLoading ||
     loanTokenLoading ||
     feeTokenLoading ||
     loanDecimalsLoading ||
@@ -140,7 +148,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
 
   // Collect all errors
   const error =
-    precisionError ||
+    ltvDecimalsError ||
+    aprDecimalsError ||
+    collateralTokenDecimalsError ||
     loanTokenError ||
     feeTokenError ||
     loanDecimalsError ||
@@ -150,8 +160,12 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
 
   // Memoize the token configuration
   const tokenConfig = useMemo((): ContractTokenConfiguration | undefined => {
+
+
     if (
-      !precision ||
+      ltvDecimals === undefined ||
+      aprDecimals === undefined ||
+      collateralTokenDecimals === undefined ||
       !loanTokenAddress ||
       !feeTokenAddress ||
       loanTokenDecimals === undefined ||
@@ -159,13 +173,11 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
       !loanTokenSymbol ||
       !feeTokenSymbol
     ) {
+  
       return undefined
     }
 
     try {
-      // Calculate precision decimals from the contract PRECISION constant
-      const precisionDecimals = calculateDecimalPlaces(precision)
-
       const config: ContractTokenConfiguration = {
         loanToken: {
           address: loanTokenAddress,
@@ -178,29 +190,30 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
           decimals: Number(feeTokenDecimals)
         },
         nativeToken: {
-          symbol: nativeTokenSymbol,
-          decimals: nativeTokenDecimals
+          symbol: nativeTokenSymbol
         },
-        precision,
-        precisionDecimals,
-        ltvDecimals: 6, // LTV uses 1e6 precision on contract
-        interestRateDecimals: 6 // Interest rates use 1e6 precision on contract
+        ltvDecimals: Number(ltvDecimals),
+        aprDecimals: Number(aprDecimals),
+        collateralTokenDecimals: Number(collateralTokenDecimals)
       }
 
+  
       return config
     } catch (err) {
+      console.error('❌ Error creating tokenConfig:', err)
       return undefined
     }
   }, [
-    precision,
+    ltvDecimals,
+    aprDecimals,
+    collateralTokenDecimals,
     loanTokenAddress,
     feeTokenAddress,
     loanTokenDecimals,
     loanTokenSymbol,
     feeTokenDecimals,
     feeTokenSymbol,
-    nativeTokenSymbol,
-    nativeTokenDecimals
+    nativeTokenSymbol
   ])
 
   return {

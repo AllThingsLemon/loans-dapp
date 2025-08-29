@@ -2,7 +2,7 @@
 
 export interface LoanStructResponse {
   readonly [0]: string // account
-  readonly [1]: bigint // createdAt  
+  readonly [1]: bigint // createdAt
   readonly [2]: bigint // loanAmount
   readonly [3]: bigint // duration
   readonly [4]: bigint // interestAmount
@@ -11,7 +11,8 @@ export interface LoanStructResponse {
   readonly [7]: bigint // ltv
   readonly [8]: bigint // originationFee
   readonly [9]: bigint // collateralAmount
-  readonly [10]: boolean // collateralWithdrawn
+  readonly [10]: bigint // loanCycleDuration
+  readonly [11]: boolean // collateralWithdrawn
 }
 
 export interface LoanConfigResponse {
@@ -42,7 +43,8 @@ export function parseLoanStruct(data: LoanStructResponse) {
     ltv: data[7],
     originationFee: data[8],
     collateralAmount: data[9],
-    collateralWithdrawn: data[10]
+    loanCycleDuration: data[10],
+    collateralWithdrawn: data[11]
   }
 }
 
