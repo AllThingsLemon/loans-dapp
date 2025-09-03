@@ -2,19 +2,23 @@ import { useCallback } from 'react'
 import {
   useReadPriceDataFeedGetSpotPrice,
   useReadPriceDataFeedGetMonthlyAverage,
+  useReadPriceDataFeedGetDailyAveragesHistory,
   useReadPriceDataFeedDecimals,
   useReadLoansPriceDataFeed,
-  useReadLoansCollateralToken
+  useReadLoansCollateralToken,
+  useReadLoansOriginationFeeToken
 } from '@/src/generated'
 
 export interface UsePriceDataFeedReturn {
   // Contract addresses
   priceDataFeedAddress: `0x${string}` | undefined
   collateralTokenAddress: `0x${string}` | undefined
+  originationFeeTokenAddress: `0x${string}` | undefined
 
   // Price data
   spotPrice: bigint | undefined
   monthlyAverage: bigint | undefined
+  originationFeeTokenPrice: bigint | undefined
   decimals: bigint | undefined
 
   // Loading states
@@ -45,6 +49,13 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     refetch: refetchCollateralTokenAddress
   } = useReadLoansCollateralToken()
 
+  const {
+    data: originationFeeTokenAddress,
+    isLoading: isOriginationFeeTokenAddressLoading,
+    error: originationFeeTokenAddressError,
+    refetch: refetchOriginationFeeTokenAddress
+  } = useReadLoansOriginationFeeToken()
+
   // Get spot price from PriceDataFeed contract
   const {
     data: spotPrice,
@@ -73,6 +84,24 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     }
   })
 
+  // Get LMLN price using getDailyAveragesHistory (last 1 day)
+  const {
+    data: lmlnPriceData,
+    isLoading: isLmlnPriceLoading,
+    error: lmlnPriceError,
+    refetch: refetchLmlnPrice
+  } = useReadPriceDataFeedGetDailyAveragesHistory({
+    address: priceDataFeedAddress,
+    args: originationFeeTokenAddress ? [originationFeeTokenAddress, 1n] : undefined,
+    query: {
+      enabled: !!(priceDataFeedAddress && originationFeeTokenAddress)
+    }
+  })
+
+  // Extract the averagePrice from the DailyAverageEntry struct
+  // getDailyAveragesHistory returns: [{ averagePrice, timestamp, dataPoints, confidence }]
+  const originationFeeTokenPrice = lmlnPriceData?.[0]?.averagePrice
+
   // Get decimals from PriceDataFeed contract
   const {
     data: decimals,
@@ -88,33 +117,44 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
 
   // Combined loading states
   const isLoadingAddresses =
-    isPriceDataFeedAddressLoading || isCollateralTokenAddressLoading
+    isPriceDataFeedAddressLoading || 
+    isCollateralTokenAddressLoading || 
+    isOriginationFeeTokenAddressLoading
   const isLoadingPrices =
-    isSpotPriceLoading || isMonthlyAverageLoading || isDecimalsLoading
+    isSpotPriceLoading || 
+    isMonthlyAverageLoading || 
+    isDecimalsLoading || 
+    isLmlnPriceLoading
   const isLoading = isLoadingAddresses || isLoadingPrices
 
   // Combined error state
   const error =
     priceDataFeedAddressError ||
     collateralTokenAddressError ||
+    originationFeeTokenAddressError ||
     spotPriceError ||
     monthlyAverageError ||
-    decimalsError
+    decimalsError ||
+    lmlnPriceError
 
   // Refetch all data
   const refetch = useCallback(async () => {
     await Promise.all([
       refetchPriceDataFeedAddress(),
       refetchCollateralTokenAddress(),
+      refetchOriginationFeeTokenAddress(),
       refetchSpotPrice(),
       refetchMonthlyAverage(),
+      refetchLmlnPrice(),
       refetchDecimals()
     ])
   }, [
     refetchPriceDataFeedAddress,
     refetchCollateralTokenAddress,
+    refetchOriginationFeeTokenAddress,
     refetchSpotPrice,
     refetchMonthlyAverage,
+    refetchLmlnPrice,
     refetchDecimals
   ])
 
@@ -122,10 +162,12 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     // Contract addresses
     priceDataFeedAddress,
     collateralTokenAddress,
+    originationFeeTokenAddress,
 
     // Price data
     spotPrice,
     monthlyAverage,
+    originationFeeTokenPrice,
     decimals,
 
     // Loading states
