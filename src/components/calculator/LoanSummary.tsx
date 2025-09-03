@@ -85,7 +85,7 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                {tokenConfig?.nativeToken.symbol} Required
+                {tokenConfig?.nativeToken.symbol} Collateral
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
@@ -114,7 +114,7 @@ export function LoanSummary({
                   className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
                 >
                   {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
-                  {tokenConfig?.feeToken.symbol || 'LMLN'} required
+                  {tokenConfig?.feeToken.symbol || 'LMLN'}
                 </div>
               </div>
             </div>
@@ -182,11 +182,20 @@ export function LoanSummary({
               >
                 Loan Term
               </span>
-              <span
-                className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
-              >
-                {calculation.durationDisplay}
-              </span>
+              <div className='text-right'>
+                <span
+                  className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
+                >
+                  {calculation.loanCycles} {calculation.loanCycles === 1 ? 'cycle' : 'cycles'}
+                </span>
+                {calculation.loanCycleDuration && (
+                  <div
+                    className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
+                  >
+                    {Math.round(Number(calculation.loanCycleDuration) / (24 * 60 * 60))} day loan cycles
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
