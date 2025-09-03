@@ -11,6 +11,7 @@ import {
   formatTokenAmount,
   formatDurationRange
 } from '../../utils/decimals'
+import { formatDuration } from '../../utils/format'
 import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
 import {
@@ -28,6 +29,7 @@ const formatContractCalculation = (
     collateralAmount?: bigint
     originationFee?: bigint
     firstLoanPayment?: bigint
+    loanCycleDuration?: bigint
   },
   tokenConfig: any
 ) => {
@@ -62,7 +64,8 @@ const formatContractCalculation = (
             tokenConfig.loanToken.decimals
           )
         )
-      : 0
+      : 0,
+    loanCycleDuration: calculationData.loanCycleDuration || 0n
   }
 }
 
@@ -94,7 +97,8 @@ const createBaseCalculation = (
 ) => ({
   loanAmount,
   loanDuration: selectedDuration,
-  durationDisplay: `${Math.floor(duration / 3600)} hours`,
+  durationDisplay: formatDuration(selectedDuration),
+  loanCycles: 0, // Will be calculated when we have loanCycleDuration
   ltv,
   lemonRequired: 0,
   apr: 0,
@@ -259,6 +263,11 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       }
     }
 
+    // Calculate loan cycles
+    const loanCycles = formatted.loanCycleDuration && formatted.loanCycleDuration > 0n
+      ? Math.ceil(Number(selectedDuration) / Number(formatted.loanCycleDuration))
+      : 0
+
     // Build the final calculation with all values
     const isValid =
       !loanOperations.isSimulating &&
@@ -276,6 +285,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     return {
       ...base,
       ...formatted,
+      loanCycles,
       balloonPayment: loanAmount,
       isValid,
       priceError
