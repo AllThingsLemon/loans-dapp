@@ -422,6 +422,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         handleApproveLoanFee={handleApproveLoanFee}
         needsApproval={needsApproval}
         isDashboard={isDashboard}
+        selectedLtvOption={selectedLtvOption}
       />
     </div>
   )
