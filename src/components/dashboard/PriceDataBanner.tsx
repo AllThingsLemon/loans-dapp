@@ -55,8 +55,15 @@ function PriceDataBannerError({ error }: { error: Error }) {
 }
 
 export function PriceDataBanner() {
-  const { spotPrice, monthlyAverage, tokenSymbol, isLoading, error } =
-    usePricing()
+  const { 
+    spotPrice, 
+    monthlyAverage, 
+    lmlnPrice, 
+    tokenSymbol, 
+    feeTokenSymbol, 
+    isLoading, 
+    error 
+  } = usePricing()
 
   if (isLoading) return <PriceDataBannerSkeleton />
   if (error) return <PriceDataBannerError error={error} />
@@ -68,7 +75,7 @@ export function PriceDataBanner() {
           <BarChart className='h-5 w-5 text-blue-600 dark:text-blue-400' />
           <div>
             <h3 className='text-sm font-semibold text-gray-900 dark:text-gray-100'>
-              {tokenSymbol} Price Data
+              Token Price Data
             </h3>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
               Current market information
@@ -76,19 +83,29 @@ export function PriceDataBanner() {
           </div>
         </div>
 
-        <div className='flex items-center gap-12'>
+        <div className='flex items-center gap-8'>
           <div className='text-center'>
-            <p className='text-xs text-gray-600 dark:text-gray-400'>Current</p>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>
+              {tokenSymbol} Price
+            </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
               ${spotPrice}
             </p>
           </div>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
-              Monthly Avg
+              {tokenSymbol} Monthly Avg
             </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
               ${monthlyAverage}
+            </p>
+          </div>
+          <div className='text-center'>
+            <p className='text-xs text-gray-600 dark:text-gray-400'>
+              {feeTokenSymbol} Price
+            </p>
+            <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
+              ${lmlnPrice || '0.0000'}
             </p>
           </div>
         </div>
