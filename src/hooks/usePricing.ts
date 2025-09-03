@@ -12,17 +12,21 @@ export interface PriceData {
   // Raw values (bigint from contract)
   spotPriceRaw: bigint | undefined
   monthlyAverageRaw: bigint | undefined
+  lmlnPriceRaw: bigint | undefined
 
   // Formatted values (human-readable strings)
   spotPrice: string | undefined
   monthlyAverage: string | undefined
+  lmlnPrice: string | undefined
 
   // Contract addresses
   priceDataFeedAddress: `0x${string}` | undefined
   collateralTokenAddress: `0x${string}` | undefined
+  originationFeeTokenAddress: `0x${string}` | undefined
 
   // Token information
   tokenSymbol: string | undefined
+  feeTokenSymbol: string | undefined
   tokenDecimals: number | undefined
 
   // States
@@ -51,6 +55,7 @@ export const usePricing = (): PriceData => {
     ? Number(priceDataFeed.decimals)
     : undefined
   const tokenSymbol = tokenConfig?.nativeToken.symbol
+  const feeTokenSymbol = tokenConfig?.feeToken.symbol
   const tokenDecimals = tokenConfig?.collateralTokenDecimals
 
   // Format price values
@@ -71,21 +76,35 @@ export const usePricing = (): PriceData => {
     return formatDisplayValue(rawPrice, 2, 2)
   }, [priceDataFeed.monthlyAverage, priceDecimals])
 
+  const lmlnPrice = useMemo(() => {
+    if (!priceDataFeed.originationFeeTokenPrice || priceDecimals === undefined)
+      return undefined
+    const rawPrice = formatTokenAmount(
+      priceDataFeed.originationFeeTokenPrice,
+      priceDecimals
+    )
+    return formatDisplayValue(rawPrice, 4, 4) // More decimals for LMLN since it's lower value
+  }, [priceDataFeed.originationFeeTokenPrice, priceDecimals])
+
   return {
     // Raw values from usePriceDataFeed
     spotPriceRaw: priceDataFeed.spotPrice,
     monthlyAverageRaw: priceDataFeed.monthlyAverage,
+    lmlnPriceRaw: priceDataFeed.originationFeeTokenPrice,
 
     // Formatted values
     spotPrice,
     monthlyAverage,
+    lmlnPrice,
 
     // Contract addresses from usePriceDataFeed
     priceDataFeedAddress: priceDataFeed.priceDataFeedAddress,
     collateralTokenAddress: priceDataFeed.collateralTokenAddress,
+    originationFeeTokenAddress: priceDataFeed.originationFeeTokenAddress,
 
     // Token information from useContractTokenConfiguration
     tokenSymbol,
+    feeTokenSymbol,
     tokenDecimals,
 
     // Combined states
