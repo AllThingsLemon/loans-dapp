@@ -4,6 +4,7 @@ import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
 import { formatTokenAmount } from '../../utils/decimals'
+import { formatUnits } from 'viem'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
@@ -23,6 +24,7 @@ interface LoanSummaryProps {
   handleApproveLoanFee: () => Promise<void>
   needsApproval: boolean
   isDashboard?: boolean
+  selectedLtvOption?: { ltv: bigint; fee: bigint }
 }
 
 export function LoanSummary({
@@ -38,7 +40,8 @@ export function LoanSummary({
   handleCreateLoan,
   handleApproveLoanFee,
   needsApproval,
-  isDashboard = false
+  isDashboard = false,
+  selectedLtvOption
 }: LoanSummaryProps) {
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false)
 
@@ -97,16 +100,23 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                Origination Fee - payable in{' '}
-                {tokenConfig?.feeToken.symbol || 'Token'}
+                Origination Fee
               </span>
-              <span
-                className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
-              >
-                {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
-                {tokenConfig?.feeToken.symbol || 'Token'}
-                {hasInsufficientLmln && ' ⚠️'}
-              </span>
+              <div className='text-right'>
+                <span
+                  className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
+                >
+                  {selectedLtvOption ? 
+                    `$${Number(selectedLtvOption.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` : 
+                    '$0.00 USD'}
+                </span>
+                <div
+                  className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
+                >
+                  {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
+                  {tokenConfig?.feeToken.symbol || 'LMLN'} required
+                </div>
+              </div>
             </div>
 
 
