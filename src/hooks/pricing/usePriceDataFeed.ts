@@ -92,7 +92,7 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     refetch: refetchLmlnPrice
   } = useReadPriceDataFeedGetDailyAveragesHistory({
     address: priceDataFeedAddress,
-    args: originationFeeTokenAddress ? [originationFeeTokenAddress, 1n] : undefined,
+    args: originationFeeTokenAddress ? [originationFeeTokenAddress, 1] : undefined,
     query: {
       enabled: !!(priceDataFeedAddress && originationFeeTokenAddress)
     }
