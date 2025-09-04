@@ -22,6 +22,7 @@ export interface ContractTokenConfiguration {
   feeToken: TokenInfo
   nativeToken: {
     symbol: string
+    decimals: number
   }
   ltvDecimals: number
   aprDecimals: number
@@ -190,7 +191,8 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
           decimals: Number(feeTokenDecimals)
         },
         nativeToken: {
-          symbol: nativeTokenSymbol
+          symbol: nativeTokenSymbol,
+          decimals: Number(collateralTokenDecimals)
         },
         ltvDecimals: Number(ltvDecimals),
         aprDecimals: Number(aprDecimals),
