@@ -569,7 +569,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='flex items-center justify-between text-sm'>
                   <span>
                     {isInGracePeriod
-                      ? 'Principle Payment Due'
+                      ? 'Principal Payment Due'
                       : 'Payment Progress'}
                   </span>
                   <span>{progress.toFixed(1)}%</span>
@@ -893,7 +893,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               : 'additional time'}{' '}
                             to your loan duration, giving you more time to
                             repay. This extension applies to the end of your
-                            loan term, not the principle payment payoff period.
+                            loan term, not the principal payment payoff period.
                           </p>
                           <div className='space-y-2 pt-2'>
                             <div className='flex justify-between text-sm'>
