@@ -163,7 +163,7 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                Principle Payment
+                Principal Payment
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
