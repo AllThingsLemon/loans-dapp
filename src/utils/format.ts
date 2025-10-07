@@ -65,6 +65,8 @@ export const getLoanStatusLabel = (status: number): string => {
       return 'Defaulted' // Missed payment or overdue beyond grace period
     case 3:
       return 'Active' // Currently in repayment
+    case 4:
+      return 'Liquidated' // Liquidated
     default:
       return 'Unknown'
   }
@@ -82,6 +84,8 @@ export const getLoanStatusVariant = (
       return 'destructive' // Defaulted
     case 3:
       return 'default' // Active
+    case 4:
+      return 'destructive' // Liquidated
     default:
       return 'default'
   }
