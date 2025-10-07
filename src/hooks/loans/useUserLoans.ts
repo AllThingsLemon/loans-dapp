@@ -195,7 +195,8 @@ export const useUserLoans = (): UseUserLoansReturn => {
     return loans.filter(
       (loan) =>
         loan?.status === LOAN_STATUS.COMPLETED ||
-        loan?.status === LOAN_STATUS.DEFAULT
+        loan?.status === LOAN_STATUS.DEFAULT ||
+        loan?.status === LOAN_STATUS.LIQUIDATED
     )
   }, [loans])
 

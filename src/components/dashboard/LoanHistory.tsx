@@ -25,7 +25,7 @@ import {
   XCircle,
   DollarSign,
   Calendar,
-  Percent
+  Percent,
 } from 'lucide-react'
 
 interface LoanHistoryProps {
@@ -41,6 +41,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
       case 1: // paid
         return <CheckCircle className='h-4 w-4 text-green-600' />
       case 2: // defaulted
+        return <XCircle className='h-4 w-4 text-red-600' />
+      case 4: // liquidated
         return <XCircle className='h-4 w-4 text-red-600' />
       default:
         return <History className='h-4 w-4 text-muted-foreground' />
