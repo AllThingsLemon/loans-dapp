@@ -7,6 +7,7 @@ import {
   useWriteLoansMakeLoanPayment,
   useReadLoansOriginationFeeToken,
   useReadLoansCalculateLoanDetails,
+  useReadLoansGetLiquidityStatus,
   loansAddress,
   useWriteLoansWithdrawCollateral,
   useWriteLoansExtendLoan,
@@ -70,6 +71,10 @@ export interface UseLoanOperationsReturn {
   userLoanTokenBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
+
+  // Liquidity
+  availableLiquidity: bigint | undefined
+  hasInsufficientLiquidity: boolean
 
   // Error state
   error: Error | null
@@ -157,6 +162,18 @@ export const useLoanOperations = (
         enabled: !!feeTokenAddress && !!address && !!loansContractAddress
       }
     })
+
+  // Get available liquidity from the Loans contract
+  const { data: liquidityStatusRaw } = useReadLoansGetLiquidityStatus()
+  const availableLiquidity = liquidityStatusRaw
+    ? (liquidityStatusRaw as readonly bigint[])[4] // principalAvailable is index 4
+    : undefined
+
+  // Check if requested loan amount exceeds available liquidity
+  const hasInsufficientLiquidity =
+    loanRequest && availableLiquidity !== undefined
+      ? loanRequest.loanAmount > availableLiquidity
+      : false
 
   // Contract write functions
   const { writeContractAsync: initiateLoan, isPending: isCreatingLoan } =
@@ -294,6 +311,11 @@ export const useLoanOperations = (
         throw new Error('Unable to calculate origination fee. Please try again.')
       }
 
+      // Check if requested loan amount exceeds available liquidity
+      if (availableLiquidity !== undefined && loanRequest.loanAmount > availableLiquidity) {
+        throw new Error('Insufficient pool liquidity for this loan amount. Please try a smaller amount.')
+      }
+
       // Check if user has sufficient LMLN balance for the fee
       if (userLmlnBalance !== undefined && userLmlnBalance < originationFee) {
         const requiredFormatted = (Number(originationFee) / 1e18).toFixed(4)
@@ -368,6 +390,7 @@ export const useLoanOperations = (
       collateralAmount,
       originationFee,
       currentLmlnAllowance,
+      availableLiquidity,
       feeTokenAddress,
       loansContractAddress,
       approveToken,
@@ -654,6 +677,10 @@ export const useLoanOperations = (
     userLoanTokenBalance,
     currentAllowance,
     currentLmlnAllowance,
+
+    // Liquidity
+    availableLiquidity,
+    hasInsufficientLiquidity,
 
     // Error state
     error: calculationError || decimalsError

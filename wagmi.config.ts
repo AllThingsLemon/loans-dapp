@@ -9,6 +9,7 @@ import { Abi } from 'viem'
 // Import contract ABIs when available
 import LoansAbi from './src/abis/Loans.json'
 import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
+import LiquidityPoolAbi from './src/abis/LiquidityPool.json'
 
 // Chain configuration following wagmi best practices
 const CHAINS = {
@@ -20,9 +21,11 @@ const CHAINS = {
 const ADDRESSES = {
   [CHAINS.LEMON]: {
     loans: process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS as `0x${string}`,
+    liquidityPool: process.env.NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS as `0x${string}`,
   },
   [CHAINS.CITRON]: {
     loans: process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS as `0x${string}`,
+    liquidityPool: process.env.NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS as `0x${string}`,
   },
 } as const
 
@@ -41,6 +44,14 @@ export default defineConfig({
       name: 'PriceDataFeed',
       abi: PriceDataFeedAbi as Abi,
       // Address will be dynamically obtained from Loans contract
+    },
+    {
+      name: 'LiquidityPool',
+      abi: LiquidityPoolAbi as Abi,
+      address: {
+        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
+        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
+      }
     },
   ],
   plugins: [

@@ -190,7 +190,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveTokenAllowance(paymentWei)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now make the payment!'
       })
     } catch (error: any) {
@@ -224,7 +224,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Withdrawal Successful',
+          title: '\u2705 Withdrawal Successful',
           description: 'Your collateral has been withdrawn successfully!'
         })
 
@@ -253,7 +253,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveLoanFee(loan.originationFee)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now extend your loan!'
       })
     } catch (error: any) {
@@ -292,7 +292,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Extension Successful',
+          title: '\u2705 Extension Successful',
           description: `Your loan has been extended by ${loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'the maximum allowed time'}!`
         })
 
@@ -386,7 +386,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Payment Successful',
+          title: '\u2705 Payment Successful',
           description: 'Your payment has been processed successfully!'
         })
 

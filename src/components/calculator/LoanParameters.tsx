@@ -55,6 +55,17 @@ export function LoanParameters({
   const maxLtvPercentage =
     ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
 
+  // Check if loan amount is below minimum
+  const minLoanAmount = loanConfig?.minLoanAmount && tokenConfig
+    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig.loanToken.decimals || 18))
+    : 0
+  const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
+
+  // Safe index for the slider — use the actual percentage as value instead of indexOf
+  const ltvStep = ltvPercentages.length >= 2
+    ? ltvPercentages[1] - ltvPercentages[0]
+    : 10
+
   return (
     <Card
       className={`${!isDashboard ? 'animate-slide-in-left bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
@@ -133,7 +144,7 @@ export function LoanParameters({
                     ) * 100
                   : 100000
               }
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''}`}
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
               placeholder='10000'
             />
           </div>
@@ -210,14 +221,14 @@ export function LoanParameters({
             <>
               <input
                 type='range'
-                min={0}
-                max={ltvPercentages.length - 1}
-                step={1}
-                value={ltvPercentages.indexOf(ltv)}
+                min={minLtvPercentage}
+                max={maxLtvPercentage}
+                step={ltvStep}
+                value={ltv}
                 disabled={ltvOptions.length === 0}
                 onChange={(e) => {
-                  const index = Number(e.target.value)
-                  setLtv(ltvPercentages[index])
+                  const pct = Number(e.target.value)
+                  setLtv(pct)
                 }}
                 className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider disabled:opacity-50 disabled:cursor-not-allowed'
               />

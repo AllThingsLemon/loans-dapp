@@ -14,6 +14,7 @@ interface LoanSummaryProps {
   calculation: any
   tokenConfig: any
   hasInsufficientLmln: boolean
+  hasInsufficientLiquidity: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
   isApprovingLoanFee: boolean
@@ -31,6 +32,7 @@ export function LoanSummary({
   calculation,
   tokenConfig,
   hasInsufficientLmln,
+  hasInsufficientLiquidity,
   userLmlnBalance,
   operationError,
   isApprovingLoanFee,
@@ -208,6 +210,11 @@ export function LoanSummary({
 
         {isDashboard && (
           <div className='text-center mt-6'>
+            {hasInsufficientLiquidity && (
+              <p className='text-sm text-destructive mb-3'>
+                Insufficient pool liquidity for this loan amount. Please try a smaller amount.
+              </p>
+            )}
             <Button
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold py-3 px-8 text-lg'
               disabled={!calculation.isValid}
