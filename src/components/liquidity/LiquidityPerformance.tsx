@@ -8,7 +8,6 @@ import {
   CardTitle,
 } from '@/src/components/ui/card'
 import { Button } from '@/src/components/ui/button'
-import { Input } from '@/src/components/ui/input'
 import { Badge } from '@/src/components/ui/badge'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
@@ -100,8 +99,6 @@ function formatDuration(seconds: bigint): string {
 export function LiquidityPerformance({ liquidityPool, pricing }: LiquidityPerformanceProps) {
   const { toast } = useToast()
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
-  const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [showWithdrawInput, setShowWithdrawInput] = useState(false)
 
   const {
     userStatus,
@@ -115,7 +112,6 @@ export function LiquidityPerformance({ liquidityPool, pricing }: LiquidityPerfor
     stableTokenSymbol,
     stableTokenDecimals,
     lockDuration,
-    withdrawLiquidity,
     claimEarnings,
     compoundEarnings,
     pullEarnings,
@@ -140,11 +136,6 @@ export function LiquidityPerformance({ liquidityPool, pricing }: LiquidityPerfor
   const earningsFeePct = useMemo(() => {
     if (!feeConfig || feeConfig.earningsFeeBps === 0n) return null
     return Number(feeConfig.earningsFeeBps) / 100
-  }, [feeConfig])
-
-  const withdrawalFeePct = useMemo(() => {
-    if (!feeConfig || feeConfig.withdrawalFeeBps === 0n) return null
-    return Number(feeConfig.withdrawalFeeBps) / 100
   }, [feeConfig])
 
   const poolUtilization = useMemo(() => {
@@ -191,18 +182,6 @@ export function LiquidityPerformance({ liquidityPool, pricing }: LiquidityPerfor
     } finally {
       setIsProcessing(null)
     }
-  }
-
-  const handleWithdrawPrincipal = async () => {
-    if (!withdrawAmount) return
-    const parsed = BigInt(Math.floor(Number(withdrawAmount) * 10 ** decimals))
-    await handleAction(
-      'Withdraw',
-      () => withdrawLiquidity(parsed),
-      `Withdrew ${withdrawAmount} ${symbol} from the pool.`
-    )
-    setWithdrawAmount('')
-    setShowWithdrawInput(false)
   }
 
   // Pool Overview section (always shown)
@@ -359,66 +338,6 @@ export function LiquidityPerformance({ liquidityPool, pricing }: LiquidityPerfor
               value={userStatus ? formatCurrency(userStatus.totalNonEarningShares, decimals, symbol) : '0'}
             />
           </div>
-          {userStatus && userStatus.unlockedPrincipal > 0n && (
-            <div className='pt-2'>
-              {showWithdrawInput ? (
-                <div className='flex items-center gap-2'>
-                  <div className='relative flex-1'>
-                    <Input
-                      type='number'
-                      placeholder='0.00'
-                      value={withdrawAmount}
-                      onChange={(e) => setWithdrawAmount(e.target.value)}
-                      className='pr-16'
-                      min='0'
-                      step='any'
-                    />
-                    <span className='absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground'>
-                      {symbol}
-                    </span>
-                  </div>
-                  <Button
-                    size='sm'
-                    onClick={handleWithdrawPrincipal}
-                    disabled={isProcessing !== null || !withdrawAmount}
-                  >
-                    {isProcessing === 'Withdraw' ? (
-                      <Loader2 className='h-4 w-4 animate-spin' />
-                    ) : (
-                      'Confirm'
-                    )}
-                  </Button>
-                  <Button
-                    size='sm'
-                    variant='ghost'
-                    onClick={() => { setShowWithdrawInput(false); setWithdrawAmount('') }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  size='sm'
-                  variant='outline'
-                  onClick={() => setShowWithdrawInput(true)}
-                >
-                  Withdraw Principal
-                </Button>
-              )}
-              {withdrawalFeePct && showWithdrawInput && withdrawAmount && (
-                <p className='text-xs text-muted-foreground mt-1'>
-                  A {withdrawalFeePct}% withdrawal fee applies.{' '}
-                  {withdrawAmount && (
-                    <>
-                      You will receive{' '}
-                      {(Number(withdrawAmount) * (1 - withdrawalFeePct / 100)).toLocaleString('en-US', { maximumFractionDigits: 4 })}{' '}
-                      {symbol}.
-                    </>
-                  )}
-                </p>
-              )}
-            </div>
-          )}
         </div>
 
         <div className='border-t' />
