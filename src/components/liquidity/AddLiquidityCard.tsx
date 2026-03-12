@@ -25,14 +25,11 @@ import {
   type ContractError,
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
-import type { PriceData } from '@/src/hooks/usePricing'
-
 interface AddLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
-  pricing: PriceData
 }
 
-export function AddLiquidityCard({ liquidityPool, pricing }: AddLiquidityCardProps) {
+export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isNonEarning, setIsNonEarning] = useState(false)

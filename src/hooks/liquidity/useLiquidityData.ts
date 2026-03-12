@@ -125,7 +125,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     refetch: refetchUserStatus,
   } = useReadLiquidityPoolGetUserStatus({
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address, refetchInterval: 5000 },
   })
 
   const {
@@ -133,7 +133,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     isLoading: poolStatusLoading,
     error: poolStatusError,
     refetch: refetchPoolStatus,
-  } = useReadLiquidityPoolGetPoolStatus()
+  } = useReadLiquidityPoolGetPoolStatus({ query: { refetchInterval: 10000 } })
 
   const {
     data: lockEntriesRaw,
@@ -205,7 +205,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
 
   const hasPosition = useMemo(() => {
     if (!userStatus) return false
-    return userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n
+    return userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n || userStatus.totalNonEarningShares > 0n
   }, [userStatus])
 
   // Combined states

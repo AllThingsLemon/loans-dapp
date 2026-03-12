@@ -50,7 +50,9 @@ import {
   DollarSign,
   Percent,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 
@@ -107,6 +109,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
     useState<`0x${string}` | null>(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
+  const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+
+  const handleCopyLoanId = (id: string) => {
+    navigator.clipboard.writeText(id)
+    setCopiedLoanId(id)
+    setTimeout(() => setCopiedLoanId(null), 2000)
+  }
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)
   const formatMinimumPayment = (loan: Loan): string => {
@@ -483,8 +492,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='flex items-center gap-3'>
                   <CreditCard className='h-5 w-5 text-green-600' />
                   <div>
-                    <CardTitle className='text-lg'>
+                    <CardTitle className='text-lg flex items-center gap-1.5'>
                       Loan #{truncateAddress(loan.id)}
+                      <button
+                        type='button'
+                        onClick={() => handleCopyLoanId(loan.id)}
+                        className='text-muted-foreground hover:text-foreground transition-colors'
+                        title='Copy loan ID'
+                      >
+                        {copiedLoanId === loan.id ? (
+                          <Check className='h-3.5 w-3.5 text-green-600' />
+                        ) : (
+                          <Copy className='h-3.5 w-3.5' />
+                        )}
+                      </button>
                     </CardTitle>
                     <CardDescription>
                       Protocol Loan • {getLoanStatusLabel(loan.status)}

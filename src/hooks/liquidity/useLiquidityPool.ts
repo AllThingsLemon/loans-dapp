@@ -14,6 +14,9 @@ export function useLiquidityPool() {
     compoundEarnings: operations.compoundEarnings,
     relockLiquidity: operations.relockLiquidity,
     pullEarnings: operations.pullEarnings,
+    transferPendingEarnings: operations.transferPendingEarnings,
+    transferShares: operations.transferShares,
+    transferNonEarningShares: operations.transferNonEarningShares,
     approveToken: operations.approveToken,
     isTransacting: operations.isTransacting,
   }

@@ -17,14 +17,11 @@ import {
   type ContractError,
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
-import type { PriceData } from '@/src/hooks/usePricing'
-
 interface RemoveLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
-  pricing: PriceData
 }
 
-export function RemoveLiquidityCard({ liquidityPool, pricing }: RemoveLiquidityCardProps) {
+export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps) {
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const { toast } = useToast()

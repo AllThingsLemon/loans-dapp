@@ -10,6 +10,9 @@ import {
   useWriteLiquidityPoolCompoundEarnings,
   useWriteLiquidityPoolRelockLiquidity,
   useWriteLiquidityPoolPullEarnings,
+  useWriteLiquidityPoolTransferPendingEarnings,
+  useWriteLiquidityPoolTransferShares,
+  useWriteLiquidityPoolTransferNonEarningShares,
 } from '@/src/generated'
 
 export interface UseLiquidityOperationsReturn {
@@ -20,6 +23,9 @@ export interface UseLiquidityOperationsReturn {
   compoundEarnings: () => Promise<`0x${string}` | undefined>
   relockLiquidity: (amount: bigint) => Promise<`0x${string}` | undefined>
   pullEarnings: () => Promise<`0x${string}` | undefined>
+  transferPendingEarnings: (to: `0x${string}`, amount: bigint) => Promise<`0x${string}` | undefined>
+  transferShares: (to: `0x${string}`, shareAmount: bigint) => Promise<`0x${string}` | undefined>
+  transferNonEarningShares: (to: `0x${string}`, shareAmount: bigint) => Promise<`0x${string}` | undefined>
   approveToken: (amount: bigint, tokenAddress: `0x${string}`, spender: `0x${string}`) => Promise<`0x${string}` | undefined>
   isTransacting: boolean
   error: Error | null
@@ -52,11 +58,21 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { writeContractAsync: pullEarningsFn, isPending: isPulling } =
     useWriteLiquidityPoolPullEarnings({ mutation: { retry: false } })
 
+  const { writeContractAsync: transferPendingEarningsFn, isPending: isTransferringEarnings } =
+    useWriteLiquidityPoolTransferPendingEarnings({ mutation: { retry: false } })
+
+  const { writeContractAsync: transferSharesFn, isPending: isTransferringShares } =
+    useWriteLiquidityPoolTransferShares({ mutation: { retry: false } })
+
+  const { writeContractAsync: transferNonEarningSharesFn, isPending: isTransferringNonEarningShares } =
+    useWriteLiquidityPoolTransferNonEarningShares({ mutation: { retry: false } })
+
   const { writeContractAsync: approveTokenFn, isPending: isApproving } =
     useWriteContract({ mutation: { retry: false } })
 
   const invalidateAll = useCallback(async () => {
     await queryClient.invalidateQueries()
+    await queryClient.refetchQueries({ type: 'active' })
   }, [queryClient])
 
   const waitAndInvalidate = useCallback(
@@ -67,6 +83,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           throw new Error('Transaction was reverted on-chain. The contract rejected the operation.')
         }
       }
+      // Delay to allow RPC node state to propagate after block confirmation
+      await new Promise((resolve) => setTimeout(resolve, 3000))
       await invalidateAll()
     },
     [publicClient, invalidateAll]
@@ -132,6 +150,36 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     return txHash
   }, [pullEarningsFn, waitAndInvalidate])
 
+  const transferPendingEarnings = useCallback(
+    async (to: `0x${string}`, amount: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
+      const txHash = await transferPendingEarningsFn({ args: [to, amount] })
+      await waitAndInvalidate(txHash)
+      return txHash
+    },
+    [address, transferPendingEarningsFn, waitAndInvalidate]
+  )
+
+  const transferShares = useCallback(
+    async (to: `0x${string}`, shareAmount: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
+      const txHash = await transferSharesFn({ args: [to, shareAmount] })
+      await waitAndInvalidate(txHash)
+      return txHash
+    },
+    [address, transferSharesFn, waitAndInvalidate]
+  )
+
+  const transferNonEarningShares = useCallback(
+    async (to: `0x${string}`, shareAmount: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
+      const txHash = await transferNonEarningSharesFn({ args: [to, shareAmount] })
+      await waitAndInvalidate(txHash)
+      return txHash
+    },
+    [address, transferNonEarningSharesFn, waitAndInvalidate]
+  )
+
   const approveToken = useCallback(
     async (amount: bigint, tokenAddress: `0x${string}`, spender: `0x${string}`) => {
       if (!address) throw new Error('Wallet not connected')
@@ -158,6 +206,9 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isCompounding ||
     isRelocking ||
     isPulling ||
+    isTransferringEarnings ||
+    isTransferringShares ||
+    isTransferringNonEarningShares ||
     isApproving
 
   return {
@@ -168,6 +219,9 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     compoundEarnings,
     relockLiquidity,
     pullEarnings,
+    transferPendingEarnings,
+    transferShares,
+    transferNonEarningShares,
     approveToken,
     isTransacting,
     error: null,
