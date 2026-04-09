@@ -3,7 +3,8 @@ export const LOAN_STATUS = {
   COMPLETED: 0, // Fully paid and collateral withdrawn
   UNLOCKED: 1, // Paid off but collateral not withdrawn
   DEFAULT: 2, // Missed payment or overdue beyond grace period
-  ACTIVE: 3 // Currently in repayment
+  ACTIVE: 3, // Currently in repayment
+  LIQUIDATED: 4 // Liquidated
 } as const
 
 export type LoanStatus = (typeof LOAN_STATUS)[keyof typeof LOAN_STATUS]
