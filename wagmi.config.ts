@@ -48,10 +48,14 @@ export default defineConfig({
     {
       name: 'LiquidityPool',
       abi: LiquidityPoolAbi as Abi,
-      address: {
-        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
-        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
-      }
+      ...(ADDRESSES[CHAINS.CITRON].liquidityPool && ADDRESSES[CHAINS.LEMON].liquidityPool
+        ? {
+            address: {
+              [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
+              [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
+            },
+          }
+        : {}),
     },
   ],
   plugins: [
