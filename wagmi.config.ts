@@ -17,15 +17,17 @@ const CHAINS = {
   CITRON: 1005,
 } as const
 
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
+
 // Contract addresses by chain (following wagmi patterns)
 const ADDRESSES = {
   [CHAINS.LEMON]: {
-    loans: process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS as `0x${string}`,
-    liquidityPool: process.env.NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS as `0x${string}`,
+    loans: (process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+    liquidityPool: (process.env.NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   },
   [CHAINS.CITRON]: {
-    loans: process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS as `0x${string}`,
-    liquidityPool: process.env.NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS as `0x${string}`,
+    loans: (process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+    liquidityPool: (process.env.NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   },
 } as const
 
@@ -48,14 +50,10 @@ export default defineConfig({
     {
       name: 'LiquidityPool',
       abi: LiquidityPoolAbi as Abi,
-      ...(ADDRESSES[CHAINS.CITRON].liquidityPool && ADDRESSES[CHAINS.LEMON].liquidityPool
-        ? {
-            address: {
-              [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
-              [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
-            },
-          }
-        : {}),
+      address: {
+        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
+        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
+      }
     },
   ],
   plugins: [
