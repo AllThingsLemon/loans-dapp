@@ -93,6 +93,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
     isLoading: loadingIds,
     error: idsError,
     refetch: refetchLoanIds
+  // @ts-expect-error — wagmi codegen: "Type instantiation is excessively deep" with large ABI
   } = useReadLoansGetAccountLoanIds({
     args: address ? [address, 0n, 50n] : undefined
   })

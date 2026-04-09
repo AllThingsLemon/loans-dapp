@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Card,
   CardContent,
@@ -26,6 +27,8 @@ import {
   DollarSign,
   Calendar,
   Percent,
+  Copy,
+  Check
 } from 'lucide-react'
 
 interface LoanHistoryProps {
@@ -35,6 +38,13 @@ interface LoanHistoryProps {
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const { loanHistory } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
+  const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+
+  const handleCopyLoanId = (id: string) => {
+    navigator.clipboard.writeText(id)
+    setCopiedLoanId(id)
+    setTimeout(() => setCopiedLoanId(null), 2000)
+  }
 
   const getStatusIcon = (status: number) => {
     switch (status) {
@@ -133,8 +143,20 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                 <div className='flex items-center gap-3'>
                   {getStatusIcon(loan.status)}
                   <div>
-                    <CardTitle className='text-lg'>
+                    <CardTitle className='text-lg flex items-center gap-1.5'>
                       Loan #{truncateAddress(loan.id)}
+                      <button
+                        type='button'
+                        onClick={() => handleCopyLoanId(loan.id)}
+                        className='text-muted-foreground hover:text-foreground transition-colors'
+                        title='Copy loan ID'
+                      >
+                        {copiedLoanId === loan.id ? (
+                          <Check className='h-3.5 w-3.5 text-green-600' />
+                        ) : (
+                          <Copy className='h-3.5 w-3.5' />
+                        )}
+                      </button>
                     </CardTitle>
                     <CardDescription>
                       Protocol Loan • {getLoanStatusLabel(loan.status)}

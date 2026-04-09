@@ -55,6 +55,10 @@ export interface UseLoansReturn {
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
 
+  // Liquidity
+  availableLiquidity: bigint | undefined
+  hasInsufficientLiquidity: boolean
+
   // Contract addresses
   loansContractAddress: `0x${string}` | undefined
 

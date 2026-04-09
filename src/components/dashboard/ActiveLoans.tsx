@@ -50,7 +50,9 @@ import {
   DollarSign,
   Percent,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 
@@ -107,6 +109,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
     useState<`0x${string}` | null>(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
+  const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+
+  const handleCopyLoanId = (id: string) => {
+    navigator.clipboard.writeText(id)
+    setCopiedLoanId(id)
+    setTimeout(() => setCopiedLoanId(null), 2000)
+  }
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)
   const formatMinimumPayment = (loan: Loan): string => {
@@ -190,7 +199,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveTokenAllowance(paymentWei)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now make the payment!'
       })
     } catch (error: any) {
@@ -224,7 +233,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Withdrawal Successful',
+          title: '\u2705 Withdrawal Successful',
           description: 'Your collateral has been withdrawn successfully!'
         })
 
@@ -253,7 +262,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveLoanFee(loan.originationFee)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now extend your loan!'
       })
     } catch (error: any) {
@@ -292,7 +301,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Extension Successful',
+          title: '\u2705 Extension Successful',
           description: `Your loan has been extended by ${loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'the maximum allowed time'}!`
         })
 
@@ -386,7 +395,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Payment Successful',
+          title: '\u2705 Payment Successful',
           description: 'Your payment has been processed successfully!'
         })
 
@@ -483,8 +492,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='flex items-center gap-3'>
                   <CreditCard className='h-5 w-5 text-green-600' />
                   <div>
-                    <CardTitle className='text-lg'>
+                    <CardTitle className='text-lg flex items-center gap-1.5'>
                       Loan #{truncateAddress(loan.id)}
+                      <button
+                        type='button'
+                        onClick={() => handleCopyLoanId(loan.id)}
+                        className='text-muted-foreground hover:text-foreground transition-colors'
+                        title='Copy loan ID'
+                      >
+                        {copiedLoanId === loan.id ? (
+                          <Check className='h-3.5 w-3.5 text-green-600' />
+                        ) : (
+                          <Copy className='h-3.5 w-3.5' />
+                        )}
+                      </button>
                     </CardTitle>
                     <CardDescription>
                       Protocol Loan • {getLoanStatusLabel(loan.status)}

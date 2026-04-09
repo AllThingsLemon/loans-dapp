@@ -72,6 +72,10 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     currentAllowance: operations.currentAllowance,
     currentLmlnAllowance: operations.currentLmlnAllowance,
 
+    // Liquidity
+    availableLiquidity: operations.availableLiquidity,
+    hasInsufficientLiquidity: operations.hasInsufficientLiquidity,
+
     // Contract addresses
     loansContractAddress: operations.loansContractAddress,
 

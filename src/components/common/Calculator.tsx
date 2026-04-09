@@ -272,7 +272,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     const isValid =
       !loanOperations.isSimulating &&
       !!loanOperations.calculationData &&
-      !loanOperations.hasInsufficientLmln
+      !loanOperations.hasInsufficientLmln &&
+      !loanOperations.hasInsufficientLiquidity
 
     const priceError = buildPriceError(
       loanOperations.isSimulating,
@@ -280,7 +281,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       formatted.originationFeeLmln,
       loanOperations.userLmlnBalance,
       tokenConfig
-    )
+    ) || (loanOperations.hasInsufficientLiquidity
+      ? 'Insufficient pool liquidity for this loan amount'
+      : undefined)
 
     return {
       ...base,
@@ -299,6 +302,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.isSimulating,
     tokenConfig,
     loanOperations.hasInsufficientLmln,
+    loanOperations.hasInsufficientLiquidity,
     initialHookData.interestAprConfigs,
     loanOperations.userLmlnBalance
   ])
@@ -329,7 +333,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
       if (result) {
         toast({
-          title: 'Approval Successful',
+          title: '\u2705 Approval Successful',
           description:
             'LMLN tokens approved for loan fee. You can now create the loan!'
         })
@@ -363,7 +367,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       if (result) {
         setIsDialogOpen(false)
         toast({
-          title: 'Loan Created Successfully',
+          title: '\u2705 Loan Created Successfully',
           description:
             'Your loan has been created and will appear in your active loans!'
         })
@@ -422,6 +426,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         calculation={calculation}
         tokenConfig={tokenConfig}
         hasInsufficientLmln={loanOperations.hasInsufficientLmln}
+        hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
         isApprovingLoanFee={isApprovingLoanFee}
