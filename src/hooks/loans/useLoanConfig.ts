@@ -13,6 +13,7 @@ export interface LoanConfiguration {
   balloonPaymentGraceDuration: bigint
   loanCycleDuration: bigint
   maxLoanExtension: bigint
+  aprYearDuration: bigint
 }
 
 export interface InterestAprConfig {

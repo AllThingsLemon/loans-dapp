@@ -70,13 +70,13 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
   }, [parsedAmount, withdrawableBalance])
 
   const withdrawalFeePct = useMemo(() => {
-    if (!feeConfig || feeConfig.withdrawalFeeBps === 0n) return null
-    return Number(feeConfig.withdrawalFeeBps) / 100
+    if (!feeConfig || feeConfig.feeBps === 0n) return null
+    return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
 
   const feeAmount = useMemo(() => {
-    if (!parsedAmount || !feeConfig || feeConfig.withdrawalFeeBps === 0n) return null
-    return (parsedAmount * feeConfig.withdrawalFeeBps) / 10000n
+    if (!parsedAmount || !feeConfig || feeConfig.feeBps === 0n) return null
+    return (parsedAmount * feeConfig.feeBps) / 10000n
   }, [parsedAmount, feeConfig])
 
   const netReceive = useMemo(() => {
