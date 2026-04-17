@@ -2,13 +2,10 @@ import { useMemo, useCallback } from 'react'
 import { useAccount, useChainId, useReadContract } from 'wagmi'
 import { erc20Abi } from 'viem'
 import {
-  useReadLiquidityPoolGetUserStatus,
-  useReadLiquidityPoolGetPoolStatus,
-  useReadLiquidityPoolGetUserLockEntries,
-  useReadLiquidityPoolGetFeeConfig,
   useReadLiquidityPoolStableToken,
   useReadLiquidityPoolLockDuration,
   liquidityPoolAddress,
+  liquidityPoolAbi,
   useReadLoansGetLiquidityStatus,
   useReadLoansTotalLoansIssued,
   useReadLoansCumulativeLoanValue,
@@ -16,7 +13,6 @@ import {
 import {
   parseUserStatus,
   parsePoolStatus,
-  parseFeeConfig,
   parseLiquidityStatus,
 } from '@/src/types/liquidity'
 import type {
@@ -117,13 +113,16 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     },
   })
 
-  // LiquidityPool reads
+  // LiquidityPool reads (use useReadContract to avoid deep type instantiation)
   const {
     data: userStatusRaw,
     isLoading: userStatusLoading,
     error: userStatusError,
     refetch: refetchUserStatus,
-  } = useReadLiquidityPoolGetUserStatus({
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getUserStatus',
     args: address ? [address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   })
@@ -133,23 +132,47 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     isLoading: poolStatusLoading,
     error: poolStatusError,
     refetch: refetchPoolStatus,
-  } = useReadLiquidityPoolGetPoolStatus({ query: { refetchInterval: 10000 } })
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getPoolStatus',
+    query: { refetchInterval: 10000 },
+  })
 
+  // Use useReadContract with liquidityPoolAbi to avoid deep type instantiation errors
   const {
-    data: lockEntriesRaw,
-    isLoading: lockEntriesLoading,
-    error: lockEntriesError,
-    refetch: refetchLockEntries,
-  } = useReadLiquidityPoolGetUserLockEntries({
+    data: depositEntriesRaw,
+    isLoading: depositEntriesLoading,
+    error: depositEntriesError,
+    refetch: refetchDepositEntries,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getUserDepositEntries',
     args: address ? [address] : undefined,
     query: { enabled: !!address },
   })
 
+  // Fee config: separate calls for FEE_BPS and feeReceiver (use useReadContract to avoid deep type instantiation)
   const {
-    data: feeConfigRaw,
-    isLoading: feeConfigLoading,
-    error: feeConfigError,
-  } = useReadLiquidityPoolGetFeeConfig()
+    data: feeBps,
+    isLoading: feeBpsLoading,
+    error: feeBpsError,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'FEE_BPS',
+  })
+
+  const {
+    data: feeReceiverRaw,
+    isLoading: feeReceiverLoading,
+    error: feeReceiverError,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'feeReceiver',
+  })
 
   // Loans contract reads
   const {
@@ -177,18 +200,21 @@ export function useLiquidityData(): UseLiquidityDataReturn {
   // Parse data
   const userStatus = useMemo(() => {
     if (!userStatusRaw) return undefined
-    return parseUserStatus(userStatusRaw as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint])
+    return parseUserStatus(userStatusRaw as unknown as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint])
   }, [userStatusRaw])
 
   const poolStatus = useMemo(() => {
     if (!poolStatusRaw) return undefined
-    return parsePoolStatus(poolStatusRaw as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint])
+    return parsePoolStatus(poolStatusRaw as unknown as readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint])
   }, [poolStatusRaw])
 
-  const feeConfig = useMemo(() => {
-    if (!feeConfigRaw) return undefined
-    return parseFeeConfig(feeConfigRaw as readonly [bigint, bigint, `0x${string}`])
-  }, [feeConfigRaw])
+  const feeConfig = useMemo((): FeeConfig | undefined => {
+    if (feeBps === undefined || feeReceiverRaw === undefined) return undefined
+    return {
+      feeBps: feeBps as unknown as bigint,
+      feeReceiver: feeReceiverRaw as unknown as `0x${string}`,
+    }
+  }, [feeBps, feeReceiverRaw])
 
   const liquidityStatus = useMemo(() => {
     if (!liquidityStatusRaw) return undefined
@@ -196,12 +222,13 @@ export function useLiquidityData(): UseLiquidityDataReturn {
   }, [liquidityStatusRaw])
 
   const lockEntries = useMemo((): LockEntry[] => {
-    if (!lockEntriesRaw) return []
-    return (lockEntriesRaw as readonly { amount: bigint; unlockTime: bigint }[]).map((entry) => ({
-      amount: entry.amount,
-      unlockTime: entry.unlockTime,
+    if (!depositEntriesRaw) return []
+    // DepositEntry: { token, tokenAmount, stableTokenValue, liquidityShares, interestShares, unlockTime, lockDuration }
+    return (depositEntriesRaw as any[]).map((entry: any) => ({
+      amount: entry.stableTokenValue as bigint,
+      unlockTime: entry.unlockTime as bigint,
     }))
-  }, [lockEntriesRaw])
+  }, [depositEntriesRaw])
 
   const hasPosition = useMemo(() => {
     if (!userStatus) return false
@@ -213,8 +240,9 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     stableTokenLoading ||
     userStatusLoading ||
     poolStatusLoading ||
-    lockEntriesLoading ||
-    feeConfigLoading ||
+    depositEntriesLoading ||
+    feeBpsLoading ||
+    feeReceiverLoading ||
     liquidityStatusLoading ||
     totalLoansLoading ||
     cumulativeLoanLoading ||
@@ -224,8 +252,9 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     stableTokenError ||
     userStatusError ||
     poolStatusError ||
-    lockEntriesError ||
-    feeConfigError ||
+    depositEntriesError ||
+    feeBpsError ||
+    feeReceiverError ||
     liquidityStatusError ||
     null
 
@@ -235,10 +264,10 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       refetchAllowance(),
       refetchUserStatus(),
       refetchPoolStatus(),
-      refetchLockEntries(),
+      refetchDepositEntries(),
       refetchLiquidityStatus(),
     ])
-  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchLockEntries, refetchLiquidityStatus])
+  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchLiquidityStatus])
 
   return {
     userStatus,

@@ -25,9 +25,14 @@ export interface LockEntry {
   unlockTime: bigint
 }
 
+export interface LockDurationTier {
+  duration: bigint
+  interestMultiplier: bigint
+  isEnabled: boolean
+}
+
 export interface FeeConfig {
-  withdrawalFeeBps: bigint
-  earningsFeeBps: bigint
+  feeBps: bigint
   feeReceiver: `0x${string}`
 }
 
@@ -65,14 +70,6 @@ export function parsePoolStatus(data: readonly [bigint, bigint, bigint, bigint, 
     lastEarningsWithdrawal: data[4],
     availableEarningsInLoans: data[5],
     nextEarningsWithdrawalTime: data[6],
-  }
-}
-
-export function parseFeeConfig(data: readonly [bigint, bigint, `0x${string}`]): FeeConfig {
-  return {
-    withdrawalFeeBps: data[0],
-    earningsFeeBps: data[1],
-    feeReceiver: data[2],
   }
 }
 

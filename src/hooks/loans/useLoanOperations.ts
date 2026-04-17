@@ -8,6 +8,9 @@ import {
   useReadLoansOriginationFeeToken,
   useReadLoansCalculateLoanDetails,
   useReadLoansGetLiquidityStatus,
+  useReadLoansInitiateLoanFeeUsd,
+  useReadLoansLoanPaymentFeeUsd,
+  useReadLoansGetNativeFee,
   loansAddress,
   useWriteLoansWithdrawCollateral,
   useWriteLoansExtendLoan,
@@ -209,6 +212,20 @@ export const useLoanOperations = (
       }
     })
 
+  // Native fees for payable functions
+  const { data: initiateLoanFeeUSD } = useReadLoansInitiateLoanFeeUsd()
+  const { data: loanPaymentFeeUSD } = useReadLoansLoanPaymentFeeUsd()
+  // @ts-ignore - wagmi deep type instantiation
+  const { data: initiateNativeFee } = useReadLoansGetNativeFee({
+    args: initiateLoanFeeUSD !== undefined ? [initiateLoanFeeUSD] : undefined,
+    query: { enabled: initiateLoanFeeUSD !== undefined && initiateLoanFeeUSD > 0n, refetchInterval: 30000 },
+  })
+  // @ts-ignore - wagmi deep type instantiation
+  const { data: paymentNativeFee } = useReadLoansGetNativeFee({
+    args: loanPaymentFeeUSD !== undefined ? [loanPaymentFeeUSD] : undefined,
+    query: { enabled: loanPaymentFeeUSD !== undefined && loanPaymentFeeUSD > 0n, refetchInterval: 30000 },
+  })
+
   // Calculate loan details using the view function (no token interactions)
   const {
     data: calculationData,
@@ -333,10 +350,10 @@ export const useLoanOperations = (
         throw new Error(`Insufficient LMLN allowance. You need to approve ${requiredFormatted} LMLN (current allowance: ${currentFormatted} LMLN).`)
       }
 
-      // Execute the transaction directly with calculated parameters
+      // Execute the transaction — value includes collateral + native protocol fee
       const txHash = await initiateLoan({
         args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
-        value: collateralAmount
+        value: collateralAmount + (initiateNativeFee ?? 0n)
       })
 
       // Wait for transaction to be confirmed on blockchain
@@ -483,7 +500,8 @@ export const useLoanOperations = (
       }
 
       const txHash = await makeLoanPayment({
-        args: [loanId, amount]
+        args: [loanId, amount],
+        value: paymentNativeFee ?? 0n,
       })
 
       // Wait for transaction to be confirmed

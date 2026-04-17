@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   parseUserStatus,
   parsePoolStatus,
-  parseFeeConfig,
   parseLiquidityStatus,
   type UserStatus,
   type PoolStatus,
@@ -111,39 +110,42 @@ describe('liquidity type parsers', () => {
     })
   })
 
-  describe('parseFeeConfig', () => {
-    it('correctly maps fee config tuple', () => {
-      const raw = [100n, 200n, '0x1234567890abcdef1234567890abcdef12345678'] as const
-      const result = parseFeeConfig(raw)
+  describe('FeeConfig (constructed inline from FEE_BPS + feeReceiver)', () => {
+    it('correctly constructs fee config from separate reads', () => {
+      const feeBps = 100n
+      const feeReceiver = '0x1234567890abcdef1234567890abcdef12345678' as `0x${string}`
+      const result: FeeConfig = { feeBps, feeReceiver }
 
-      expect(result.withdrawalFeeBps).toBe(100n)
-      expect(result.earningsFeeBps).toBe(200n)
+      expect(result.feeBps).toBe(100n)
       expect(result.feeReceiver).toBe('0x1234567890abcdef1234567890abcdef12345678')
     })
 
     it('handles zero fees', () => {
-      const raw = [0n, 0n, '0x0000000000000000000000000000000000000000'] as const
-      const result = parseFeeConfig(raw)
+      const result: FeeConfig = {
+        feeBps: 0n,
+        feeReceiver: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+      }
 
-      expect(result.withdrawalFeeBps).toBe(0n)
-      expect(result.earningsFeeBps).toBe(0n)
+      expect(result.feeBps).toBe(0n)
     })
 
     it('returns correct types for all fields', () => {
-      const raw = [50n, 100n, '0xabcdef1234567890abcdef1234567890abcdef12'] as const
-      const result: FeeConfig = parseFeeConfig(raw)
+      const result: FeeConfig = {
+        feeBps: 50n,
+        feeReceiver: '0xabcdef1234567890abcdef1234567890abcdef12' as `0x${string}`,
+      }
 
       const keys = Object.keys(result)
-      expect(keys).toEqual(['withdrawalFeeBps', 'earningsFeeBps', 'feeReceiver'])
+      expect(keys).toEqual(['feeBps', 'feeReceiver'])
     })
 
     it('fee bps values are in correct range (max 10000 = 100%)', () => {
-      // 1% = 100 bps, 10% = 1000 bps
-      const raw = [100n, 1000n, '0x1234567890abcdef1234567890abcdef12345678'] as const
-      const result = parseFeeConfig(raw)
+      const result: FeeConfig = {
+        feeBps: 100n,
+        feeReceiver: '0x1234567890abcdef1234567890abcdef12345678' as `0x${string}`,
+      }
 
-      expect(Number(result.withdrawalFeeBps) / 100).toBe(1) // 1%
-      expect(Number(result.earningsFeeBps) / 100).toBe(10) // 10%
+      expect(Number(result.feeBps) / 100).toBe(1) // 100 bps = 1%
     })
   })
 

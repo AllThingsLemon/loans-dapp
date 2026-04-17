@@ -159,8 +159,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   }, [userStatus])
 
   const earningsFeePct = useMemo(() => {
-    if (!feeConfig || feeConfig.earningsFeeBps === 0n) return null
-    return Number(feeConfig.earningsFeeBps) / 100
+    if (!feeConfig || feeConfig.feeBps === 0n) return null
+    return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
 
   const poolUtilization = useMemo(() => {
@@ -430,7 +430,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                 <p className='text-xs text-muted-foreground'>
                   A {earningsFeePct}% earnings fee applies on claims. You will receive{' '}
                   {formatCurrency(
-                    userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig!.earningsFeeBps) / 10000n,
+                    userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig!.feeBps) / 10000n,
                     decimals,
                     symbol
                   )}.
@@ -462,7 +462,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                   variant='outline'
                   className='shrink-0'
                   onClick={() =>
-                    handleAction('Compound', () => compoundEarnings(), 'Earnings compounded into new shares.')
+                    handleAction('Compound', () => compoundEarnings(lockDuration ?? 0n), 'Earnings compounded into new shares.')
                   }
                   disabled={isProcessing !== null}
                 >

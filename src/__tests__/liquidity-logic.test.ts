@@ -3,7 +3,6 @@ import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
 import {
   parseUserStatus,
   parsePoolStatus,
-  parseFeeConfig,
   parseLiquidityStatus,
   type LiquidityStatus,
   type UserStatus,
