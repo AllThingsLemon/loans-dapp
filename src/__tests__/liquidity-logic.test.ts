@@ -258,31 +258,31 @@ describe('LiquidityPerformance logic', () => {
   describe('pool ownership calculation', () => {
     it('calculates correct ownership percentage', () => {
       const userShares = 100n
-      const totalShares = 1000n
+      const liquidityShares = 1000n
 
-      const poolOwnership = (Number(userShares) / Number(totalShares)) * 100
+      const poolOwnership = (Number(userShares) / Number(liquidityShares)) * 100
       expect(poolOwnership).toBe(10)
     })
 
     it('returns 0 when pool has no shares', () => {
-      const totalShares = 0n
-      const poolOwnership = totalShares === 0n ? 0 : 50
+      const liquidityShares = 0n
+      const poolOwnership = liquidityShares === 0n ? 0 : 50
       expect(poolOwnership).toBe(0)
     })
 
     it('returns 100% for sole depositor', () => {
       const userShares = 500n
-      const totalShares = 500n
+      const liquidityShares = 500n
 
-      const poolOwnership = (Number(userShares) / Number(totalShares)) * 100
+      const poolOwnership = (Number(userShares) / Number(liquidityShares)) * 100
       expect(poolOwnership).toBe(100)
     })
 
     it('handles fractional ownership', () => {
       const userShares = 1n
-      const totalShares = 3n
+      const liquidityShares = 3n
 
-      const poolOwnership = (Number(userShares) / Number(totalShares)) * 100
+      const poolOwnership = (Number(userShares) / Number(liquidityShares)) * 100
       expect(poolOwnership).toBeCloseTo(33.33, 1)
     })
   })
@@ -411,25 +411,26 @@ describe('LiquidityPerformance logic', () => {
   describe('hasPosition logic', () => {
     it('returns true when user has principal', () => {
       const userStatus = parseUserStatus([0n, 0n, 1000n, 0n, 0n, 0n, 0n])
-      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n
+      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
       expect(hasPosition).toBe(true)
     })
 
     it('returns true when user has shares but no principal', () => {
       const userStatus = parseUserStatus([100n, 0n, 0n, 0n, 0n, 0n, 0n])
-      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n
+      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
       expect(hasPosition).toBe(true)
     })
 
     it('returns false when user has neither', () => {
       const userStatus = parseUserStatus([0n, 0n, 0n, 0n, 0n, 0n, 0n])
-      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n
+      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
       expect(hasPosition).toBe(false)
     })
 
     it('returns true when user only has non-earning shares', () => {
-      const userStatus = parseUserStatus([0n, 100n, 0n, 0n, 0n, 0n, 0n])
-      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n || userStatus.totalNonEarningShares > 0n
+      // liquidityShares=100 (total), interestShares=0 (earning), so non-earning=100
+      const userStatus = parseUserStatus([100n, 0n, 0n, 0n, 0n, 0n, 0n])
+      const hasPosition = userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
 
       expect(hasPosition).toBe(true)
     })

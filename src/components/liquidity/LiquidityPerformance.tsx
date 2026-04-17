@@ -121,13 +121,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   const [transferEarningsModal, setTransferEarningsModal] = useState<TransferModal>(emptyModal)
   const [transferSharesModal, setTransferSharesModal] = useState<TransferModal>(emptyModal)
   const [transferNonEarningSharesModal, setTransferNonEarningSharesModal] = useState<TransferModal>(emptyModal)
+  const [confirmModal, setConfirmModal] = useState<{ open: boolean; title: string; description: string; actionName: string; action: () => Promise<unknown>; successMsg: string }>({ open: false, title: '', description: '', actionName: '', action: async () => {}, successMsg: '' })
 
   const {
     userStatus,
     poolStatus,
     feeConfig,
     liquidityStatus,
-    lockEntries,
+    depositEntries,
     hasPosition,
     totalLoansIssued,
     cumulativeLoanValue,
@@ -149,8 +150,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
 
   // Computed values
   const poolOwnership = useMemo(() => {
-    if (!userStatus || !poolStatus || poolStatus.totalShares === 0n) return 0
-    return (Number(userStatus.totalShares) / Number(poolStatus.totalShares)) * 100
+    if (!userStatus || !poolStatus || poolStatus.totalLiquidityShares === 0n) return 0
+    return (Number(userStatus.liquidityShares) / Number(poolStatus.totalLiquidityShares)) * 100
   }, [userStatus, poolStatus])
 
   const lifetimeEarnings = useMemo(() => {
@@ -187,9 +188,9 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     return formatRelativeTime(poolStatus.nextEarningsWithdrawalTime)
   }, [poolStatus])
 
-  const sortedLockEntries = useMemo(() => {
-    return [...lockEntries].sort((a, b) => Number(a.unlockTime - b.unlockTime))
-  }, [lockEntries])
+  const sortedDepositEntries = useMemo(() => {
+    return [...depositEntries].sort((a, b) => Number(a.unlockTime - b.unlockTime))
+  }, [depositEntries])
 
   // Action handlers
   const handleAction = async (
@@ -238,7 +239,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
         />
         <StatItem
           label='Pool Non-Earning Shares'
-          value={poolStatus ? formatCurrency(poolStatus.totalNonEarningShares, decimals, symbol) : 'Loading...'}
+          value={poolStatus ? formatCurrency(poolStatus.totalLiquidityShares - poolStatus.totalInterestShares, decimals, symbol) : 'Loading...'}
         />
         {liquidityStatus && liquidityStatus.principalForfeited > 0n && (
           <StatItem
@@ -277,7 +278,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             size='sm'
             variant='outline'
             onClick={() =>
-              handleAction('Distribute', () => pullEarnings(), 'Earnings distributed to the pool.')
+              setConfirmModal({
+                open: true,
+                title: 'Distribute Earnings',
+                description: 'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all depositors to claim. Anyone can trigger this action.',
+                actionName: 'Distribute',
+                action: () => pullEarnings(),
+                successMsg: 'Earnings distributed to the pool.',
+              })
             }
             disabled={isProcessing !== null}
           >
@@ -357,14 +365,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             />
             <StatItem
               label='Earning Shares'
-              value={userStatus ? formatCurrency(userStatus.totalShares, decimals, symbol) : '0'}
+              value={userStatus ? formatCurrency(userStatus.interestShares, decimals, symbol) : '0'}
             />
             <StatItem
               label='Non-Earning Shares'
-              value={userStatus ? formatCurrency(userStatus.totalNonEarningShares, decimals, symbol) : '0'}
+              value={userStatus ? formatCurrency(userStatus.liquidityShares - userStatus.interestShares, decimals, symbol) : '0'}
             />
           </div>
-          {userStatus && userStatus.totalShares > 0n && (
+          {userStatus && userStatus.interestShares > 0n && (
             <div className='flex items-start gap-4 pt-2'>
               <Button
                 size='sm'
@@ -381,7 +389,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               </p>
             </div>
           )}
-          {userStatus && userStatus.totalNonEarningShares > 0n && (
+          {userStatus && (userStatus.liquidityShares - userStatus.interestShares) > 0n && (
             <div className='flex items-start gap-4 pt-2'>
               <Button
                 size='sm'
@@ -442,7 +450,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                   variant='outline'
                   className='shrink-0'
                   onClick={() =>
-                    handleAction('Claim', () => claimEarnings(), 'Earnings claimed successfully.')
+                    setConfirmModal({
+                      open: true,
+                      title: 'Claim Earnings',
+                      description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
+                      actionName: 'Claim',
+                      action: () => claimEarnings(),
+                      successMsg: 'Earnings claimed successfully.',
+                    })
                   }
                   disabled={isProcessing !== null}
                 >
@@ -462,7 +477,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                   variant='outline'
                   className='shrink-0'
                   onClick={() =>
-                    handleAction('Compound', () => compoundEarnings(lockDuration ?? 0n), 'Earnings compounded into new shares.')
+                    setConfirmModal({
+                      open: true,
+                      title: 'Compound Earnings',
+                      description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be deposited back into the pool as new shares. The compounded amount will be subject to a new ${lockDurationLabel} lock period.`,
+                      actionName: 'Compound',
+                      action: () => compoundEarnings(lockDuration ?? 0n),
+                      successMsg: 'Earnings compounded into new shares.',
+                    })
                   }
                   disabled={isProcessing !== null}
                 >
@@ -507,25 +529,27 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
 
         <div className='border-t' />
 
-        {/* 5. Lock Schedule */}
+        {/* 5. Deposit History */}
         <div className='space-y-3'>
           <h3 className='text-sm font-semibold flex items-center gap-2'>
-            <Clock className='h-4 w-4' /> Lock Schedule
+            <Clock className='h-4 w-4' /> Deposit History
           </h3>
-          {sortedLockEntries.length > 0 ? (
+          {sortedDepositEntries.length > 0 ? (
             <div className='space-y-2'>
-              <div className='grid grid-cols-3 text-xs font-medium text-muted-foreground pb-1 border-b'>
+              <div className='grid grid-cols-4 text-xs font-medium text-muted-foreground pb-1 border-b'>
                 <span>Deposit Amount</span>
+                <span>Lock Duration</span>
                 <span>Unlock Date</span>
                 <span>Status</span>
               </div>
-              {sortedLockEntries.map((entry, index) => {
+              {sortedDepositEntries.map((entry, index) => {
                 const now = BigInt(Math.floor(Date.now() / 1000))
                 const isUnlocked = entry.unlockTime <= now
 
                 return (
-                  <div key={index} className='grid grid-cols-3 items-center text-sm py-2 border-b border-border/50'>
-                    <span>{formatCurrency(entry.amount, decimals, symbol)}</span>
+                  <div key={index} className='grid grid-cols-4 items-center text-sm py-2 border-b border-border/50'>
+                    <span>{formatCurrency(entry.stableTokenValue, decimals, symbol)}</span>
+                    <span>{formatDuration(entry.lockDuration)}</span>
                     <span>{formatDate(entry.unlockTime)}</span>
                     <div>
                       {isUnlocked ? (
@@ -543,7 +567,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               })}
             </div>
           ) : (
-            <p className='text-sm text-muted-foreground'>No lock entries found.</p>
+            <p className='text-sm text-muted-foreground'>No deposit entries found.</p>
           )}
 
         </div>
@@ -685,7 +709,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                   onClick={() =>
                     setTransferSharesModal((m) => ({
                       ...m,
-                      amount: formatTokenAmount(userStatus.totalShares, decimals),
+                      amount: formatTokenAmount(userStatus.interestShares, decimals),
                     }))
                   }
                 >
@@ -695,7 +719,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             </div>
             {userStatus && (
               <p className='text-xs text-muted-foreground'>
-                Available: {formatCurrency(userStatus.totalShares, decimals, symbol)}
+                Available: {formatCurrency(userStatus.interestShares, decimals, symbol)}
               </p>
             )}
           </div>
@@ -726,6 +750,40 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
             ) : (
               'Confirm Transfer'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Confirmation Modal */}
+    <Dialog
+      open={confirmModal.open}
+      onOpenChange={(open) => !open && setConfirmModal((m) => ({ ...m, open: false }))}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{confirmModal.title}</DialogTitle>
+        </DialogHeader>
+        <div className='py-2'>
+          <p className='text-sm text-muted-foreground'>{confirmModal.description}</p>
+        </div>
+        <DialogFooter>
+          <Button variant='outline' onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}>
+            Cancel
+          </Button>
+          <Button
+            disabled={isProcessing !== null}
+            onClick={async () => {
+              const { actionName, action, successMsg } = confirmModal
+              setConfirmModal((m) => ({ ...m, open: false }))
+              await handleAction(actionName, action, successMsg)
+            }}
+          >
+            {isProcessing === confirmModal.actionName ? (
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing...</>
+            ) : (
+              'Confirm'
             )}
           </Button>
         </DialogFooter>
@@ -776,7 +834,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                   onClick={() =>
                     setTransferNonEarningSharesModal((m) => ({
                       ...m,
-                      amount: formatTokenAmount(userStatus.totalNonEarningShares, decimals),
+                      amount: formatTokenAmount(userStatus.liquidityShares - userStatus.interestShares, decimals),
                     }))
                   }
                 >
@@ -786,7 +844,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             </div>
             {userStatus && (
               <p className='text-xs text-muted-foreground'>
-                Available: {formatCurrency(userStatus.totalNonEarningShares, decimals, symbol)}
+                Available: {formatCurrency(userStatus.liquidityShares - userStatus.interestShares, decimals, symbol)}
               </p>
             )}
           </div>
