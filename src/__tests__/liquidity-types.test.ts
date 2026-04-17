@@ -15,8 +15,8 @@ describe('liquidity type parsers', () => {
       const raw = [100n, 20n, 500n, 200n, 300n, 50n, 25n] as const
       const result = parseUserStatus(raw)
 
-      expect(result.totalShares).toBe(100n)
-      expect(result.totalNonEarningShares).toBe(20n)
+      expect(result.liquidityShares).toBe(100n)
+      expect(result.interestShares).toBe(20n)
       expect(result.totalPrincipal).toBe(500n)
       expect(result.unlockedPrincipal).toBe(200n)
       expect(result.lockedPrincipal).toBe(300n)
@@ -28,7 +28,7 @@ describe('liquidity type parsers', () => {
       const raw = [0n, 0n, 0n, 0n, 0n, 0n, 0n] as const
       const result = parseUserStatus(raw)
 
-      expect(result.totalShares).toBe(0n)
+      expect(result.liquidityShares).toBe(0n)
       expect(result.totalPrincipal).toBe(0n)
       expect(result.pendingEarnings).toBe(0n)
     })
@@ -38,7 +38,7 @@ describe('liquidity type parsers', () => {
       const raw = [oneThousandTokens, 0n, oneThousandTokens, oneThousandTokens, 0n, 0n, 0n] as const
       const result = parseUserStatus(raw)
 
-      expect(result.totalShares).toBe(oneThousandTokens)
+      expect(result.liquidityShares).toBe(oneThousandTokens)
       expect(result.totalPrincipal).toBe(oneThousandTokens)
     })
 
@@ -49,8 +49,8 @@ describe('liquidity type parsers', () => {
       // Verify structure matches interface
       const keys = Object.keys(result)
       expect(keys).toEqual([
-        'totalShares',
-        'totalNonEarningShares',
+        'liquidityShares',
+        'interestShares',
         'totalPrincipal',
         'unlockedPrincipal',
         'lockedPrincipal',
@@ -63,11 +63,12 @@ describe('liquidity type parsers', () => {
       const raw = [1000n, 200n, 0n, 0n, 0n, 0n, 0n] as const
       const result = parseUserStatus(raw)
 
-      // totalShares should NOT include non-earning
-      expect(result.totalShares).toBe(1000n)
-      expect(result.totalNonEarningShares).toBe(200n)
+      // liquidityShares = total shares (earning + non-earning)
+      expect(result.liquidityShares).toBe(1000n)
+      // interestShares = earning shares only
+      expect(result.interestShares).toBe(200n)
       // These are separate values from contract
-      expect(result.totalShares).not.toBe(result.totalNonEarningShares)
+      expect(result.liquidityShares).not.toBe(result.interestShares)
     })
   })
 
@@ -77,9 +78,9 @@ describe('liquidity type parsers', () => {
       const result = parsePoolStatus(raw)
 
       expect(result.totalPoolValue).toBe(10000n)
-      expect(result.totalShares).toBe(5000n)
-      expect(result.totalNonEarningShares).toBe(500n)
-      expect(result.accumulatedEarningsPerShare).toBe(1000000n)
+      expect(result.totalLiquidityShares).toBe(5000n)
+      expect(result.totalInterestShares).toBe(500n)
+      expect(result.accumulatedEarningsPerInterestShare).toBe(1000000n)
       expect(result.lastEarningsWithdrawal).toBe(1700000000n)
       expect(result.availableEarningsInLoans).toBe(200n)
       expect(result.nextEarningsWithdrawalTime).toBe(1700003600n)
@@ -90,7 +91,7 @@ describe('liquidity type parsers', () => {
       const result = parsePoolStatus(raw)
 
       expect(result.totalPoolValue).toBe(0n)
-      expect(result.totalShares).toBe(0n)
+      expect(result.totalLiquidityShares).toBe(0n)
     })
 
     it('returns correct types for all fields', () => {
@@ -100,9 +101,9 @@ describe('liquidity type parsers', () => {
       const keys = Object.keys(result)
       expect(keys).toEqual([
         'totalPoolValue',
-        'totalShares',
-        'totalNonEarningShares',
-        'accumulatedEarningsPerShare',
+        'totalLiquidityShares',
+        'totalInterestShares',
+        'accumulatedEarningsPerInterestShare',
         'lastEarningsWithdrawal',
         'availableEarningsInLoans',
         'nextEarningsWithdrawalTime',

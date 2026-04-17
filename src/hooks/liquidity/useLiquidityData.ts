@@ -19,6 +19,7 @@ import type {
   UserStatus,
   PoolStatus,
   LockEntry,
+  DepositEntry,
   FeeConfig,
   LiquidityStatus,
   WithdrawalRequest,
@@ -28,11 +29,17 @@ export interface UseLiquidityDataReturn {
   // User data
   userStatus: UserStatus | undefined
   lockEntries: LockEntry[]
+  depositEntries: DepositEntry[]
   hasPosition: boolean
 
   // Pool data
   poolStatus: PoolStatus | undefined
   feeConfig: FeeConfig | undefined
+
+  // Pool reads
+  currentUtilization: bigint | undefined
+  totalCommittedStableToken: bigint | undefined
+  acceptableLiquidityAmount: bigint | undefined
 
   // Loans contract data
   liquidityStatus: LiquidityStatus | undefined
@@ -213,6 +220,33 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     query: { enabled: !!address, refetchInterval: 5000 },
   })
 
+  // Additional pool reads
+  const {
+    data: currentUtilizationRaw,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getCurrentUtilization',
+    query: { refetchInterval: 10000 },
+  })
+
+  const {
+    data: totalCommittedStableTokenRaw,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'totalCommittedStableToken',
+  })
+
+  const {
+    data: acceptableLiquidityAmountRaw,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getAcceptableLiquidityAmount',
+    query: { refetchInterval: 10000 },
+  })
+
   // Parse data
   const userStatus = useMemo(() => {
     if (!userStatusRaw) return undefined
@@ -246,6 +280,19 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     }))
   }, [depositEntriesRaw])
 
+  const depositEntries = useMemo((): DepositEntry[] => {
+    if (!depositEntriesRaw) return []
+    return (depositEntriesRaw as any[]).map((entry: any) => ({
+      token: entry.token as `0x${string}`,
+      tokenAmount: entry.tokenAmount as bigint,
+      stableTokenValue: entry.stableTokenValue as bigint,
+      liquidityShares: entry.liquidityShares as bigint,
+      interestShares: entry.interestShares as bigint,
+      unlockTime: entry.unlockTime as bigint,
+      lockDuration: entry.lockDuration as bigint,
+    }))
+  }, [depositEntriesRaw])
+
   const withdrawalRequests = useMemo(() => {
     if (!withdrawalRequestsRaw) return { requestIds: [], requests: [] }
     const [ids, reqs] = withdrawalRequestsRaw as unknown as readonly [readonly bigint[], readonly {
@@ -271,7 +318,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
 
   const hasPosition = useMemo(() => {
     if (!userStatus) return false
-    return userStatus.totalPrincipal > 0n || userStatus.totalShares > 0n || userStatus.totalNonEarningShares > 0n
+    return userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
   }, [userStatus])
 
   // Combined states
@@ -312,9 +359,13 @@ export function useLiquidityData(): UseLiquidityDataReturn {
   return {
     userStatus,
     lockEntries,
+    depositEntries,
     hasPosition,
     poolStatus,
     feeConfig,
+    currentUtilization: currentUtilizationRaw as bigint | undefined,
+    totalCommittedStableToken: totalCommittedStableTokenRaw as bigint | undefined,
+    acceptableLiquidityAmount: acceptableLiquidityAmountRaw as bigint | undefined,
     liquidityStatus,
     totalLoansIssued,
     cumulativeLoanValue,

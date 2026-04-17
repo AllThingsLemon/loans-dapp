@@ -1,8 +1,8 @@
 // Types matching LiquidityPool and Loans contract return values
 
 export interface UserStatus {
-  totalShares: bigint
-  totalNonEarningShares: bigint
+  liquidityShares: bigint    // data[0] - total shares (earning + non-earning)
+  interestShares: bigint     // data[1] - earning shares only
   totalPrincipal: bigint
   unlockedPrincipal: bigint
   lockedPrincipal: bigint
@@ -12,9 +12,9 @@ export interface UserStatus {
 
 export interface PoolStatus {
   totalPoolValue: bigint
-  totalShares: bigint
-  totalNonEarningShares: bigint
-  accumulatedEarningsPerShare: bigint
+  totalLiquidityShares: bigint    // data[1]
+  totalInterestShares: bigint     // data[2]
+  accumulatedEarningsPerInterestShare: bigint
   lastEarningsWithdrawal: bigint
   availableEarningsInLoans: bigint
   nextEarningsWithdrawalTime: bigint
@@ -23,6 +23,16 @@ export interface PoolStatus {
 export interface LockEntry {
   amount: bigint
   unlockTime: bigint
+}
+
+export interface DepositEntry {
+  token: `0x${string}`
+  tokenAmount: bigint
+  stableTokenValue: bigint
+  liquidityShares: bigint
+  interestShares: bigint
+  unlockTime: bigint
+  lockDuration: bigint
 }
 
 export interface WithdrawalRequest {
@@ -60,8 +70,8 @@ export interface LiquidityStatus {
 
 export function parseUserStatus(data: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint]): UserStatus {
   return {
-    totalShares: data[0],
-    totalNonEarningShares: data[1],
+    liquidityShares: data[0],
+    interestShares: data[1],
     totalPrincipal: data[2],
     unlockedPrincipal: data[3],
     lockedPrincipal: data[4],
@@ -73,9 +83,9 @@ export function parseUserStatus(data: readonly [bigint, bigint, bigint, bigint, 
 export function parsePoolStatus(data: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint]): PoolStatus {
   return {
     totalPoolValue: data[0],
-    totalShares: data[1],
-    totalNonEarningShares: data[2],
-    accumulatedEarningsPerShare: data[3],
+    totalLiquidityShares: data[1],
+    totalInterestShares: data[2],
+    accumulatedEarningsPerInterestShare: data[3],
     lastEarningsWithdrawal: data[4],
     availableEarningsInLoans: data[5],
     nextEarningsWithdrawalTime: data[6],
