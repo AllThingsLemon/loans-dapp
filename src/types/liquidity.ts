@@ -25,6 +25,15 @@ export interface LockEntry {
   unlockTime: bigint
 }
 
+export interface WithdrawalRequest {
+  user: `0x${string}`
+  amount: bigint
+  amountFunded: bigint
+  liquiditySharesBurned: bigint
+  interestSharesBurned: bigint
+  requestTime: bigint
+}
+
 export interface LockDurationTier {
   duration: bigint
   interestMultiplier: bigint

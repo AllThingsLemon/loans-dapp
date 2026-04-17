@@ -9,21 +9,31 @@ import {
 } from '@/src/components/ui/card'
 import { Input } from '@/src/components/ui/input'
 import { Button } from '@/src/components/ui/button'
+import { Badge } from '@/src/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
-import { Minus, Loader2 } from 'lucide-react'
+import { Minus, Loader2, Clock, CheckCircle2, XCircle, ArrowDownToLine } from 'lucide-react'
 import {
   handleContractError,
   type ContractError,
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
+
 interface RemoveLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
 }
 
 export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps) {
   const [amount, setAmount] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isProcessing, setIsProcessing] = useState<string | null>(null)
+  const [fundQueueModal, setFundQueueModal] = useState(false)
   const { toast } = useToast()
 
   const {
@@ -31,15 +41,17 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     stableTokenDecimals,
     userStatus,
     feeConfig,
-    liquidityStatus,
-    withdrawLiquidity,
+    requestWithdrawal,
+    claimWithdrawal,
+    cancelWithdrawal,
+    fundWithdrawalQueue,
+    withdrawalRequests,
     refetch,
   } = liquidityPool
 
   const decimals = stableTokenDecimals ?? 18
   const symbol = stableTokenSymbol ?? 'Token'
-  // Show principalAvailable from Loans contract as the withdrawable amount
-  const withdrawableBalance = liquidityStatus?.principalAvailable ?? userStatus?.unlockedPrincipal ?? 0n
+  const withdrawableBalance = userStatus?.unlockedPrincipal ?? 0n
 
   const parsedAmount = useMemo(() => {
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return undefined
@@ -54,16 +66,6 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     return formatTokenAmount(withdrawableBalance, decimals)
   }, [withdrawableBalance, decimals])
 
-  const usdEquivalent = useMemo(() => {
-    if (!parsedAmount) return undefined
-    const numAmount = Number(amount)
-    if (isNaN(numAmount) || numAmount <= 0) return undefined
-    return numAmount.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  }, [parsedAmount, amount])
-
   const insufficientBalance = useMemo(() => {
     if (!parsedAmount) return false
     return parsedAmount > withdrawableBalance
@@ -74,39 +76,77 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
 
-  const feeAmount = useMemo(() => {
-    if (!parsedAmount || !feeConfig || feeConfig.feeBps === 0n) return null
-    return (parsedAmount * feeConfig.feeBps) / 10000n
-  }, [parsedAmount, feeConfig])
-
-  const netReceive = useMemo(() => {
-    if (!parsedAmount) return null
-    if (feeAmount) return parsedAmount - feeAmount
-    return parsedAmount
-  }, [parsedAmount, feeAmount])
-
   const handleMax = () => {
-    // Use exact formatted value to avoid parseFloat rounding past the actual balance
     setAmount(formattedWithdrawable)
   }
 
-  const handleWithdraw = async () => {
+  const handleRequestWithdrawal = async () => {
     if (!parsedAmount) return
-    setIsProcessing(true)
+    setIsProcessing('request')
     try {
-      await withdrawLiquidity(parsedAmount)
+      await requestWithdrawal(parsedAmount)
       toast({
-        title: '\u2705 Withdrawal Successful',
-        description: `Withdrew ${amount} ${symbol} from the liquidity pool.`,
+        title: 'Withdrawal Requested',
+        description: `Requested withdrawal of ${amount} ${symbol}. Your shares have been burned and the request has been queued.`,
       })
       setAmount('')
       await refetch()
     } catch (err: unknown) {
-      handleContractError(err as ContractError, toast, 'Withdrawal Failed')
+      handleContractError(err as ContractError, toast, 'Withdrawal Request Failed')
     } finally {
-      setIsProcessing(false)
+      setIsProcessing(null)
     }
   }
+
+  const handleClaimWithdrawal = async (requestId: bigint) => {
+    setIsProcessing(`claim-${requestId}`)
+    try {
+      await claimWithdrawal(requestId)
+      toast({
+        title: 'Withdrawal Claimed',
+        description: `Successfully claimed your withdrawal.`,
+      })
+      await refetch()
+    } catch (err: unknown) {
+      handleContractError(err as ContractError, toast, 'Claim Failed')
+    } finally {
+      setIsProcessing(null)
+    }
+  }
+
+  const handleCancelWithdrawal = async (requestId: bigint) => {
+    setIsProcessing(`cancel-${requestId}`)
+    try {
+      await cancelWithdrawal(requestId)
+      toast({
+        title: 'Withdrawal Cancelled',
+        description: `Withdrawal request cancelled. Your shares have been restored.`,
+      })
+      await refetch()
+    } catch (err: unknown) {
+      handleContractError(err as ContractError, toast, 'Cancel Failed')
+    } finally {
+      setIsProcessing(null)
+    }
+  }
+
+  const handleFundQueue = async () => {
+    setIsProcessing('fund')
+    try {
+      await fundWithdrawalQueue()
+      toast({
+        title: 'Queue Funded',
+        description: `Withdrawal queue has been funded with available principal.`,
+      })
+      await refetch()
+    } catch (err: unknown) {
+      handleContractError(err as ContractError, toast, 'Fund Queue Failed')
+    } finally {
+      setIsProcessing(null)
+    }
+  }
+
+  const hasRequests = withdrawalRequests.requests.length > 0
 
   return (
     <Card className='flex flex-col h-full'>
@@ -115,9 +155,10 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
           <Minus className='h-5 w-5' />
           Remove Liquidity
         </CardTitle>
-        <CardDescription>Withdraw tokens from the lending pool</CardDescription>
+        <CardDescription>Request withdrawal from the lending pool</CardDescription>
       </CardHeader>
       <CardContent className='flex flex-col flex-1 space-y-4'>
+        {/* Request Withdrawal Form */}
         <div className='space-y-2'>
           <div className='relative'>
             <Input
@@ -143,54 +184,180 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
             </div>
           </div>
           <div className='flex justify-between text-xs text-muted-foreground'>
-            <span>
-              {usdEquivalent && parsedAmount ? `~$${usdEquivalent} USD` : '\u00A0'}
-            </span>
+            <span>{withdrawalFeePct ? `${withdrawalFeePct}% withdrawal fee` : '\u00A0'}</span>
             <button
               onClick={handleMax}
               className='hover:text-foreground transition-colors'
             >
-              Available:{' '}
-              {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 4 })}{' '}
+              Unlocked:{' '}
+              {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
               {symbol}
             </button>
           </div>
         </div>
 
-        <div className='flex-1'>
-          {insufficientBalance && (
-            <p className='text-sm text-destructive'>
-              Insufficient unlocked balance. You can withdraw up to{' '}
-              {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 4 })}{' '}
-              {symbol}.
-            </p>
-          )}
+        {insufficientBalance && (
+          <p className='text-sm text-destructive'>
+            Insufficient unlocked balance. You can request up to{' '}
+            {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+            {symbol}.
+          </p>
+        )}
 
-          {withdrawalFeePct && parsedAmount && !insufficientBalance && (
-            <p className='text-sm text-muted-foreground'>
-              A {withdrawalFeePct}% withdrawal fee applies. You will receive{' '}
-              {netReceive
-                ? parseFloat(formatTokenAmount(netReceive, decimals)).toLocaleString('en-US', { maximumFractionDigits: 4 })
-                : '0'}{' '}
-              {symbol}.
-            </p>
-          )}
-        </div>
+        {withdrawalFeePct && parsedAmount && !insufficientBalance && (
+          <p className='text-xs text-muted-foreground'>
+            A {withdrawalFeePct}% fee applies on claim. You will receive ~{parseFloat(formatTokenAmount(parsedAmount - (parsedAmount * feeConfig!.feeBps) / 10000n, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol}.
+          </p>
+        )}
 
-        <div>
         <Button
-          onClick={handleWithdraw}
-          disabled={isProcessing || !parsedAmount || insufficientBalance}
+          onClick={handleRequestWithdrawal}
+          disabled={isProcessing !== null || !parsedAmount || insufficientBalance}
           className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
         >
-          {isProcessing ? (
-            <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Withdrawing...</>
+          {isProcessing === 'request' ? (
+            <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Requesting...</>
           ) : (
-            'Withdraw'
+            'Request Withdrawal'
           )}
         </Button>
-        </div>
+
+        {/* Withdrawal Requests */}
+        {hasRequests && (
+          <div className='border-t pt-4 space-y-3'>
+            <div className='flex items-center justify-between'>
+              <h4 className='text-sm font-medium'>Your Requests</h4>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() => setFundQueueModal(true)}
+                disabled={isProcessing !== null}
+              >
+                {isProcessing === 'fund' ? (
+                  <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Funding...</>
+                ) : (
+                  <><ArrowDownToLine className='h-3 w-3 mr-1' /> Fund Queue</>
+                )}
+              </Button>
+            </div>
+            {withdrawalRequests.requests.map((req, idx) => {
+              const requestId = withdrawalRequests.requestIds[idx]
+              const isFullyFunded = req.amountFunded >= req.amount
+              const isUnfunded = req.amountFunded === 0n
+              const progress = req.amount > 0n
+                ? Number((req.amountFunded * 10000n) / req.amount) / 100
+                : 0
+
+              return (
+                <div key={requestId.toString()} className='border rounded-lg p-3 space-y-2'>
+                  <div className='flex items-center justify-between'>
+                    <span className='text-sm font-medium'>
+                      {parseFloat(formatTokenAmount(req.amount, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol}
+                    </span>
+                    {isFullyFunded ? (
+                      <Badge variant='default' className='bg-green-600 hover:bg-green-600 text-xs cursor-default'>Ready to Claim</Badge>
+                    ) : isUnfunded ? (
+                      <Badge variant='secondary' className='text-xs'>
+                        <Clock className='h-3 w-3 mr-1' /> Pending
+                      </Badge>
+                    ) : (
+                      <Badge variant='secondary' className='text-xs'>
+                        {progress.toFixed(1)}% Funded
+                      </Badge>
+                    )}
+                  </div>
+
+                  {isFullyFunded && withdrawalFeePct && (
+                    <p className='text-xs text-muted-foreground'>
+                      {withdrawalFeePct}% fee on claim · ~{parseFloat(formatTokenAmount(req.amount - (req.amount * feeConfig!.feeBps) / 10000n, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol} net
+                    </p>
+                  )}
+
+                  {/* Funding progress bar */}
+                  {!isFullyFunded && (
+                    <div className='w-full bg-muted rounded-full h-1.5'>
+                      <div
+                        className='bg-yellow-500 h-1.5 rounded-full transition-all'
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                      />
+                    </div>
+                  )}
+
+                  <div className='flex gap-2'>
+                    {isFullyFunded && (
+                      <Button
+                        size='sm'
+                        onClick={() => handleClaimWithdrawal(requestId)}
+                        disabled={isProcessing !== null}
+                        className='flex-1 bg-green-600 hover:bg-green-700 text-white'
+                      >
+                        {isProcessing === `claim-${requestId}` ? (
+                          <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Claiming...</>
+                        ) : (
+                          <><CheckCircle2 className='h-3 w-3 mr-1' /> Claim</>
+                        )}
+                      </Button>
+                    )}
+                    {isUnfunded && (
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => handleCancelWithdrawal(requestId)}
+                        disabled={isProcessing !== null}
+                        className='flex-1'
+                      >
+                        {isProcessing === `cancel-${requestId}` ? (
+                          <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Cancelling...</>
+                        ) : (
+                          <><XCircle className='h-3 w-3 mr-1' /> Cancel</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </CardContent>
+
+      {/* Fund Queue Modal */}
+      <Dialog
+        open={fundQueueModal}
+        onOpenChange={(open) => { if (!open) setFundQueueModal(false) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fund Withdrawal Queue</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-3 py-2'>
+            <p className='text-sm text-muted-foreground'>
+              Pulls available principal from the Loans contract to fund pending withdrawal requests. Requests are funded in order from oldest to newest (FIFO).
+            </p>
+            <p className='text-sm text-muted-foreground'>
+              This is a public action that funds the queue for all users, not just your own requests.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setFundQueueModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={isProcessing !== null}
+              onClick={async () => {
+                setFundQueueModal(false)
+                await handleFundQueue()
+              }}
+            >
+              {isProcessing === 'fund' ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Funding...</>
+              ) : (
+                'Confirm'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

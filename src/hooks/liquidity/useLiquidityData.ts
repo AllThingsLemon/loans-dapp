@@ -21,6 +21,7 @@ import type {
   LockEntry,
   FeeConfig,
   LiquidityStatus,
+  WithdrawalRequest,
 } from '@/src/types/liquidity'
 
 export interface UseLiquidityDataReturn {
@@ -49,6 +50,9 @@ export interface UseLiquidityDataReturn {
 
   // Lock duration (seconds)
   lockDuration: bigint | undefined
+
+  // Withdrawal queue
+  withdrawalRequests: { requestIds: bigint[]; requests: WithdrawalRequest[] }
 
   // Contract address
   liquidityPoolContractAddress: `0x${string}` | undefined
@@ -197,6 +201,18 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     isLoading: lockDurationLoading,
   } = useReadLiquidityPoolLockDuration()
 
+  // Withdrawal queue
+  const {
+    data: withdrawalRequestsRaw,
+    refetch: refetchWithdrawalRequests,
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getUserWithdrawalRequests',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  })
+
   // Parse data
   const userStatus = useMemo(() => {
     if (!userStatusRaw) return undefined
@@ -229,6 +245,29 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       unlockTime: entry.unlockTime as bigint,
     }))
   }, [depositEntriesRaw])
+
+  const withdrawalRequests = useMemo(() => {
+    if (!withdrawalRequestsRaw) return { requestIds: [], requests: [] }
+    const [ids, reqs] = withdrawalRequestsRaw as unknown as readonly [readonly bigint[], readonly {
+      user: `0x${string}`
+      amount: bigint
+      amountFunded: bigint
+      liquiditySharesBurned: bigint
+      interestSharesBurned: bigint
+      requestTime: bigint
+    }[]]
+    return {
+      requestIds: [...ids],
+      requests: reqs.map((r): WithdrawalRequest => ({
+        user: r.user,
+        amount: r.amount,
+        amountFunded: r.amountFunded,
+        liquiditySharesBurned: r.liquiditySharesBurned,
+        interestSharesBurned: r.interestSharesBurned,
+        requestTime: r.requestTime,
+      })),
+    }
+  }, [withdrawalRequestsRaw])
 
   const hasPosition = useMemo(() => {
     if (!userStatus) return false
@@ -266,8 +305,9 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       refetchPoolStatus(),
       refetchDepositEntries(),
       refetchLiquidityStatus(),
+      refetchWithdrawalRequests(),
     ])
-  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchLiquidityStatus])
+  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchLiquidityStatus, refetchWithdrawalRequests])
 
   return {
     userStatus,
@@ -284,6 +324,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     userTokenBalance: userTokenBalance as bigint | undefined,
     currentAllowance: currentAllowance as bigint | undefined,
     lockDuration,
+    withdrawalRequests,
     liquidityPoolContractAddress,
     isLoading,
     error,
