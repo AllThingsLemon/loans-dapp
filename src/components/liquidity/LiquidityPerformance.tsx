@@ -120,7 +120,6 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
   const [transferEarningsModal, setTransferEarningsModal] = useState<TransferModal>(emptyModal)
   const [transferSharesModal, setTransferSharesModal] = useState<TransferModal>(emptyModal)
-  const [transferNonEarningSharesModal, setTransferNonEarningSharesModal] = useState<TransferModal>(emptyModal)
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; title: string; description: string; actionName: string; action: () => Promise<unknown>; successMsg: string }>({ open: false, title: '', description: '', actionName: '', action: async () => {}, successMsg: '' })
 
   const {
@@ -140,7 +139,6 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     pullEarnings,
     transferPendingEarnings,
     transferShares,
-    transferNonEarningShares,
     refetch,
   } = liquidityPool
 
@@ -295,9 +293,6 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               <><ArrowDownToLine className='h-4 w-4 mr-2' /> Distribute Earnings</>
             )}
           </Button>
-          <p className='text-xs text-muted-foreground mt-1'>
-            Pulls earned interest from the Loans contract into the pool for all depositors.
-          </p>
         </div>
       )}
     </div>
@@ -372,38 +367,17 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               value={userStatus ? formatCurrency(userStatus.liquidityShares - userStatus.interestShares, decimals, symbol) : '0'}
             />
           </div>
-          {userStatus && userStatus.interestShares > 0n && (
-            <div className='flex items-start gap-4 pt-2'>
+          {userStatus && userStatus.liquidityShares > 0n && (
+            <div className='pt-2'>
               <Button
                 size='sm'
                 variant='outline'
-                className='shrink-0'
                 onClick={() => setTransferSharesModal({ open: true, address: '', amount: '' })}
                 disabled={isProcessing !== null}
               >
                 <Send className='h-4 w-4 mr-2' />
                 Transfer Shares
               </Button>
-              <p className='text-xs text-muted-foreground pt-1'>
-                Transfer earning shares to another liquidity provider. The recipient must already have a position.
-              </p>
-            </div>
-          )}
-          {userStatus && (userStatus.liquidityShares - userStatus.interestShares) > 0n && (
-            <div className='flex items-start gap-4 pt-2'>
-              <Button
-                size='sm'
-                variant='outline'
-                className='shrink-0'
-                onClick={() => setTransferNonEarningSharesModal({ open: true, address: '', amount: '' })}
-                disabled={isProcessing !== null}
-              >
-                <Send className='h-4 w-4 mr-2' />
-                Transfer Non-Earning Shares
-              </Button>
-              <p className='text-xs text-muted-foreground pt-1'>
-                Transfer non-earning shares to another liquidity provider. The recipient must already have a position.
-              </p>
             </div>
           )}
         </div>
@@ -433,86 +407,58 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             )}
           </div>
           {userStatus && userStatus.pendingEarnings > 0n && (
-            <div className='space-y-3 pt-2'>
-              {earningsFeePct && (
-                <p className='text-xs text-muted-foreground'>
-                  A {earningsFeePct}% earnings fee applies on claims. You will receive{' '}
-                  {formatCurrency(
-                    userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig!.feeBps) / 10000n,
-                    decimals,
-                    symbol
-                  )}.
-                </p>
-              )}
-              <div className='flex items-start gap-4'>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  className='shrink-0'
-                  onClick={() =>
-                    setConfirmModal({
-                      open: true,
-                      title: 'Claim Earnings',
-                      description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
-                      actionName: 'Claim',
-                      action: () => claimEarnings(),
-                      successMsg: 'Earnings claimed successfully.',
-                    })
-                  }
-                  disabled={isProcessing !== null}
-                >
-                  {isProcessing === 'Claim' ? (
-                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Claiming...</>
-                  ) : (
-                    <><Wallet className='h-4 w-4 mr-2' /> Claim Earnings</>
-                  )}
-                </Button>
-                <p className='text-xs text-muted-foreground pt-1'>
-                  Your earnings will be transferred directly to your wallet.
-                </p>
-              </div>
-              <div className='flex items-start gap-4'>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  className='shrink-0'
-                  onClick={() =>
-                    setConfirmModal({
-                      open: true,
-                      title: 'Compound Earnings',
-                      description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be deposited back into the pool as new shares. The compounded amount will be subject to a new ${lockDurationLabel} lock period.`,
-                      actionName: 'Compound',
-                      action: () => compoundEarnings(lockDuration ?? 0n),
-                      successMsg: 'Earnings compounded into new shares.',
-                    })
-                  }
-                  disabled={isProcessing !== null}
-                >
-                  {isProcessing === 'Compound' ? (
-                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding...</>
-                  ) : (
-                    <><Repeat2 className='h-4 w-4 mr-2' /> Compound Earnings</>
-                  )}
-                </Button>
-                <p className='text-xs text-muted-foreground pt-1'>
-                  Deposit your earnings into new shares. Compounded amount is subject to a new {lockDurationLabel} lock.
-                </p>
-              </div>
-              <div className='flex items-start gap-4'>
-                <Button
-                  size='sm'
-                  variant='outline'
-                  className='shrink-0'
-                  onClick={() => setTransferEarningsModal({ open: true, address: '', amount: '' })}
-                  disabled={isProcessing !== null}
-                >
-                  <Send className='h-4 w-4 mr-2' />
-                  Transfer Earnings
-                </Button>
-                <p className='text-xs text-muted-foreground pt-1'>
-                  Transfer a portion of your pending earnings to another liquidity provider.
-                </p>
-              </div>
+            <div className='flex gap-2 pt-2'>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() =>
+                  setConfirmModal({
+                    open: true,
+                    title: 'Claim Earnings',
+                    description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
+                    actionName: 'Claim',
+                    action: () => claimEarnings(),
+                    successMsg: 'Earnings claimed successfully.',
+                  })
+                }
+                disabled={isProcessing !== null}
+              >
+                {isProcessing === 'Claim' ? (
+                  <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Claiming...</>
+                ) : (
+                  <><Wallet className='h-4 w-4 mr-2' /> Claim</>
+                )}
+              </Button>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() =>
+                  setConfirmModal({
+                    open: true,
+                    title: 'Compound Earnings',
+                    description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be deposited back into the pool as new shares. The compounded amount will be subject to a new ${lockDurationLabel} lock period.`,
+                    actionName: 'Compound',
+                    action: () => compoundEarnings(lockDuration ?? 0n),
+                    successMsg: 'Earnings compounded into new shares.',
+                  })
+                }
+                disabled={isProcessing !== null}
+              >
+                {isProcessing === 'Compound' ? (
+                  <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding...</>
+                ) : (
+                  <><Repeat2 className='h-4 w-4 mr-2' /> Compound</>
+                )}
+              </Button>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() => setTransferEarningsModal({ open: true, address: '', amount: '' })}
+                disabled={isProcessing !== null}
+              >
+                <Send className='h-4 w-4 mr-2' />
+                Transfer
+              </Button>
             </div>
           )}
         </div>
@@ -790,96 +736,6 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
       </DialogContent>
     </Dialog>
 
-    {/* Transfer Non-Earning Shares Modal */}
-    <Dialog
-      open={transferNonEarningSharesModal.open}
-      onOpenChange={(open) => !open && setTransferNonEarningSharesModal(emptyModal)}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Transfer Non-Earning Shares</DialogTitle>
-        </DialogHeader>
-        <div className='space-y-4 py-2'>
-          <p className='text-sm text-muted-foreground'>
-            The recipient must already be a liquidity provider with an active position in the pool.
-          </p>
-          <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Recipient Wallet Address</label>
-            <Input
-              placeholder='0x...'
-              value={transferNonEarningSharesModal.address}
-              onChange={(e) =>
-                setTransferNonEarningSharesModal((m) => ({ ...m, address: e.target.value }))
-              }
-            />
-          </div>
-          <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Share Amount ({symbol})</label>
-            <div className='flex gap-2'>
-              <Input
-                type='number'
-                placeholder='0.00'
-                min='0'
-                value={transferNonEarningSharesModal.amount}
-                onChange={(e) =>
-                  setTransferNonEarningSharesModal((m) => ({ ...m, amount: e.target.value }))
-                }
-              />
-              {userStatus && (
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className='shrink-0'
-                  onClick={() =>
-                    setTransferNonEarningSharesModal((m) => ({
-                      ...m,
-                      amount: formatTokenAmount(userStatus.liquidityShares - userStatus.interestShares, decimals),
-                    }))
-                  }
-                >
-                  Max
-                </Button>
-              )}
-            </div>
-            {userStatus && (
-              <p className='text-xs text-muted-foreground'>
-                Available: {formatCurrency(userStatus.liquidityShares - userStatus.interestShares, decimals, symbol)}
-              </p>
-            )}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => setTransferNonEarningSharesModal(emptyModal)}>
-            Cancel
-          </Button>
-          <Button
-            disabled={
-              !isValidAddress(transferNonEarningSharesModal.address) ||
-              !transferNonEarningSharesModal.amount ||
-              parseFloat(transferNonEarningSharesModal.amount) <= 0 ||
-              isProcessing !== null
-            }
-            onClick={async () => {
-              const to = transferNonEarningSharesModal.address as `0x${string}`
-              const parsed = parseTokenAmount(transferNonEarningSharesModal.amount, decimals)
-              setTransferNonEarningSharesModal(emptyModal)
-              await handleAction(
-                'TransferNonEarningShares',
-                () => transferNonEarningShares(to, parsed),
-                'Non-earning shares transferred successfully.'
-              )
-            }}
-          >
-            {isProcessing === 'TransferNonEarningShares' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
-            ) : (
-              'Confirm Transfer'
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   </>
   )
 }
