@@ -9,8 +9,7 @@ import {
   useWriteLiquidityPoolCompoundEarnings,
   useWriteLiquidityPoolRelockLiquidity,
   useWriteLiquidityPoolPullEarnings,
-  useWriteLiquidityPoolTransferPendingEarnings,
-  useWriteLiquidityPoolTransferShares,
+  useWriteLiquidityPoolTransferAccount,
   useWriteLiquidityPoolClaimWithdrawal,
   useWriteLiquidityPoolFundWithdrawalQueue,
   useWriteLiquidityPoolProcessSwaps,
@@ -30,8 +29,7 @@ export interface UseLiquidityOperationsReturn {
   compoundEarnings: (lockDuration: bigint) => Promise<`0x${string}` | undefined>
   relockLiquidity: (amount: bigint, lockDuration: bigint) => Promise<`0x${string}` | undefined>
   pullEarnings: () => Promise<`0x${string}` | undefined>
-  transferPendingEarnings: (to: `0x${string}`, amount: bigint) => Promise<`0x${string}` | undefined>
-  transferShares: (to: `0x${string}`, shareAmount: bigint) => Promise<`0x${string}` | undefined>
+  transferAccount: (to: `0x${string}`) => Promise<`0x${string}` | undefined>
   claimWithdrawal: (requestId: bigint) => Promise<`0x${string}` | undefined>
   fundWithdrawalQueue: () => Promise<`0x${string}` | undefined>
   processSwaps: (token: `0x${string}`) => Promise<`0x${string}` | undefined>
@@ -81,11 +79,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { writeContractAsync: pullEarningsFn, isPending: isPulling } =
     useWriteLiquidityPoolPullEarnings({ mutation: { retry: false } })
 
-  const { writeContractAsync: transferPendingEarningsFn, isPending: isTransferringEarnings } =
-    useWriteLiquidityPoolTransferPendingEarnings({ mutation: { retry: false } })
-
-  const { writeContractAsync: transferSharesFn, isPending: isTransferringShares } =
-    useWriteLiquidityPoolTransferShares({ mutation: { retry: false } })
+  const { writeContractAsync: transferAccountFn, isPending: isTransferringAccount } =
+    useWriteLiquidityPoolTransferAccount({ mutation: { retry: false } })
 
   const { writeContractAsync: claimWithdrawalFn, isPending: isClaimingWithdrawal } =
     useWriteLiquidityPoolClaimWithdrawal({ mutation: { retry: false } })
@@ -248,24 +243,14 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     return txHash
   }, [pullEarningsFn, waitAndInvalidate])
 
-  const transferPendingEarnings = useCallback(
-    async (to: `0x${string}`, amount: bigint) => {
+  const transferAccount = useCallback(
+    async (to: `0x${string}`) => {
       if (!address) throw new Error('Wallet not connected')
-      const txHash = await transferPendingEarningsFn({ args: [to, amount] })
+      const txHash = await transferAccountFn({ args: [to] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, transferPendingEarningsFn, waitAndInvalidate]
-  )
-
-  const transferShares = useCallback(
-    async (to: `0x${string}`, shareAmount: bigint) => {
-      if (!address) throw new Error('Wallet not connected')
-      const txHash = await transferSharesFn({ args: [to, shareAmount] })
-      await waitAndInvalidate(txHash)
-      return txHash
-    },
-    [address, transferSharesFn, waitAndInvalidate]
+    [address, transferAccountFn, waitAndInvalidate]
   )
 
   const claimWithdrawal = useCallback(
@@ -322,8 +307,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isCompounding ||
     isRelocking ||
     isPulling ||
-    isTransferringEarnings ||
-    isTransferringShares ||
+    isTransferringAccount ||
     isClaimingWithdrawal ||
     isFundingQueue ||
     isProcessingSwaps ||
@@ -336,8 +320,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     compoundEarnings,
     relockLiquidity,
     pullEarnings,
-    transferPendingEarnings,
-    transferShares,
+    transferAccount,
     claimWithdrawal,
     fundWithdrawalQueue,
     processSwaps,

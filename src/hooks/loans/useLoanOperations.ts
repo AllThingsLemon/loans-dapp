@@ -12,6 +12,7 @@ import {
   useReadLoansLoanPaymentFeeUsd,
   useReadLoansGetNativeFee,
   loansAddress,
+  loansAbi,
   useWriteLoansWithdrawCollateral,
   useWriteLoansExtendLoan,
   readLoansLoanStatus
@@ -316,6 +317,33 @@ export const useLoanOperations = (
     ]
   )
 
+  const waitAndInvalidate = useCallback(
+    async (txHash: `0x${string}`) => {
+      if (publicClient) {
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        if (receipt.status === 'reverted') {
+          let revertError: unknown = null
+          try {
+            const tx = await publicClient.getTransaction({ hash: txHash })
+            await publicClient.call({
+              to: tx.to ?? undefined,
+              data: tx.input,
+              value: tx.value,
+              account: tx.from,
+              gas: tx.gas,
+              blockNumber: receipt.blockNumber > 0n ? receipt.blockNumber - 1n : 0n,
+            })
+          } catch (simErr: unknown) {
+            revertError = simErr
+          }
+          throw revertError ?? new Error('Transaction was reverted on-chain. The contract rejected the operation.')
+        }
+      }
+      await queryClient.invalidateQueries()
+    },
+    [publicClient, queryClient]
+  )
+
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
       if (!address) throw new Error('Wallet not connected')
@@ -350,54 +378,29 @@ export const useLoanOperations = (
         throw new Error(`Insufficient LMLN allowance. You need to approve ${requiredFormatted} LMLN (current allowance: ${currentFormatted} LMLN).`)
       }
 
+      const nativeFee = initiateNativeFee ?? 0n
+      const totalValue = collateralAmount + nativeFee
+
+      // Pre-simulate using eth_call (not eth_estimateGas) — viem decodes custom errors properly.
+      // This surfaces the real revert reason before the wallet prompt appears.
+      if (publicClient && loansContractAddress) {
+        await publicClient.simulateContract({
+          address: loansContractAddress,
+          abi: loansAbi,
+          functionName: 'initiateLoan',
+          args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+          value: totalValue,
+          account: address,
+        })
+      }
+
       // Execute the transaction — value includes collateral + native protocol fee
       const txHash = await initiateLoan({
         args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
-        value: collateralAmount + (initiateNativeFee ?? 0n)
+        value: totalValue,
       })
 
-      // Wait for transaction to be confirmed on blockchain
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
-
-      // If loan creation was successful, invalidate queries
-      if (txHash && address) {
-        // Comprehensive invalidation to ensure UI updates immediately
-        await Promise.all([
-          // Invalidate wagmi-generated queries for account loan IDs
-          queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey
-              return (
-                Array.isArray(key) &&
-                key.some(
-                  (part) =>
-                    typeof part === 'object' &&
-                    part !== null &&
-                    'args' in part &&
-                    Array.isArray(part.args) &&
-                    part.args[0] === address
-                )
-              )
-            }
-          }),
-
-          // Invalidate custom loan queries
-          queryClient.invalidateQueries({
-            queryKey: loanKeys.all
-          }),
-
-          // Invalidate individual loan detail queries
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) && query.queryKey[0] === 'loan'
-          }),
-
-          // Broad invalidation as fallback
-          queryClient.invalidateQueries()
-        ])
-      }
+      await waitAndInvalidate(txHash)
 
       return txHash
     },
@@ -408,12 +411,10 @@ export const useLoanOperations = (
       originationFee,
       currentLmlnAllowance,
       availableLiquidity,
-      feeTokenAddress,
       loansContractAddress,
-      approveToken,
       publicClient,
-      refetchLmlnAllowance,
-      queryClient
+      initiateNativeFee,
+      waitAndInvalidate,
     ]
   )
 

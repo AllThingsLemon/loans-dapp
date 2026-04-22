@@ -4,7 +4,6 @@ import { erc20Abi, parseAbiItem } from 'viem'
 import { useQuery } from '@tanstack/react-query'
 import {
   useReadLiquidityPoolStableToken,
-  useReadLiquidityPoolLockDuration,
   liquidityPoolAddress,
   liquidityPoolAbi,
   useReadLoansGetLiquidityStatus,
@@ -56,14 +55,14 @@ export interface UseLiquidityDataReturn {
   userTokenBalance: bigint | undefined
   currentAllowance: bigint | undefined
 
-  // Lock duration (seconds)
-  lockDuration: bigint | undefined
-
   // Withdrawal queue
   withdrawalRequests: { requestIds: bigint[]; requests: WithdrawalRequest[] }
 
   // Map of "token:unlockTime:lockDuration" → original stableTokenValue at deposit time
   originalDepositValues: Map<string, bigint>
+
+  // Map of token address (lowercase) → { symbol, decimals }
+  tokenMetadata: Map<string, { symbol: string; decimals: number }>
 
   // Contract address
   liquidityPoolContractAddress: `0x${string}` | undefined
@@ -212,11 +211,6 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     isLoading: cumulativeLoanLoading,
   } = useReadLoansCumulativeLoanValue()
 
-  const {
-    data: lockDuration,
-    isLoading: lockDurationLoading,
-  } = useReadLiquidityPoolLockDuration()
-
   // Withdrawal queue
   const {
     data: withdrawalRequestsRaw,
@@ -354,6 +348,34 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     }
   }, [withdrawalRequestsRaw])
 
+  // Fetch symbol + decimals for each unique token address in deposit entries
+  const uniqueTokenAddresses = useMemo(() => {
+    const seen = new Set<string>()
+    for (const entry of depositEntries) {
+      seen.add(entry.token.toLowerCase())
+    }
+    return [...seen] as `0x${string}`[]
+  }, [depositEntries])
+
+  const { data: tokenMetadata = new Map() } = useQuery({
+    queryKey: ['tokenMetadata', uniqueTokenAddresses],
+    queryFn: async (): Promise<Map<string, { symbol: string; decimals: number }>> => {
+      if (!publicClient || uniqueTokenAddresses.length === 0) return new Map()
+      const results = await Promise.all(
+        uniqueTokenAddresses.map(async (token) => {
+          const [symbol, decimals] = await Promise.all([
+            publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'symbol' }),
+            publicClient.readContract({ address: token, abi: erc20Abi, functionName: 'decimals' }),
+          ])
+          return [token, { symbol: symbol as string, decimals: Number(decimals) }] as const
+        })
+      )
+      return new Map(results)
+    },
+    enabled: !!publicClient && uniqueTokenAddresses.length > 0,
+    staleTime: Infinity,
+  })
+
   const hasPosition = useMemo(() => {
     if (!userStatus) return false
     return userStatus.totalPrincipal > 0n || userStatus.liquidityShares > 0n
@@ -369,8 +391,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     feeReceiverLoading ||
     liquidityStatusLoading ||
     totalLoansLoading ||
-    cumulativeLoanLoading ||
-    lockDurationLoading
+    cumulativeLoanLoading
 
   const error =
     stableTokenError ||
@@ -412,9 +433,9 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     stableTokenDecimals: stableTokenDecimals !== undefined ? Number(stableTokenDecimals) : undefined,
     userTokenBalance: userTokenBalance as bigint | undefined,
     currentAllowance: currentAllowance as bigint | undefined,
-    lockDuration,
     withdrawalRequests,
     originalDepositValues,
+    tokenMetadata,
     liquidityPoolContractAddress,
     isLoading,
     error,

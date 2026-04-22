@@ -1,5 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useReadContract } from 'wagmi'
+import { liquidityPoolAbi } from '@/src/generated'
 import {
   Card,
   CardContent,
@@ -10,6 +12,7 @@ import {
 import { Button } from '@/src/components/ui/button'
 import { Badge } from '@/src/components/ui/badge'
 import { Input } from '@/src/components/ui/input'
+import { Checkbox } from '@/src/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -18,7 +21,7 @@ import {
   DialogFooter,
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
-import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
+import { formatTokenAmount } from '@/src/utils/decimals'
 import {
   BarChart3,
   TrendingUp,
@@ -108,13 +111,13 @@ function formatDuration(seconds: bigint): string {
   return minutes === 1 ? '1 minute' : `${minutes}-minute`
 }
 
-interface TransferModal {
+interface TransferAccountModal {
   open: boolean
   address: string
-  amount: string
+  confirmed: boolean
 }
 
-const emptyModal: TransferModal = { open: false, address: '', amount: '' }
+const emptyAccountModal: TransferAccountModal = { open: false, address: '', confirmed: false }
 
 function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr)
@@ -123,8 +126,8 @@ function isValidAddress(addr: string): boolean {
 export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProps) {
   const { toast } = useToast()
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
-  const [transferEarningsModal, setTransferEarningsModal] = useState<TransferModal>(emptyModal)
-  const [transferSharesModal, setTransferSharesModal] = useState<TransferModal>(emptyModal)
+  const [transferAccountModal, setTransferAccountModal] = useState<TransferAccountModal>(emptyAccountModal)
+  const [compoundModal, setCompoundModal] = useState<{ open: boolean; selectedTierIndex: number | null }>({ open: false, selectedTierIndex: null })
   const [confirmModal, setConfirmModal] = useState<{ open: boolean; title: string; description: string; actionName: string; action: () => Promise<unknown>; successMsg: string }>({ open: false, title: '', description: '', actionName: '', action: async () => {}, successMsg: '' })
 
   const {
@@ -138,19 +141,36 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     cumulativeLoanValue,
     stableTokenSymbol,
     stableTokenDecimals,
-    lockDuration,
+    stableTokenAddress,
+    liquidityPoolContractAddress,
     originalDepositValues,
+    tokenMetadata,
     claimEarnings,
     compoundEarnings,
     pullEarnings,
-    transferPendingEarnings,
-    transferShares,
+    transferAccount,
     refetch,
   } = liquidityPool
 
   const decimals = stableTokenDecimals ?? 18
   const symbol = stableTokenSymbol ?? 'Token'
-  const lockDurationLabel = lockDuration ? formatDuration(lockDuration) : 'lock'
+
+  // Fetch lock tiers for stableToken so user can pick one when compounding
+  const { data: stableLockTiersRaw } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getAssetLockTiers',
+    args: stableTokenAddress ? [stableTokenAddress] : undefined,
+    query: { enabled: !!stableTokenAddress && !!liquidityPoolContractAddress },
+  })
+
+  const stableLockTiers = useMemo(() => {
+    if (!stableLockTiersRaw) return []
+    return (stableLockTiersRaw as readonly { duration: bigint; interestMultiplier: bigint; isEnabled: boolean }[])
+      .filter((t) => t.isEnabled)
+      .map((t) => ({ duration: t.duration, interestMultiplier: t.interestMultiplier }))
+      .sort((a, b) => (a.duration < b.duration ? -1 : a.duration > b.duration ? 1 : 0))
+  }, [stableLockTiersRaw])
 
   // Computed values
   const poolOwnership = useMemo(() => {
@@ -198,7 +218,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   }, [poolStatus])
 
   const sortedDepositEntries = useMemo(() => {
-    return [...depositEntries].sort((a, b) => Number(a.unlockTime - b.unlockTime))
+    return [...depositEntries].sort((a, b) => Number(a.lockDuration - b.lockDuration))
   }, [depositEntries])
 
   // Action handlers
@@ -250,10 +270,10 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           label='Pool Protected Shares'
           value={poolStatus ? formatShares(poolStatus.totalLiquidityShares - poolStatus.totalInterestShares, decimals) : 'Loading...'}
         />
-        {liquidityStatus && liquidityStatus.principalForfeited > 0n && (
+        {liquidityStatus && liquidityStatus.principalDeficitAmount > 0n && (
           <StatItem
             label='Defaulted Principal'
-            value={formatCurrency(liquidityStatus.principalForfeited, decimals, symbol)}
+            value={formatCurrency(liquidityStatus.principalDeficitAmount, decimals, symbol)}
             warning
           />
         )}
@@ -387,11 +407,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               <Button
                 size='sm'
                 variant='outline'
-                onClick={() => setTransferSharesModal({ open: true, address: '', amount: '' })}
+                onClick={() => setTransferAccountModal({ open: true, address: '', confirmed: false })}
                 disabled={isProcessing !== null}
               >
                 <Send className='h-4 w-4 mr-2' />
-                Transfer Shares
+                Transfer Account
               </Button>
             </div>
           )}
@@ -447,16 +467,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               <Button
                 size='sm'
                 variant='outline'
-                onClick={() =>
-                  setConfirmModal({
-                    open: true,
-                    title: 'Compound Earnings',
-                    description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be deposited back into the pool as new shares. The compounded amount will be subject to a new ${lockDurationLabel} lock period.`,
-                    actionName: 'Compound',
-                    action: () => compoundEarnings(lockDuration ?? 0n),
-                    successMsg: 'Earnings compounded into new shares.',
-                  })
-                }
+                onClick={() => setCompoundModal({ open: true, selectedTierIndex: null })}
                 disabled={isProcessing !== null}
               >
                 {isProcessing === 'Compound' ? (
@@ -464,15 +475,6 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                 ) : (
                   <><Repeat2 className='h-4 w-4 mr-2' /> Compound</>
                 )}
-              </Button>
-              <Button
-                size='sm'
-                variant='outline'
-                onClick={() => setTransferEarningsModal({ open: true, address: '', amount: '' })}
-                disabled={isProcessing !== null}
-              >
-                <Send className='h-4 w-4 mr-2' />
-                Transfer
               </Button>
             </div>
           )}
@@ -497,8 +499,9 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           </h3>
           {sortedDepositEntries.length > 0 ? (
             <div className='space-y-2'>
-              <div className='grid grid-cols-4 text-xs font-medium text-muted-foreground pb-1 border-b'>
+              <div className='grid grid-cols-5 text-xs font-medium text-muted-foreground pb-1 border-b'>
                 <span>Deposit Amount</span>
+                <span>Token Amount</span>
                 <span>Lock Duration</span>
                 <span>Unlock Date</span>
                 <span>Status</span>
@@ -508,10 +511,15 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                 const isUnlocked = entry.unlockTime <= now
                 const originalKey = `${entry.token.toLowerCase()}:${entry.unlockTime}:${entry.lockDuration}`
                 const originalValue = originalDepositValues.get(originalKey) ?? entry.stableTokenValue
+                const meta = tokenMetadata.get(entry.token.toLowerCase())
+                const tokenAmountFormatted = meta
+                  ? formatCurrency(entry.tokenAmount, meta.decimals, meta.symbol)
+                  : '—'
 
                 return (
-                  <div key={index} className='grid grid-cols-4 items-center text-sm py-2 border-b border-border/50'>
+                  <div key={index} className='grid grid-cols-5 items-center text-sm py-2 border-b border-border/50'>
                     <span>{formatCurrency(originalValue, decimals, symbol)}</span>
+                    <span>{tokenAmountFormatted}</span>
                     <span>{formatDuration(entry.lockDuration)}</span>
                     <span>{formatDate(entry.unlockTime)}</span>
                     <div>
@@ -537,179 +545,131 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
       </CardContent>
     </Card>
 
-    {/* Transfer Pending Earnings Modal */}
+    {/* Compound Earnings Modal */}
     <Dialog
-      open={transferEarningsModal.open}
-      onOpenChange={(open) => !open && setTransferEarningsModal(emptyModal)}
+      open={compoundModal.open}
+      onOpenChange={(open) => !open && setCompoundModal({ open: false, selectedTierIndex: null })}
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Transfer Pending Earnings</DialogTitle>
+          <DialogTitle>Compound Earnings</DialogTitle>
         </DialogHeader>
         <div className='space-y-4 py-2'>
-          <p className='text-sm text-muted-foreground'>
-            The recipient must already be a liquidity provider with an active position in the pool.
-          </p>
-          <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Recipient Wallet Address</label>
-            <Input
-              placeholder='0x...'
-              value={transferEarningsModal.address}
-              onChange={(e) =>
-                setTransferEarningsModal((m) => ({ ...m, address: e.target.value }))
-              }
-            />
-          </div>
-          <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Amount ({symbol})</label>
-            <div className='flex gap-2'>
-              <Input
-                type='number'
-                placeholder='0.00'
-                min='0'
-                value={transferEarningsModal.amount}
-                onChange={(e) =>
-                  setTransferEarningsModal((m) => ({ ...m, amount: e.target.value }))
-                }
-              />
-              {userStatus && (
-                <Button
+          {userStatus && (
+            <p className='text-sm text-muted-foreground'>
+              Your pending earnings of {formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be deposited back into the pool as new shares. Select a lock duration below.
+            </p>
+          )}
+          {stableLockTiers.length === 0 ? (
+            <p className='text-sm text-muted-foreground'>No lock tiers available.</p>
+          ) : (
+            <div className='space-y-2'>
+              {stableLockTiers.map((tier, i) => (
+                <button
+                  key={i}
                   type='button'
-                  variant='outline'
-                  size='sm'
-                  className='shrink-0'
-                  onClick={() =>
-                    setTransferEarningsModal((m) => ({
-                      ...m,
-                      amount: formatTokenAmount(userStatus.pendingEarnings, decimals),
-                    }))
-                  }
+                  onClick={() => setCompoundModal((m) => ({ ...m, selectedTierIndex: i }))}
+                  className={`w-full text-left rounded-md border px-4 py-3 text-sm transition-colors ${
+                    compoundModal.selectedTierIndex === i
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50'
+                  }`}
                 >
-                  Max
-                </Button>
-              )}
+                  <span className='font-medium'>{formatDuration(tier.duration)} lock</span>
+                  <span className='text-muted-foreground ml-2'>
+                    — {(Number(tier.interestMultiplier) / 100).toFixed(2)}× interest multiplier
+                  </span>
+                </button>
+              ))}
             </div>
-            {userStatus && (
-              <p className='text-xs text-muted-foreground'>
-                Available: {formatCurrency(userStatus.pendingEarnings, decimals, symbol)}
-              </p>
-            )}
-          </div>
+          )}
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setTransferEarningsModal(emptyModal)}>
+          <Button variant='outline' onClick={() => setCompoundModal({ open: false, selectedTierIndex: null })}>
             Cancel
           </Button>
           <Button
-            disabled={
-              !isValidAddress(transferEarningsModal.address) ||
-              !transferEarningsModal.amount ||
-              parseFloat(transferEarningsModal.amount) <= 0 ||
-              isProcessing !== null
-            }
+            disabled={compoundModal.selectedTierIndex === null || isProcessing !== null}
             onClick={async () => {
-              const to = transferEarningsModal.address as `0x${string}`
-              const parsed = parseTokenAmount(transferEarningsModal.amount, decimals)
-              setTransferEarningsModal(emptyModal)
+              const tier = stableLockTiers[compoundModal.selectedTierIndex!]
+              setCompoundModal({ open: false, selectedTierIndex: null })
               await handleAction(
-                'TransferEarnings',
-                () => transferPendingEarnings(to, parsed),
-                'Earnings transferred successfully.'
+                'Compound',
+                () => compoundEarnings(tier.duration),
+                'Earnings compounded into new shares.'
               )
             }}
           >
-            {isProcessing === 'TransferEarnings' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
+            {isProcessing === 'Compound' ? (
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding...</>
             ) : (
-              'Confirm Transfer'
+              'Confirm'
             )}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
 
-    {/* Transfer Shares Modal */}
+    {/* Transfer Account Modal */}
     <Dialog
-      open={transferSharesModal.open}
-      onOpenChange={(open) => !open && setTransferSharesModal(emptyModal)}
+      open={transferAccountModal.open}
+      onOpenChange={(open) => !open && setTransferAccountModal(emptyAccountModal)}
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Transfer Shares</DialogTitle>
+          <DialogTitle>Transfer Account</DialogTitle>
         </DialogHeader>
         <div className='space-y-4 py-2'>
           <p className='text-sm text-muted-foreground'>
-            The recipient must already be a liquidity provider with an active position in the pool.
+            All of your liquidity will be transferred to the entered wallet, including all deposits, shares, and any pending earnings. This action cannot be undone.
           </p>
           <div className='space-y-1.5'>
             <label className='text-sm font-medium'>Recipient Wallet Address</label>
             <Input
               placeholder='0x...'
-              value={transferSharesModal.address}
+              value={transferAccountModal.address}
               onChange={(e) =>
-                setTransferSharesModal((m) => ({ ...m, address: e.target.value }))
+                setTransferAccountModal((m) => ({ ...m, address: e.target.value }))
               }
             />
           </div>
-          <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Share Amount</label>
-            <div className='flex gap-2'>
-              <Input
-                type='number'
-                placeholder='0.00'
-                min='0'
-                value={transferSharesModal.amount}
-                onChange={(e) =>
-                  setTransferSharesModal((m) => ({ ...m, amount: e.target.value }))
-                }
-              />
-              {userStatus && (
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className='shrink-0'
-                  onClick={() =>
-                    setTransferSharesModal((m) => ({
-                      ...m,
-                      amount: formatTokenAmount(userStatus.interestShares, decimals),
-                    }))
-                  }
-                >
-                  Max
-                </Button>
-              )}
-            </div>
-            {userStatus && (
-              <p className='text-xs text-muted-foreground'>
-                Available: {formatShares(userStatus.interestShares, decimals)}
-              </p>
-            )}
+          <div className='flex items-start gap-3 pt-1'>
+            <Checkbox
+              id='transfer-account-confirm'
+              checked={transferAccountModal.confirmed}
+              onCheckedChange={(checked) =>
+                setTransferAccountModal((m) => ({ ...m, confirmed: checked === true }))
+              }
+            />
+            <label
+              htmlFor='transfer-account-confirm'
+              className='text-sm leading-snug cursor-pointer'
+            >
+              I understand that all liquidity, shares, and pending earnings will be transferred to the entered wallet and this cannot be reversed.
+            </label>
           </div>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setTransferSharesModal(emptyModal)}>
+          <Button variant='outline' onClick={() => setTransferAccountModal(emptyAccountModal)}>
             Cancel
           </Button>
           <Button
             disabled={
-              !isValidAddress(transferSharesModal.address) ||
-              !transferSharesModal.amount ||
-              parseFloat(transferSharesModal.amount) <= 0 ||
+              !isValidAddress(transferAccountModal.address) ||
+              !transferAccountModal.confirmed ||
               isProcessing !== null
             }
             onClick={async () => {
-              const to = transferSharesModal.address as `0x${string}`
-              const parsed = parseTokenAmount(transferSharesModal.amount, decimals)
-              setTransferSharesModal(emptyModal)
+              const to = transferAccountModal.address as `0x${string}`
+              setTransferAccountModal(emptyAccountModal)
               await handleAction(
-                'TransferShares',
-                () => transferShares(to, parsed),
-                'Shares transferred successfully.'
+                'TransferAccount',
+                () => transferAccount(to),
+                'Account transferred successfully.'
               )
             }}
           >
-            {isProcessing === 'TransferShares' ? (
+            {isProcessing === 'TransferAccount' ? (
               <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
             ) : (
               'Confirm Transfer'

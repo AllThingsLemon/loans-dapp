@@ -19,18 +19,15 @@ export interface ContractError {
  */
 const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   // LiquidityPool
+  AccountEmpty: 'Your account has no liquidity to transfer.',
+  AccountNotEmpty: 'The recipient account must be empty before transferring.',
   AddressZero: 'Invalid address — zero address provided.',
   AssetNotSupported: 'This token is not supported for deposits.',
   BelowMinimumDeposit: 'Amount is below the minimum deposit requirement.',
-  CannotCancelFundedRequest: 'Cannot cancel a withdrawal that has already been funded.',
-  CannotTransferToSelf: 'Cannot transfer to your own address.',
   EarningsTooEarly: 'Earnings distribution is not available yet — please wait for the cooldown period.',
-  InsufficientEarnings: 'Insufficient earnings available for this action.',
   InsufficientNativeFee: 'Insufficient network fee — this operation requires a small TLEMX fee. Please try again.',
-  InsufficientShares: 'Insufficient shares for this operation.',
   InsufficientUnlocked: 'Insufficient unlocked liquidity — your deposit may still be in its lock period.',
   InvalidAmount: 'Invalid amount provided.',
-  InvalidBpsTotal: 'Invalid fee configuration (basis points total is wrong).',
   InvalidTierDuration: 'Invalid lock tier duration.',
   InvalidTierIndex: 'Invalid lock tier index.',
   InvalidTierMultiplier: 'Invalid interest multiplier for lock tier.',
@@ -38,9 +35,7 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   LockTierDisabled: 'The selected lock tier is currently disabled.',
   NativeFeeTransferFailed: 'Failed to transfer the required network fee.',
   NoEarningsAvailable: 'No earnings available to distribute.',
-  NoPriceAvailable: 'No price available for this token.',
   NotRequestOwner: 'You do not own this withdrawal request.',
-  PriceNotConfigured: 'Price feed not configured for this token.',
   PrincipalUnhealthy: 'Pool principal is unhealthy — the deficit must be resolved before this action is allowed.',
   Unauthorized: 'You are not authorized to perform this action.',
   UtilizationBelowThreshold: 'Pool utilization is below the required threshold.',
@@ -55,6 +50,9 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   InsufficientCollateral: 'Insufficient collateral for this loan.',
   InsufficientLiquidity: 'Insufficient liquidity in the pool.',
   PaymentTooLow: 'Payment amount is too low.',
+  // PriceDataFeed
+  PriceStale: 'Price data is stale — the LMLN price feed needs to be updated before this operation can proceed.',
+  TokenNotSupported: 'This token is not supported by the price feed.',
   // DefaultLiquidator
   BufferTooHigh: 'Liquidation buffer is set too high.',
   EmptySlot: 'Swap slot is empty.',
@@ -65,6 +63,22 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   SlotBusy: 'Swap slot is already in use.',
   TooSoon: 'Cannot create a new swap yet — please wait for the creation interval.',
   TransferFailed: 'Token transfer failed.',
+}
+
+/**
+ * Map of 4-byte error selectors to error names.
+ * Used when viem cannot decode the error because it's from a contract not in the call's ABI
+ * (e.g. PriceDataFeed errors surfacing through Loans).
+ */
+const ERROR_SELECTOR_MAP: Record<string, string> = {
+  '0xf71e7ad5': 'PriceStale',
+  '0x06439c6b': 'TokenNotSupported',
+  '0x2a1a8a3d': 'InsufficientHistoryData',
+  '0xea70e3dd': 'InvalidHistoricalData',
+  '0xda24832a': 'InvalidPriceData',
+  '0x8e047e66': 'PriceDeviationTooHigh',
+  '0xd159c917': 'SeedingPeriodEnded',
+  '0x147e7c67': 'UpdateTooFrequent',
 }
 
 /**
@@ -171,7 +185,19 @@ export const extractErrorMessage = (error: ContractError): string => {
     return CONTRACT_ERROR_MESSAGES[errorNameInText]!
   }
 
-  // 3. Gas estimation / simulation errors — try to extract a revert reason string
+  // 3. Unknown selector — viem couldn't decode because the error is from a sub-contract
+  //    not in the call's ABI (e.g. PriceDataFeed errors bubbling through Loans).
+  const selectorMatch = allText.match(/reverted with the following signature:\s*(0x[0-9a-fA-F]{8})/)
+  if (selectorMatch) {
+    const selector = selectorMatch[1].toLowerCase()
+    const errorName = ERROR_SELECTOR_MAP[selector]
+    if (errorName) {
+      const friendly = CONTRACT_ERROR_MESSAGES[errorName]
+      return friendly ?? `Contract error: ${errorName}`
+    }
+  }
+
+  // 4. Gas estimation / simulation errors — try to extract a revert reason string
   if (isGasEstimationError(error)) {
     const revertMatch = allText.match(/reverted with the following reason:\s*(.+?)(?:\n|$)/)
     if (revertMatch && !isGasCapMessage(revertMatch[1].trim())) {
@@ -188,7 +214,7 @@ export const extractErrorMessage = (error: ContractError): string => {
     return error.data.message
   }
 
-  // 5. Fall back to shortMessage (clean, no raw call args) or a generic message.
+  // 6. Fall back to shortMessage (clean, no raw call args) or a generic message.
   const shortMsg = (error as unknown as Record<string, unknown>)?.['shortMessage'] as string | undefined
   if (shortMsg && !shortMsg.includes('Raw Call Arguments')) {
     return shortMsg

@@ -148,11 +148,13 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   })
   const assetLockTiers = useMemo((): LockDurationTier[] => {
     if (!lockTiersRaw) return []
-    return (lockTiersRaw as readonly { duration: bigint; interestMultiplier: bigint; isEnabled: boolean }[]).map(t => ({
-      duration: t.duration,
-      interestMultiplier: t.interestMultiplier,
-      isEnabled: t.isEnabled,
-    }))
+    return (lockTiersRaw as readonly { duration: bigint; interestMultiplier: bigint; isEnabled: boolean }[])
+      .map(t => ({
+        duration: t.duration,
+        interestMultiplier: t.interestMultiplier,
+        isEnabled: t.isEnabled,
+      }))
+      .sort((a, b) => (a.duration < b.duration ? -1 : a.duration > b.duration ? 1 : 0))
   }, [lockTiersRaw])
 
   // Read token metadata for selected asset

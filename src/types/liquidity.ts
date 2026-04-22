@@ -59,10 +59,10 @@ export interface LiquidityStatus {
   principalDeposited: bigint
   principalWithdrawn: bigint
   principalInLoans: bigint
-  principalForfeited: bigint
+  principalDeficitAmount: bigint
   principalAvailable: bigint
   interestEarned: bigint
-  interestWithdrawn: bigint
+  interestDistributed: bigint
   interestAvailable: bigint
 }
 
@@ -97,10 +97,10 @@ export function parseLiquidityStatus(data: readonly [bigint, bigint, bigint, big
     principalDeposited: data[0],
     principalWithdrawn: data[1],
     principalInLoans: data[2],
-    principalForfeited: data[3],
+    principalDeficitAmount: data[3],
     principalAvailable: data[4],
     interestEarned: data[5],
-    interestWithdrawn: data[6],
+    interestDistributed: data[6],
     interestAvailable: data[7],
   }
 }

@@ -158,10 +158,10 @@ describe('liquidity type parsers', () => {
       expect(result.principalDeposited).toBe(10000n)
       expect(result.principalWithdrawn).toBe(2000n)
       expect(result.principalInLoans).toBe(5000n)
-      expect(result.principalForfeited).toBe(100n)
+      expect(result.principalDeficitAmount).toBe(100n)
       expect(result.principalAvailable).toBe(2900n)
       expect(result.interestEarned).toBe(500n)
-      expect(result.interestWithdrawn).toBe(300n)
+      expect(result.interestDistributed).toBe(300n)
       expect(result.interestAvailable).toBe(200n)
     })
 
@@ -191,10 +191,10 @@ describe('liquidity type parsers', () => {
         'principalDeposited',
         'principalWithdrawn',
         'principalInLoans',
-        'principalForfeited',
+        'principalDeficitAmount',
         'principalAvailable',
         'interestEarned',
-        'interestWithdrawn',
+        'interestDistributed',
         'interestAvailable',
       ])
     })
