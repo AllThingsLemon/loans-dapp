@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useAccount, usePublicClient, useWriteContract } from 'wagmi'
+import { useAccount, useChainId, usePublicClient, useWriteContract } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
 import { erc20Abi } from 'viem'
 import {
@@ -12,12 +12,15 @@ import {
   useWriteLiquidityPoolTransferPendingEarnings,
   useWriteLiquidityPoolTransferShares,
   useWriteLiquidityPoolClaimWithdrawal,
-  useWriteLiquidityPoolCancelWithdrawal,
   useWriteLiquidityPoolFundWithdrawalQueue,
   useWriteLiquidityPoolProcessSwaps,
   useReadLiquidityPoolDepositFeeUsd,
   useReadLiquidityPoolWithdrawFeeUsd,
   useReadLoansGetNativeFee,
+  loansAddress,
+  loansAbi,
+  liquidityPoolAddress,
+  liquidityPoolAbi,
 } from '@/src/generated'
 
 export interface UseLiquidityOperationsReturn {
@@ -30,7 +33,6 @@ export interface UseLiquidityOperationsReturn {
   transferPendingEarnings: (to: `0x${string}`, amount: bigint) => Promise<`0x${string}` | undefined>
   transferShares: (to: `0x${string}`, shareAmount: bigint) => Promise<`0x${string}` | undefined>
   claimWithdrawal: (requestId: bigint) => Promise<`0x${string}` | undefined>
-  cancelWithdrawal: (requestId: bigint) => Promise<`0x${string}` | undefined>
   fundWithdrawalQueue: () => Promise<`0x${string}` | undefined>
   processSwaps: (token: `0x${string}`) => Promise<`0x${string}` | undefined>
   approveToken: (amount: bigint, tokenAddress: `0x${string}`, spender: `0x${string}`) => Promise<`0x${string}` | undefined>
@@ -42,6 +44,7 @@ export interface UseLiquidityOperationsReturn {
 
 export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { address } = useAccount()
+  const chainId = useChainId()
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
 
@@ -87,9 +90,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { writeContractAsync: claimWithdrawalFn, isPending: isClaimingWithdrawal } =
     useWriteLiquidityPoolClaimWithdrawal({ mutation: { retry: false } })
 
-  const { writeContractAsync: cancelWithdrawalFn, isPending: isCancellingWithdrawal } =
-    useWriteLiquidityPoolCancelWithdrawal({ mutation: { retry: false } })
-
   const { writeContractAsync: fundWithdrawalQueueFn, isPending: isFundingQueue } =
     useWriteLiquidityPoolFundWithdrawalQueue({ mutation: { retry: false } })
 
@@ -109,7 +109,24 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       if (publicClient) {
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
         if (receipt.status === 'reverted') {
-          throw new Error('Transaction was reverted on-chain. The contract rejected the operation.')
+          // Re-simulate the exact transaction to extract the real revert reason.
+          // We simulate at blockNumber - 1 (just before the block that included the tx)
+          // so the pre-state matches what the tx saw when it executed.
+          let revertError: unknown = null
+          try {
+            const tx = await publicClient.getTransaction({ hash: txHash })
+            await publicClient.call({
+              to: tx.to ?? undefined,
+              data: tx.input,
+              value: tx.value,
+              account: tx.from,
+              gas: tx.gas,
+              blockNumber: receipt.blockNumber > 0n ? receipt.blockNumber - 1n : 0n,
+            })
+          } catch (simErr: unknown) {
+            revertError = simErr
+          }
+          throw revertError ?? new Error('Transaction was reverted on-chain. The contract rejected the operation.')
         }
       }
       // Delay to allow RPC node state to propagate after block confirmation
@@ -122,14 +139,63 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const deposit = useCallback(
     async (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => {
       if (!address) throw new Error('Wallet not connected')
+
+      // Always resolve the native fee fresh from chain to avoid stale hook state.
+      // The deposit() function on LiquidityPool is payable and requires TLEMX fee.
+      let nativeFee = depositNativeFee ?? 0n
+      if (publicClient) {
+        try {
+          const lpAddr = liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
+          const loansAddr = loansAddress[chainId as keyof typeof loansAddress]
+          if (lpAddr && loansAddr) {
+            const feeUSD = await publicClient.readContract({
+              address: lpAddr,
+              abi: liquidityPoolAbi,
+              functionName: 'depositFeeUSD',
+            }) as bigint
+            if (feeUSD > 0n) {
+              nativeFee = await publicClient.readContract({
+                address: loansAddr,
+                abi: loansAbi,
+                functionName: 'getNativeFee',
+                args: [feeUSD],
+              }) as bigint
+            }
+          }
+        } catch {
+          // fee read failed — fall back to hook value
+        }
+      }
+
+      let gasEstimate: bigint | undefined
+      if (publicClient) {
+        try {
+          const lpAddr = liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
+          if (lpAddr) {
+            const estimated = await publicClient.estimateContractGas({
+              address: lpAddr,
+              abi: liquidityPoolAbi,
+              functionName: 'deposit',
+              args: [token, amount, lockDuration, nonEarning],
+              value: nativeFee,
+              account: address,
+            })
+            gasEstimate = (estimated * 120n) / 100n // 20% buffer
+          }
+        } catch {
+          // gas estimation failed — send without gas override and let wallet decide
+        }
+      }
+
       const txHash = await depositFn({
         args: [token, amount, lockDuration, nonEarning],
-        value: depositNativeFee ?? 0n,
+        value: nativeFee,
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, depositFn, depositNativeFee, waitAndInvalidate]
+    [address, chainId, depositFn, depositNativeFee, publicClient, waitAndInvalidate]
   )
 
   const requestWithdrawal = useCallback(
@@ -146,6 +212,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     if (!address) throw new Error('Wallet not connected')
     const txHash = await claimEarningsFn({
       value: withdrawNativeFee ?? 0n,
+      gas: 300_000n,
     })
     await waitAndInvalidate(txHash)
     return txHash
@@ -157,6 +224,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       const txHash = await compoundEarningsFn({
         args: [lockDuration],
         value: depositNativeFee ?? 0n,
+        gas: 500_000n,
       })
       await waitAndInvalidate(txHash)
       return txHash
@@ -206,21 +274,12 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       const txHash = await claimWithdrawalFn({
         args: [requestId],
         value: withdrawNativeFee ?? 0n,
+        gas: 300_000n,
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
     [address, claimWithdrawalFn, withdrawNativeFee, waitAndInvalidate]
-  )
-
-  const cancelWithdrawal = useCallback(
-    async (requestId: bigint) => {
-      if (!address) throw new Error('Wallet not connected')
-      const txHash = await cancelWithdrawalFn({ args: [requestId] })
-      await waitAndInvalidate(txHash)
-      return txHash
-    },
-    [address, cancelWithdrawalFn, waitAndInvalidate]
   )
 
   const fundWithdrawalQueue = useCallback(async () => {
@@ -266,7 +325,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isTransferringEarnings ||
     isTransferringShares ||
     isClaimingWithdrawal ||
-    isCancellingWithdrawal ||
     isFundingQueue ||
     isProcessingSwaps ||
     isApproving
@@ -281,7 +339,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     transferPendingEarnings,
     transferShares,
     claimWithdrawal,
-    cancelWithdrawal,
     fundWithdrawalQueue,
     processSwaps,
     approveToken,

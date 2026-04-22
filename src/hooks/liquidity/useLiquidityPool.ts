@@ -48,7 +48,6 @@ export function useLiquidityPool() {
     transferPendingEarnings: operations.transferPendingEarnings,
     transferShares: operations.transferShares,
     claimWithdrawal: operations.claimWithdrawal,
-    cancelWithdrawal: operations.cancelWithdrawal,
     fundWithdrawalQueue: operations.fundWithdrawalQueue,
     processSwaps: operations.processSwaps,
     approveToken: operations.approveToken,

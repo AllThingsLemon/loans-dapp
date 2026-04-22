@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react'
-import { useAccount, useChainId, useReadContract } from 'wagmi'
-import { erc20Abi } from 'viem'
+import { useAccount, useChainId, useReadContract, usePublicClient } from 'wagmi'
+import { erc20Abi, parseAbiItem } from 'viem'
+import { useQuery } from '@tanstack/react-query'
 import {
   useReadLiquidityPoolStableToken,
   useReadLiquidityPoolLockDuration,
@@ -61,6 +62,9 @@ export interface UseLiquidityDataReturn {
   // Withdrawal queue
   withdrawalRequests: { requestIds: bigint[]; requests: WithdrawalRequest[] }
 
+  // Map of "token:unlockTime:lockDuration" → original stableTokenValue at deposit time
+  originalDepositValues: Map<string, bigint>
+
   // Contract address
   liquidityPoolContractAddress: `0x${string}` | undefined
 
@@ -72,9 +76,14 @@ export interface UseLiquidityDataReturn {
   refetch: () => Promise<void>
 }
 
+const DEPOSITED_EVENT = parseAbiItem(
+  'event Deposited(address indexed user, address indexed token, uint256 tokenAmount, uint256 stableTokenValue, uint256 liquidityShares, uint256 interestShares, uint256 unlockTime, uint256 lockDuration, bool nonEarning)'
+)
+
 export function useLiquidityData(): UseLiquidityDataReturn {
   const { address } = useAccount()
   const chainId = useChainId()
+  const publicClient = usePublicClient()
 
   const liquidityPoolContractAddress =
     liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
@@ -247,6 +256,35 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     query: { refetchInterval: 10000 },
   })
 
+  // Fetch Deposited events to recover original stableTokenValue per deposit entry
+  const { data: depositedLogs } = useQuery({
+    queryKey: ['depositedEvents', address, liquidityPoolContractAddress],
+    queryFn: async () => {
+      if (!publicClient || !address || !liquidityPoolContractAddress) return []
+      return publicClient.getLogs({
+        address: liquidityPoolContractAddress,
+        event: DEPOSITED_EVENT,
+        args: { user: address },
+        fromBlock: 0n,
+      })
+    },
+    enabled: !!publicClient && !!address && !!liquidityPoolContractAddress,
+    staleTime: 30_000,
+  })
+
+  const originalDepositValues = useMemo(() => {
+    const map = new Map<string, bigint>()
+    if (!depositedLogs) return map
+    for (const log of depositedLogs) {
+      const { token, stableTokenValue, unlockTime, lockDuration } = log.args
+      if (token && stableTokenValue !== undefined && unlockTime !== undefined && lockDuration !== undefined) {
+        const key = `${token.toLowerCase()}:${unlockTime}:${lockDuration}`
+        map.set(key, (map.get(key) ?? 0n) + stableTokenValue)
+      }
+    }
+    return map
+  }, [depositedLogs])
+
   // Parse data
   const userStatus = useMemo(() => {
     if (!userStatusRaw) return undefined
@@ -376,6 +414,7 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     currentAllowance: currentAllowance as bigint | undefined,
     lockDuration,
     withdrawalRequests,
+    originalDepositValues,
     liquidityPoolContractAddress,
     isLoading,
     error,
