@@ -10,6 +10,7 @@ import { Abi } from 'viem'
 import LoansAbi from './src/abis/Loans.json'
 import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
 import LiquidityPoolAbi from './src/abis/LiquidityPool.json'
+import PriceHelperAbi from './src/abis/PriceHelper.json'
 
 // Chain configuration following wagmi best practices
 const CHAINS = {
@@ -46,6 +47,11 @@ export default defineConfig({
       name: 'PriceDataFeed',
       abi: PriceDataFeedAbi as Abi,
       // Address will be dynamically obtained from Loans contract
+    },
+    {
+      name: 'PriceHelper',
+      abi: PriceHelperAbi as Abi,
+      // Address will be dynamically obtained from LiquidityPool contract via priceHelper()
     },
     {
       name: 'LiquidityPool',
