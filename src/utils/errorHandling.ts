@@ -6,13 +6,11 @@ export interface ContractError {
   message: string
   reason?: string
   code?: number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cause?: any
+  cause?: unknown
   data?: {
     message?: string
     errorName?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    args?: readonly any[]
+    args?: readonly unknown[]
   }
 }
 
@@ -74,17 +72,19 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
  * and extract the decoded custom error name + args.
  */
 function findRevertedError(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  err: any
+  err: unknown
 ): { errorName: string; args?: readonly unknown[] } | null {
-  if (!err) return null
+  if (!err || typeof err !== 'object') return null
+  const e = err as Record<string, unknown>
   if (
-    err.name === 'ContractFunctionRevertedError' &&
-    err.data?.errorName
+    e['name'] === 'ContractFunctionRevertedError' &&
+    e['data'] && typeof e['data'] === 'object' &&
+    (e['data'] as Record<string, unknown>)['errorName']
   ) {
-    return { errorName: err.data.errorName, args: err.data.args }
+    const data = e['data'] as Record<string, unknown>
+    return { errorName: data['errorName'] as string, args: data['args'] as readonly unknown[] | undefined }
   }
-  return findRevertedError(err.cause)
+  return findRevertedError(e['cause'])
 }
 
 /**
@@ -121,19 +121,20 @@ const isGasEstimationError = (error: ContractError): boolean => {
  * Collect all text from an error object by stringifying the full cause chain.
  * This ensures we can find error names regardless of how deep they are nested.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function collectErrorText(err: any, depth = 0): string {
-  if (!err || depth > 10) return ''
+function collectErrorText(err: unknown, depth = 0): string {
+  if (!err || depth > 10 || typeof err !== 'object') return ''
+  const e = err as Record<string, unknown>
   const parts: string[] = []
-  if (typeof err.shortMessage === 'string') parts.push(err.shortMessage)
-  if (typeof err.message === 'string') parts.push(err.message)
-  if (typeof err.reason === 'string') parts.push(err.reason)
-  if (err.data) {
-    if (typeof err.data === 'string') parts.push(err.data)
-    if (typeof err.data?.message === 'string') parts.push(err.data.message)
-    if (typeof err.data?.errorName === 'string') parts.push(err.data.errorName)
+  if (typeof e['shortMessage'] === 'string') parts.push(e['shortMessage'])
+  if (typeof e['message'] === 'string') parts.push(e['message'])
+  if (typeof e['reason'] === 'string') parts.push(e['reason'])
+  if (e['data']) {
+    if (typeof e['data'] === 'string') parts.push(e['data'])
+    const data = e['data'] as Record<string, unknown>
+    if (typeof data['message'] === 'string') parts.push(data['message'])
+    if (typeof data['errorName'] === 'string') parts.push(data['errorName'])
   }
-  if (err.cause) parts.push(collectErrorText(err.cause, depth + 1))
+  if (e['cause']) parts.push(collectErrorText(e['cause'], depth + 1))
   return parts.join('\n')
 }
 
@@ -188,8 +189,7 @@ export const extractErrorMessage = (error: ContractError): string => {
   }
 
   // 5. Fall back to shortMessage (clean, no raw call args) or a generic message.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const shortMsg = (error as any)?.shortMessage as string | undefined
+  const shortMsg = (error as unknown as Record<string, unknown>)?.['shortMessage'] as string | undefined
   if (shortMsg && !shortMsg.includes('Raw Call Arguments')) {
     return shortMsg
   }
