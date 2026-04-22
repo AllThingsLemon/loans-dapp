@@ -29,7 +29,6 @@ import {
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi, liquidityPoolAddress } from '@/src/generated'
-import PriceDataFeedAbi from '@/src/abis/PriceDataFeed.json'
 import { useChainId } from 'wagmi'
 
 function formatLockDuration(duration: bigint): string {
@@ -77,11 +76,14 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
 
   const {
     stableTokenAddress,
+    stableTokenDecimals,
     liquidityPoolContractAddress,
     approveToken,
     deposit,
     refetch,
   } = liquidityPool
+
+  const stableDecimals = stableTokenDecimals ?? 18
 
   // Read supported assets from the pool
   const { data: supportedAssetsRaw } = useReadContract({
@@ -109,52 +111,32 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     if (!assetConfigsRaw) return []
     return allAssets.filter((_, idx) => {
       const cfg = assetConfigsRaw[idx]?.result as
-        | { isEnabled: boolean; isInternalOnly: boolean }
+        | { status: number }
         | undefined
-      return cfg?.isEnabled === true && cfg?.isInternalOnly === false
+      return cfg?.status === 1 // AssetStatus.Active
     })
   }, [allAssets, assetConfigsRaw])
 
   const selectedAsset = selectedAssetIndex !== null ? depositableAssets[selectedAssetIndex] as `0x${string}` | undefined : undefined
 
-  // Read asset config for selected asset
-  const { data: assetConfigRaw } = useReadContract({
+  // Parse dollar input to stable token units for contract calls
+  const parsedDollarAmount = useMemo(() => {
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return undefined
+    try {
+      return parseTokenAmount(amount, stableDecimals)
+    } catch {
+      return undefined
+    }
+  }, [amount, stableDecimals])
+
+  // How many tokens does the user need to cover the dollar input?
+  const { data: tokenAmountRaw } = useReadContract({
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
-    functionName: 'getAssetConfig',
-    args: selectedAsset ? [selectedAsset] : undefined,
-    query: { enabled: !!selectedAsset },
+    functionName: 'getTokensForStableValue',
+    args: selectedAsset && parsedDollarAmount ? [selectedAsset, parsedDollarAmount] : undefined,
+    query: { enabled: !!selectedAsset && !!parsedDollarAmount },
   })
-  const assetConfig = assetConfigRaw as { isEnabled: boolean; isInternalOnly: boolean; usesPriceFeed: boolean; stablePrice: bigint; decimals: number; swapSchedulerId: `0x${string}` } | undefined
-
-  // Read price feed address from LP
-  const { data: priceDataFeedAddress } = useReadContract({
-    address: lpAddress,
-    abi: liquidityPoolAbi as unknown as any[],
-    functionName: 'priceDataFeed',
-  })
-
-  // Read spot price for selected asset when usesPriceFeed is true
-  const { data: spotPriceRaw } = useReadContract({
-    address: priceDataFeedAddress as `0x${string}` | undefined,
-    abi: PriceDataFeedAbi,
-    functionName: 'getSpotPrice',
-    args: selectedAsset ? [selectedAsset] : undefined,
-    query: { enabled: !!priceDataFeedAddress && !!selectedAsset && assetConfig?.usesPriceFeed === true },
-  })
-
-  // Token USD price: spot price from feed, or stablePrice from config, in 8 decimals
-  const tokenUsdPrice = useMemo((): number | undefined => {
-    if (!assetConfig) return undefined
-    if (assetConfig.usesPriceFeed) {
-      if (spotPriceRaw === undefined) return undefined
-      return Number(spotPriceRaw as bigint) / 1e8
-    }
-    if (assetConfig.stablePrice > 0n) {
-      return Number(assetConfig.stablePrice) / 1e8
-    }
-    return undefined
-  }, [assetConfig, spotPriceRaw])
 
   // Read lock tiers for selected asset
   const { data: lockTiersRaw } = useReadContract({
@@ -209,6 +191,15 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const userTokenBalance = tokenBalance as bigint | undefined
   const currentAllowance = tokenAllowance as bigint | undefined
 
+  // What is the user's token balance worth in stable terms?
+  const { data: balanceCreditRaw } = useReadContract({
+    address: lpAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'getDepositCredit',
+    args: selectedAsset && userTokenBalance ? [selectedAsset, userTokenBalance] : undefined,
+    query: { enabled: !!selectedAsset && !!userTokenBalance },
+  })
+
   // Filter to enabled tiers only
   const enabledTiers = useMemo(() => {
     return assetLockTiers.filter((t: LockDurationTier) => t.isEnabled)
@@ -221,17 +212,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     return 0n
   }, [selectedTier])
 
-  // Input is USD amount — convert to token amount using price
-  const tokenAmount = useMemo(() => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0 || !tokenUsdPrice) return undefined
-    const usdAmount = Number(amount)
-    const tokens = usdAmount / tokenUsdPrice
-    try {
-      return parseTokenAmount(tokens.toFixed(decimals > 8 ? 8 : decimals), decimals)
-    } catch {
-      return undefined
-    }
-  }, [amount, tokenUsdPrice, decimals])
+  const tokenAmount = tokenAmountRaw as unknown as bigint | undefined
 
   const tokenEquivalent = useMemo(() => {
     if (!tokenAmount) return undefined
@@ -239,16 +220,11 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }, [tokenAmount, decimals])
 
-  const formattedBalance = useMemo(() => {
-    if (userTokenBalance === undefined) return undefined
-    return formatTokenAmount(userTokenBalance, decimals)
-  }, [userTokenBalance, decimals])
-
   const balanceInUsd = useMemo(() => {
-    if (userTokenBalance === undefined || !tokenUsdPrice) return undefined
-    const tokens = parseFloat(formatTokenAmount(userTokenBalance, decimals))
-    return (tokens * tokenUsdPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  }, [userTokenBalance, decimals, tokenUsdPrice])
+    if (balanceCreditRaw === undefined) return undefined
+    return parseFloat(formatTokenAmount(balanceCreditRaw as unknown as bigint, stableDecimals))
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }, [balanceCreditRaw, stableDecimals])
 
   const insufficientBalance = useMemo(() => {
     if (!tokenAmount || userTokenBalance === undefined) return false
@@ -414,9 +390,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         <div className='flex-1'>
           {insufficientBalance && (
             <p className='text-sm text-destructive'>
-              Insufficient balance. You need ~{tokenEquivalent} {symbol} but only have{' '}
-              {formattedBalance ? parseFloat(formattedBalance).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '0'}{' '}
-              {symbol}.
+              Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
             </p>
           )}
         </div>

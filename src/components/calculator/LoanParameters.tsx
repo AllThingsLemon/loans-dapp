@@ -19,6 +19,7 @@ interface LoanParametersProps {
   ltvOptions: any[]
   durationRange: { min: number; max: number }
   configLoading: boolean
+  availableLiquidity?: bigint
   isDashboard?: boolean
 }
 
@@ -35,6 +36,7 @@ export function LoanParameters({
   ltvOptions,
   durationRange,
   configLoading,
+  availableLiquidity,
   isDashboard = false
 }: LoanParametersProps) {
   // Use pre-calculated duration range from the hook
@@ -61,6 +63,14 @@ export function LoanParameters({
     : 0
   const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
 
+  const maxLoanAmount = availableLiquidity !== undefined && tokenConfig
+    ? Number(formatUnits(availableLiquidity, tokenConfig.loanToken.decimals || 18))
+    : loanConfig?.minLoanAmount
+      ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
+      : 100000
+
+  const hasNoLiquidity = availableLiquidity !== undefined && availableLiquidity === 0n
+
   // Safe index for the slider — use the actual percentage as value instead of indexOf
   const ltvStep = ltvPercentages.length >= 2
     ? ltvPercentages[1] - ltvPercentages[0]
@@ -83,15 +93,16 @@ export function LoanParameters({
           >
             💰 How much do you need?
           </label>
-          <div className='relative'>
+          <div className='relative flex items-center'>
             <span
-              className={`absolute left-3 top-3 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+              className={`absolute left-3 top-1/2 -translate-y-1/2 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
               $
             </span>
             <Input
               type='number'
               value={loanAmount === 0 ? '' : loanAmount}
+              disabled={hasNoLiquidity}
               onChange={(e) => {
                 const value = e.target.value
                 if (value === '') {
@@ -100,15 +111,7 @@ export function LoanParameters({
                 }
 
                 const numValue = Number(value)
-                const maxAmount = loanConfig?.minLoanAmount
-                  ? Number(
-                      formatUnits(
-                        loanConfig.minLoanAmount,
-                        tokenConfig?.loanToken.decimals || 18
-                      )
-                    ) * 100
-                  : 100000
-                if (numValue <= maxAmount) {
+                if (numValue <= maxLoanAmount) {
                   setLoanAmount(numValue)
                 }
               }}
@@ -134,32 +137,36 @@ export function LoanParameters({
                     )
                   : '1000'
               }
-              max={
-                loanConfig?.minLoanAmount
-                  ? Number(
-                      formatUnits(
-                        loanConfig.minLoanAmount,
-                        tokenConfig?.loanToken.decimals || 18
-                      )
-                    ) * 100
-                  : 100000
-              }
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+              max={maxLoanAmount}
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed' : 'disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
               placeholder='10000'
             />
           </div>
-          <div
-            className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-          >
-            {tokenConfig?.loanToken.symbol || 'Token'} - $
-            {loanConfig?.minLoanAmount
-              ? formatUnits(
-                  loanConfig.minLoanAmount,
-                  tokenConfig?.loanToken.decimals || 18
-                )
-              : '1000'}{' '}
-            minimum loan
-          </div>
+          {hasNoLiquidity ? (
+            <p className='text-sm text-red-500 mt-1'>
+              No liquidity available — loans are currently unavailable.
+            </p>
+          ) : (
+            <div
+              className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
+            >
+              <span>
+                {tokenConfig?.loanToken.symbol || 'Token'} — $
+                {loanConfig?.minLoanAmount
+                  ? formatUnits(
+                      loanConfig.minLoanAmount,
+                      tokenConfig?.loanToken.decimals || 18
+                    )
+                  : '1000'}{' '}
+                min
+              </span>
+              <span>
+                {availableLiquidity !== undefined
+                  ? `$${Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} available`
+                  : 'Loading liquidity...'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Duration Slider */}

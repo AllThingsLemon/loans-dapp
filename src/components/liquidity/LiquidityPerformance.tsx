@@ -56,6 +56,11 @@ function formatCurrency(value: bigint, decimals: number, symbol: string): string
   return `${formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${symbol}`
 }
 
+function formatShares(value: bigint, decimals: number): string {
+  const formatted = parseFloat(formatTokenAmount(value, decimals))
+  return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
 function formatPct(value: number): string {
   return `${value.toFixed(2)}%`
 }
@@ -134,6 +139,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     stableTokenSymbol,
     stableTokenDecimals,
     lockDuration,
+    originalDepositValues,
     claimEarnings,
     compoundEarnings,
     pullEarnings,
@@ -150,6 +156,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   const poolOwnership = useMemo(() => {
     if (!userStatus || !poolStatus || poolStatus.totalLiquidityShares === 0n) return 0
     return (Number(userStatus.liquidityShares) / Number(poolStatus.totalLiquidityShares)) * 100
+  }, [userStatus, poolStatus])
+
+  const interestShareOwnership = useMemo(() => {
+    if (!userStatus || !poolStatus || poolStatus.totalInterestShares === 0n) return 0
+    return (Number(userStatus.interestShares) / Number(poolStatus.totalInterestShares)) * 100
   }, [userStatus, poolStatus])
 
   const lifetimeEarnings = useMemo(() => {
@@ -236,8 +247,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
         />
         <StatItem
-          label='Pool Non-Earning Shares'
-          value={poolStatus ? formatCurrency(poolStatus.totalLiquidityShares - poolStatus.totalInterestShares, decimals, symbol) : 'Loading...'}
+          label='Pool Protected Shares'
+          value={poolStatus ? formatShares(poolStatus.totalLiquidityShares - poolStatus.totalInterestShares, decimals) : 'Loading...'}
         />
         {liquidityStatus && liquidityStatus.principalForfeited > 0n && (
           <StatItem
@@ -359,12 +370,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               value={formatPct(poolOwnership)}
             />
             <StatItem
-              label='Earning Shares'
-              value={userStatus ? formatCurrency(userStatus.interestShares, decimals, symbol) : '0'}
+              label='Liquidity Shares'
+              value={userStatus ? formatShares(userStatus.liquidityShares, decimals) : '0'}
             />
             <StatItem
-              label='Non-Earning Shares'
-              value={userStatus ? formatCurrency(userStatus.liquidityShares - userStatus.interestShares, decimals, symbol) : '0'}
+              label='Interest Shares'
+              value={userStatus ? formatShares(userStatus.interestShares, decimals) : '0'}
+            />
+            <StatItem
+              label='Interest Share %'
+              value={formatPct(interestShareOwnership)}
             />
           </div>
           {userStatus && userStatus.liquidityShares > 0n && (
@@ -491,10 +506,12 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
               {sortedDepositEntries.map((entry, index) => {
                 const now = BigInt(Math.floor(Date.now() / 1000))
                 const isUnlocked = entry.unlockTime <= now
+                const originalKey = `${entry.token.toLowerCase()}:${entry.unlockTime}:${entry.lockDuration}`
+                const originalValue = originalDepositValues.get(originalKey) ?? entry.stableTokenValue
 
                 return (
                   <div key={index} className='grid grid-cols-4 items-center text-sm py-2 border-b border-border/50'>
-                    <span>{formatCurrency(entry.stableTokenValue, decimals, symbol)}</span>
+                    <span>{formatCurrency(originalValue, decimals, symbol)}</span>
                     <span>{formatDuration(entry.lockDuration)}</span>
                     <span>{formatDate(entry.unlockTime)}</span>
                     <div>
@@ -635,7 +652,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             />
           </div>
           <div className='space-y-1.5'>
-            <label className='text-sm font-medium'>Share Amount ({symbol})</label>
+            <label className='text-sm font-medium'>Share Amount</label>
             <div className='flex gap-2'>
               <Input
                 type='number'
@@ -665,7 +682,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             </div>
             {userStatus && (
               <p className='text-xs text-muted-foreground'>
-                Available: {formatCurrency(userStatus.interestShares, decimals, symbol)}
+                Available: {formatShares(userStatus.interestShares, decimals)}
               </p>
             )}
           </div>

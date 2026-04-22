@@ -19,7 +19,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
-import { Minus, Loader2, Clock, CheckCircle2, XCircle, ArrowDownToLine } from 'lucide-react'
+import { Minus, Loader2, Clock, CheckCircle2, ArrowDownToLine } from 'lucide-react'
 import {
   handleContractError,
   type ContractError,
@@ -43,7 +43,6 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     feeConfig,
     requestWithdrawal,
     claimWithdrawal,
-    cancelWithdrawal,
     fundWithdrawalQueue,
     withdrawalRequests,
     refetch,
@@ -109,22 +108,6 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
       await refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Claim Failed')
-    } finally {
-      setIsProcessing(null)
-    }
-  }
-
-  const handleCancelWithdrawal = async (requestId: bigint) => {
-    setIsProcessing(`cancel-${requestId}`)
-    try {
-      await cancelWithdrawal(requestId)
-      toast({
-        title: 'Withdrawal Cancelled',
-        description: `Withdrawal request cancelled. Your shares have been restored.`,
-      })
-      await refetch()
-    } catch (err: unknown) {
-      handleContractError(err as ContractError, toast, 'Cancel Failed')
     } finally {
       setIsProcessing(null)
     }
@@ -295,21 +278,6 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
                           <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Claiming...</>
                         ) : (
                           <><CheckCircle2 className='h-3 w-3 mr-1' /> Claim</>
-                        )}
-                      </Button>
-                    )}
-                    {isUnfunded && (
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        onClick={() => handleCancelWithdrawal(requestId)}
-                        disabled={isProcessing !== null}
-                        className='flex-1'
-                      >
-                        {isProcessing === `cancel-${requestId}` ? (
-                          <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Cancelling...</>
-                        ) : (
-                          <><XCircle className='h-3 w-3 mr-1' /> Cancel</>
                         )}
                       </Button>
                     )}
