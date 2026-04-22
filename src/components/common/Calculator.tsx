@@ -371,6 +371,21 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
           description:
             'Your loan has been created and will appear in your active loans!'
         })
+
+        // Reset inputs to defaults
+        if (initialHookData.loanConfig?.minLoanAmount && tokenConfig) {
+          setLoanAmount(
+            Number(formatUnits(initialHookData.loanConfig.minLoanAmount, tokenConfig.loanToken.decimals))
+          )
+        }
+        if (initialHookData.interestAprConfigs.length > 0) {
+          setDuration(Number(initialHookData.interestAprConfigs[0].minDuration))
+        }
+        if (initialHookData.ltvOptions.length > 0 && tokenConfig) {
+          setLtv(
+            Number(formatPercentage(initialHookData.ltvOptions[0].ltv, tokenConfig.ltvDecimals))
+          )
+        }
       }
     } catch (error) {
       const contractError = error as ContractError
@@ -419,6 +434,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         ltvOptions={initialHookData.ltvOptions}
         durationRange={initialHookData.durationRange}
         configLoading={initialHookData.isLoading}
+        availableLiquidity={loanOperations.availableLiquidity}
         isDashboard={isDashboard}
       />
 
