@@ -59,11 +59,13 @@ describe('contract error handling for liquidity operations', () => {
       expect(extractErrorMessage(err)).toBe('InsufficientBalance')
     })
 
-    it('extracts custom error from gas estimation', () => {
+    it('returns generic message when gas estimation fails with unknown custom error', () => {
       const err: ContractError = {
         message: "gas required exceeds allowance: reverted with custom error 'AmountTooLow()'",
       }
-      expect(extractErrorMessage(err)).toBe('Contract reverted: AmountTooLow()')
+      expect(extractErrorMessage(err)).toBe(
+        'Transaction would fail on-chain. The contract may have a precondition that is not met — check your inputs and try again.'
+      )
     })
 
     it('returns generic message for gas estimation without revert reason', () => {
@@ -91,13 +93,11 @@ describe('contract error handling for liquidity operations', () => {
       expect(extractErrorMessage(err)).toBe('Contract paused')
     })
 
-    it('handles insufficient funds error', () => {
+    it('falls back to raw message for unrecognised errors', () => {
       const err: ContractError = {
         message: 'insufficient funds for gas',
       }
-      expect(extractErrorMessage(err)).toBe(
-        'Contract validation failed - this may be due to loan state, timing, or other contract rules'
-      )
+      expect(extractErrorMessage(err)).toBe('insufficient funds for gas')
     })
 
     it('falls back to raw message', () => {
