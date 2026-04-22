@@ -25,7 +25,7 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-  'group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-8 pr-10 shadow-lg transition-all data-[swipe=cancel]:translate-y-0 data-[swipe=end]:translate-y-[var(--radix-toast-swipe-end-y)] data-[swipe=move]:translate-y-[var(--radix-toast-swipe-move-y)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=open]:slide-in-from-top-full data-[state=closed]:slide-out-to-top-full duration-500 ease-in-out min-h-[100px]',
+  'group pointer-events-auto relative flex w-full items-start justify-between space-x-4 rounded-md border p-8 pr-10 shadow-lg transition-all data-[swipe=cancel]:translate-y-0 data-[swipe=end]:translate-y-[var(--radix-toast-swipe-end-y)] data-[swipe=move]:translate-y-[var(--radix-toast-swipe-move-y)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=open]:slide-in-from-top-full data-[state=closed]:slide-out-to-top-full duration-500 ease-in-out min-h-[100px] max-h-[240px]',
   {
     variants: {
       variant: {
@@ -51,7 +51,7 @@ const Toast = React.forwardRef<
       className={cn(toastVariants({ variant }), className)}
       {...props}
     >
-      <div className='flex items-center space-x-4'>
+      <div className='flex items-start space-x-4 min-w-0 flex-1'>
         {variant === 'default' && (
           <div className='flex h-6 w-6 items-center justify-center rounded-full bg-green-500'>
             <CheckIcon className='h-5 w-5 text-white' />
@@ -120,7 +120,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn('text-sm opacity-90', className)}
+    className={cn('text-sm opacity-90 break-words overflow-y-auto max-h-[140px]', className)}
     {...props}
   />
 ))
