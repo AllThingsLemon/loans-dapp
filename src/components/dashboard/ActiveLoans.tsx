@@ -55,6 +55,7 @@ import {
   Check
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -548,12 +549,23 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </p>
                   <div className='font-medium'>
                     {loan.status === LOAN_STATUS.ACTIVE ? (
-                      <CountdownTimer
-                        targetDate={displayDueDate}
-                        compact
-                        showIcon={false}
-                        animate
-                      />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <CountdownTimer
+                                targetDate={displayDueDate}
+                                compact
+                                showIcon={false}
+                                animate
+                              />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Time includes a safety buffer to account for blockchain timing.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     ) : (
                       <span className='text-muted-foreground'>N/A</span>
                     )}
