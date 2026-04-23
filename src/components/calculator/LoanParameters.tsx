@@ -162,7 +162,7 @@ export function LoanParameters({
               </span>
               <span>
                 {availableLiquidity !== undefined
-                  ? `$${Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} available`
+                  ? `$${Math.floor(Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18))).toLocaleString()} available`
                   : 'Loading liquidity...'}
               </span>
             </div>
