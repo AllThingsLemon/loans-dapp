@@ -80,21 +80,14 @@ export const useLoanConfig = () => {
 
   const error = configError || interestConfigsError || originationFeesError
 
-  // Calculate duration range from all configs
+  // Duration range driven by the contract's min/max loan duration settings.
   const durationRange = useMemo(() => {
-    if (interestAprConfigs.length === 0) {
-      return { min: 0, max: 0 }
+    if (!loanConfig) return { min: 0, max: 0 }
+    return {
+      min: Number(loanConfig.minLoanDuration),
+      max: Number(loanConfig.maxLoanDuration),
     }
-
-    const minDuration = Math.min(
-      ...interestAprConfigs.map((config) => Number(config.minDuration))
-    )
-    const maxDuration = Math.max(
-      ...interestAprConfigs.map((config) => Number(config.maxDuration))
-    )
-
-    return { min: minDuration, max: maxDuration }
-  }, [interestAprConfigs])
+  }, [loanConfig])
 
   return {
     loanConfig,

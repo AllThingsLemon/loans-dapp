@@ -52,9 +52,11 @@ import {
   Clock,
   AlertCircle,
   Copy,
-  Check
+  Check,
+  Info
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -456,10 +458,35 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   return (
     <div className='space-y-4'>
       {activeLoans.map((loan) => {
-        const displayDueDate = getDisplayDueDate(loan)
         const progress = getPaymentProgress(loan)
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
+
+        // Countdown target and label depend on payment state:
+        // 1. Grace period, before loan end: count to exact loan end (no buffer)
+        // 2. Grace period, after loan end:  count to end + balloonPaymentGraceDuration - 1 day
+        // 3. Normal (interest not fully paid): count to now + timeToDefault - 1 day
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000
+        const loanEndMs = Number(loan.dueTimestamp) * 1000
+        const now = Date.now()
+        const pastLoanEnd = isInGracePeriod && now >= loanEndMs
+        const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
+          ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
+          : 0
+
+        const countdownTarget: Date = isInGracePeriod && !pastLoanEnd
+          ? new Date(loanEndMs)
+          : pastLoanEnd
+            ? new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
+            : getDisplayDueDate(loan)
+
+        const countdownLabel = isOverdue
+          ? 'Overdue'
+          : isInGracePeriod && !pastLoanEnd
+            ? 'Time to Loan End'
+            : 'Time Until Default'
+
+        const showCountdownTooltip = !isOverdue && !(isInGracePeriod && !pastLoanEnd)
 
         return (
           <Card key={loan.id}>
@@ -535,21 +562,33 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Calendar className='h-3 w-3' />
-                    Due Date
+                    Loan End Date
                   </p>
                   <p className='font-medium'>
-                    {displayDueDate.toLocaleDateString()}
+                    {new Date(Number(loan.dueTimestamp) * 1000).toLocaleDateString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {isOverdue ? 'Overdue' : 'Time Until Due'}
+                    {countdownLabel}
+                    {showCountdownTooltip && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className='h-3 w-3 cursor-pointer' />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Time includes a safety buffer to account for blockchain timing.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </p>
                   <div className='font-medium'>
                     {loan.status === LOAN_STATUS.ACTIVE ? (
                       <CountdownTimer
-                        targetDate={displayDueDate}
+                        targetDate={countdownTarget}
                         compact
                         showIcon={false}
                         animate

@@ -51,9 +51,11 @@ const combineLoanData = (
 
   // Use contract data for calculations, not manual math
   const totalOwed = loan.loanAmount + loan.interestAmount
-  const remainingBalance = totalOwed - loan.paidAmount
-  const currentTime = BigInt(Math.floor(Date.now() / 1000))
-  const dueTimestamp = timeToDefault ? currentTime + timeToDefault : currentTime
+  const remainingBalance = loan.paidAmount >= totalOwed ? 0n : totalOwed - loan.paidAmount
+  // dueTimestamp is the fixed loan maturity date (createdAt + duration).
+  // timeToDefault extends when the borrower is ahead on payments and must NOT
+  // be used as the due date — it would show a date beyond loan maturity.
+  const dueTimestamp = loan.createdAt + loan.duration
 
   return {
     id: loanId,

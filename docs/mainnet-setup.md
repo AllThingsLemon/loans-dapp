@@ -1,169 +1,227 @@
 # Mainnet Deployment Setup
 
-Post-deploy configuration required before the dapp is usable on a new network
-(or a new contract redeploy). Each step is an admin action on the deployed
-contracts. Ticking these off in order should get a fresh deployment to the
-point where a normal user can make a deposit.
+Follow these steps in order after deploying contracts to a new network. All steps are admin calls on the deployed contracts. Complete everything before opening the app to users.
 
 ---
 
-## 0. Token prerequisite: no fee-on-transfer
+## Prerequisites
 
-The LiquidityPool, SwapManager, and Loans contracts all assume standard
-ERC20 / BEP20 semantics: `transferFrom(from, to, amount)` moves exactly
-`amount` from `from` to `to`. A deposit is a multi-hop flow — the pool pulls
-tokens from the user, then forwards them to the SwapManager — and any fee /
-burn / reflection taken mid-flow leaves the pool short on the forward hop,
-reverting with `"BEP20: transfer amount + fees exceeds balance"` or similar.
+### Token transfer fees
 
-For every token configured on the pool (stable and non-stable), one of the
-following must be true:
+The LiquidityPool, SwapManager, and Loans contracts require standard ERC20/BEP20 transfer behavior — `transferFrom(from, to, amount)` must move exactly `amount`. Deposits are multi-hop, so any fee or burn taken mid-transfer will cause the next hop to revert.
 
-- The token has **no transfer fee** (vanilla ERC20 / BEP20), **or**
-- The token supports a fee-exempt list, and the **LiquidityPool, SwapManager,
-  and Loans contracts are all excluded from both incoming and outgoing fees**.
+Before enabling any token, confirm **one** of the following:
+- The token has no transfer fee, **or**
+- The LiquidityPool, SwapManager, and Loans contracts are all on the token's fee-exempt list (both incoming and outgoing)
 
-Confirm before enabling an asset in step 3. This is particularly important for
-tokens that inherit from reflection / SafeMoon-style bases — those take fees
-by default and must be explicitly configured to exempt the protocol contracts.
+This matters most for reflection/SafeMoon-style tokens, which take fees by default.
 
-## 1. Wire environment variables
+---
 
-Populate these `NEXT_PUBLIC_*` vars (in `.env` / hosting provider config) with
-the deployed contract addresses for the target chain:
+## Step 1 — Set environment variables
 
-- `NEXT_PUBLIC_LEMON_LOANS_ADDRESS`
-- `NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS`
-- `NEXT_PUBLIC_LEMON_SWAP_MANAGER_ADDRESS`
-- `NEXT_PUBLIC_CITRON_*` equivalents for the testnet pair
+Add the deployed contract addresses and your WalletConnect project ID to `.env` (or Cloudflare Pages secrets — see README):
 
-Then regenerate wagmi bindings so the per-chain address maps include the new
-deployment:
-
-```sh
-npx wagmi generate
+```
+NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=...
+NEXT_PUBLIC_LEMON_LOANS_ADDRESS=0x...
+NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS=0x...
+NEXT_PUBLIC_CITRON_LOANS_ADDRESS=0x...           # testnet only
+NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS=0x...  # testnet only
 ```
 
-## 2. LiquidityPool: point at the live SwapManager
+Then rebuild so `wagmi generate` picks up the new addresses:
+
+```bash
+npm run build
+```
+
+---
+
+## Step 2 — Wire the SwapManager
 
 ```solidity
 LiquidityPool.setSwapManager(<SwapManager address>)
 ```
 
-Verify with `LiquidityPool.swapManager()` — it must return the SwapManager you
-just deployed. Without this, the pool cannot route non-stable deposits through
-the DCA sell-off path.
-
-## 3. LiquidityPool: configure each supported asset
-
-For every asset users should be able to deposit (LUSD, WLEMX, LMLN, etc.):
-
+**Verify:**
 ```solidity
-LiquidityPool.setAssetConfig(
-  token,
-  usesPriceFeed,   // true for non-stable assets priced via the feed
-  stablePrice,     // 1e8-scaled stable price, or 0 when usesPriceFeed=true
-  isInternalOnly   // true = collateral-only, NOT user-depositable
-)
-LiquidityPool.setAssetEnabled(token, true)
+LiquidityPool.swapManager()
+// Expected: the SwapManager address you just deployed
 ```
 
-Then add at least one lock tier:
-
-```solidity
-LiquidityPool.addAssetLockTier(token, durationSeconds, interestMultiplierBps)
-```
-
-Confirm via `getAssetConfig(token)` — `isEnabled` must be `true` and
-`isInternalOnly` `false` for the UI to show it in the Add Liquidity selector.
-
-Assets that should only be reachable through internal pool flows (e.g. as
-liquidation collateral, never as a user deposit) must stay `isEnabled=false,
-isInternalOnly=true`. The Add Liquidity selector filters these out.
-
-## 4. SwapManager swap IDs — no action required
-
-`SwapManager.setupAssetSwap(token)` is guarded by `onlyLiquidityPool` — no EOA,
-not even a `DEFAULT_ADMIN_ROLE` holder, can call it directly. Attempting to
-will revert with `OnlyLiquidityPool()` (selector `0xfeb42204`).
-
-The protocol creates `assetSwapIds[token]` **lazily** the first time the
-LiquidityPool needs to route that token through the SwapManager:
-
-- User-depositable non-stable assets (e.g. WLEMX, LMLN): bootstrapped by the
-  first `LiquidityPool.deposit(token, …)` call.
-- Collateral only seen via liquidations: bootstrapped by the first
-  liquidation-surplus flow that sends the token into the pool.
-
-The very first depositor of each asset pays slightly more gas to cover the
-setup. Nothing to do at deploy time.
-
-Verify after the first deposit with `SwapManager.assetSwapIds(token)` — it
-should return a non-zero `bytes32` and the `AssetSwapCreated(token, swapId)`
-event should be in the tx logs.
-
-## 5. LiquidityPool: minimum deposit value
-
-```solidity
-LiquidityPool.setMinimumDeposit(<amount in stable token units>)
-```
-
-The frontend reads this live via `minimumDepositValue()` and enforces it before
-submitting. Pick a value that makes on-chain gas economics sensible for the
-target network.
-
-## 6. Role wiring between contracts
-
-The LiquidityPool and Loans contracts call into each other and require
-specific roles to be granted:
-
-```solidity
-// Pool needs LENDER_ROLE on Loans so it can deposit/withdraw liquidity
-Loans.grantRole(LENDER_ROLE, <LiquidityPool address>)
-
-// Loans needs MANAGER_ROLE on Pool so the deposit flow can call back
-// into the Pool (e.g. to confirm deposits). Without this, deposits
-// revert silently with a bare "execution reverted" (no error data).
-LiquidityPool.grantRole(MANAGER_ROLE, <Loans address>)
-```
-
-Verify:
-
-```solidity
-Loans.hasRole(LENDER_ROLE, <LiquidityPool address>)   // must be true
-LiquidityPool.hasRole(MANAGER_ROLE, <Loans address>)   // must be true
-```
-
-## 7. Price feed sanity check
-
-For each asset with `usesPriceFeed=true`, confirm the feed actually returns a
-price:
-
-```solidity
-PriceDataFeed.getSpotPrice(token)  // must be > 0 and in 1e8 scale
-```
-
-No setter on the LiquidityPool controls this — it's on the feed contract, so
-the feed must be configured for every depositable non-stable asset before that
-asset is enabled.
+The pool cannot route non-stable deposits without this.
 
 ---
 
-## Quick verification checklist
+## Step 3 — Grant contract roles
 
-Once the steps above are done, run these read calls and confirm the results
-for each non-stable asset the pool supports:
+The Loans contract must have `MANAGER_ROLE` on the LiquidityPool so it can deposit collateral during loan creation. Without this, `inititateLoan` reverts with no error data.
 
-| Call                                       | Expected                    |
-| ------------------------------------------ | --------------------------- |
-| Token transfer fee                         | 0, or protocol contracts exempt |
-| `LiquidityPool.swapManager()`              | live SwapManager address    |
-| `LiquidityPool.getAssetConfig(token)`      | `isEnabled=true`            |
-| `LiquidityPool.getAssetLockTiers(token)`   | at least one enabled tier   |
-| `Loans.hasRole(LENDER_ROLE, Pool)`         | `true`                      |
-| `Pool.hasRole(MANAGER_ROLE, Loans)`        | `true`                      |
-| `SwapManager.assetSwapIds(token)`          | non-zero after first deposit |
-| `PriceDataFeed.getSpotPrice(token)`        | non-zero (for feed-priced)  |
-| `LiquidityPool.minimumDepositValue()`      | intended minimum            |
+```solidity
+LiquidityPool.grantRole(MANAGER_ROLE, <Loans address>)
+```
 
-If all rows pass for an asset, the Add Liquidity UI will allow deposits of it.
+**Verify:**
+```solidity
+LiquidityPool.hasRole(MANAGER_ROLE, <Loans address>)
+// Expected: true
+```
+
+> Check the Loans contract source for any additional roles required between the two contracts and grant them before this step is considered complete.
+
+---
+
+## Step 4 — Configure the price feed
+
+For every non-stable asset (any asset where `usesPriceFeed=true` in step 5), the price feed must be returning a live value before the asset is enabled.
+
+**Verify for each non-stable asset:**
+```solidity
+PriceDataFeed.getSpotPrice(<token address>)
+// Expected: a non-zero value in 1e8 scale
+```
+
+The price feed is configured independently of the LiquidityPool. If this call returns zero or reverts, the feed must be set up before proceeding.
+
+---
+
+## Step 5 — Configure supported assets
+
+The `AssetStatus` enum:
+- `0` — Disabled
+- `1` — Active (user-depositable)
+- `2` — InternalOnly (collateral-only, never shown in the deposit UI — e.g. LMLN)
+
+**For each user-depositable asset** (e.g. LUSD, WLEMX):
+
+```solidity
+LiquidityPool.setAssetConfig(
+  <token address>,
+  1,              // AssetStatus.Active
+  <usesPriceFeed>,// true for non-stables; false for stablecoins
+  <stablePrice>   // 1e8-scaled fixed price if usesPriceFeed=false, otherwise 0
+)
+```
+
+**For collateral-only assets** (e.g. LMLN — deposited internally by the Loans contract, not by users):
+
+```solidity
+LiquidityPool.setAssetConfig(<token address>, 2, <usesPriceFeed>, <stablePrice>)
+```
+
+**To change just the status of an already-configured asset:**
+
+```solidity
+LiquidityPool.setAssetStatus(<token address>, <AssetStatus>)
+```
+
+**Verify for each asset:**
+```solidity
+LiquidityPool.getAssetConfig(<token address>)
+// Expected: status = 1 for user-depositable assets
+```
+
+---
+
+## Step 6 — Add lock tiers
+
+Each user-depositable asset must have at least one lock tier before the deposit UI will show it.
+
+```solidity
+LiquidityPool.addAssetLockTier(
+  <token address>,
+  <durationSeconds>,       // e.g. 1800 = 30 min, 2592000 = 30 days
+  <interestMultiplierBps>  // e.g. 10000 = 1× base rate, 15000 = 1.5×
+)
+```
+
+Call once per tier per asset. Repeat for every lock duration you want to offer.
+
+**Verify:**
+```solidity
+LiquidityPool.getAssetLockTiers(<token address>)
+// Expected: array with at least one entry where isEnabled = true
+```
+
+---
+
+## Step 7 — Set the minimum deposit
+
+```solidity
+LiquidityPool.setMinimumDeposit(<amount in raw stable token units>)
+```
+
+Example — $10 minimum with an 18-decimal stable token:
+```solidity
+LiquidityPool.setMinimumDeposit(10000000000000000000)
+```
+
+The frontend reads this value live and enforces it before submitting. Users cannot deposit below this amount from the UI.
+
+**Verify:**
+```solidity
+LiquidityPool.minimumDepositValue()
+// Expected: the value you just set
+```
+
+---
+
+## Step 8 — Configure native fees
+
+The pool charges a small native token fee on `claimEarnings`, `compoundEarnings`, and `claimWithdrawal`. Set the amounts and the receiver address:
+
+```solidity
+LiquidityPool.setNativeFeeConfig(
+  <depositFeeUSD>,  // USD amount (18 decimals) charged on claim/compound
+  <withdrawFeeUSD>, // USD amount (18 decimals) charged on withdrawal claim
+  <feeReceiver>     // address that receives collected fees
+)
+```
+
+To disable fees entirely, pass `0` for both amounts.
+
+**Verify:**
+```solidity
+LiquidityPool.depositFeeUSD()
+LiquidityPool.withdrawFeeUSD()
+LiquidityPool.nativeFeeReceiver()
+```
+
+---
+
+## Step 9 — Set earnings frequency
+
+Controls how often the pool allows earnings to be pulled from the Loans contract:
+
+```solidity
+LiquidityPool.setEarningsFrequency(<intervalSeconds>)
+// Example: 86400 = once per day
+```
+
+**Verify:**
+```solidity
+LiquidityPool.earningsFrequency()
+// Expected: the interval you just set
+```
+
+---
+
+## Final checklist
+
+Run through this before opening to users. Repeat for every supported asset.
+
+| # | Check | How to verify | Expected result |
+|---|---|---|---|
+| 1 | Environment variables set | `.env` / Cloudflare secrets | All `NEXT_PUBLIC_*` vars populated |
+| 2 | Build passes | `npm run build` | No errors |
+| 3 | SwapManager wired | `LiquidityPool.swapManager()` | SwapManager address |
+| 4 | Loans has MANAGER_ROLE | `LiquidityPool.hasRole(MANAGER_ROLE, Loans)` | `true` |
+| 5 | Price feed live | `PriceDataFeed.getSpotPrice(token)` | Non-zero (non-stable assets only) |
+| 6 | Asset configured | `LiquidityPool.getAssetConfig(token).status` | `1` (Active) |
+| 7 | Lock tiers exist | `LiquidityPool.getAssetLockTiers(token)` | ≥ 1 enabled tier |
+| 8 | Minimum deposit set | `LiquidityPool.minimumDepositValue()` | Intended value in raw units |
+| 9 | Fee receiver set | `LiquidityPool.nativeFeeReceiver()` | Correct address |
+| 10 | Earnings frequency set | `LiquidityPool.earningsFrequency()` | Intended interval (seconds) |
+| 11 | Token transfer fee | Check token contract | 0, or protocol contracts fee-exempt |
+| 12 | SwapManager swap ID | `SwapManager.assetSwapIds(token)` | Non-zero bytes32 (check after first deposit) |

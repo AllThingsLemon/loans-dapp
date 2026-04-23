@@ -156,15 +156,14 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       )
       setLtv(ltvPercentage)
     }
-    if (initialHookData.interestAprConfigs.length > 0 && duration === 0) {
-      // Set initial duration to the midpoint of the first config
-      const firstConfig = initialHookData.interestAprConfigs[0]
-      setDuration(Number(firstConfig.minDuration))
+    if (initialHookData.durationRange.min > 0 && duration === 0) {
+      setDuration(initialHookData.durationRange.min)
     }
   }, [
     initialHookData.loanConfig,
     initialHookData.ltvOptions,
     initialHookData.interestAprConfigs,
+    initialHookData.durationRange,
     tokenConfig
   ])
 
@@ -378,8 +377,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
             Number(formatUnits(initialHookData.loanConfig.minLoanAmount, tokenConfig.loanToken.decimals))
           )
         }
-        if (initialHookData.interestAprConfigs.length > 0) {
-          setDuration(Number(initialHookData.interestAprConfigs[0].minDuration))
+        if (initialHookData.durationRange.min > 0) {
+          setDuration(initialHookData.durationRange.min)
         }
         if (initialHookData.ltvOptions.length > 0 && tokenConfig) {
           setLtv(

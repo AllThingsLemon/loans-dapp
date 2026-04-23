@@ -190,7 +190,7 @@ export function LoanParameters({
                 type='range'
                 min={minDuration}
                 max={maxDuration}
-                step={loanConfig.loanCycleDuration}
+                step={Number(loanConfig.loanCycleDuration)}
                 value={duration}
                 disabled={interestAprConfigs.length === 0}
                 onChange={(e) => {
