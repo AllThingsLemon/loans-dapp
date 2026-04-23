@@ -61,6 +61,7 @@ const combineLoanData = (
     createdAt: loan.createdAt,
     loanAmount: loan.loanAmount,
     duration: loan.duration,
+    originalDuration: loan.originalDuration,
     interestAmount: loan.interestAmount,
     interestApr: loan.interestApr,
     paidAmount: loan.paidAmount,

@@ -193,6 +193,15 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const userTokenBalance = tokenBalance as bigint | undefined
   const currentAllowance = tokenAllowance as bigint | undefined
 
+  // Fetch minimum deposit value from contract (in stable token units)
+  const { data: minimumDepositValueRaw } = useReadContract({
+    address: lpAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'minimumDepositValue',
+    query: { enabled: !!lpAddress },
+  })
+  const minimumDepositValue = minimumDepositValueRaw as bigint | undefined
+
   // What is the user's token balance worth in stable terms?
   const { data: balanceCreditRaw } = useReadContract({
     address: lpAddress,
@@ -228,6 +237,17 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
       .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }, [balanceCreditRaw, stableDecimals])
 
+  const isBelowMinimum = useMemo(() => {
+    if (!parsedDollarAmount || !minimumDepositValue) return false
+    return parsedDollarAmount < minimumDepositValue
+  }, [parsedDollarAmount, minimumDepositValue])
+
+  const minimumForDisplay = useMemo(() => {
+    if (!minimumDepositValue) return null
+    return parseFloat(formatTokenAmount(minimumDepositValue, stableDecimals))
+      .toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  }, [minimumDepositValue, stableDecimals])
+
   const insufficientBalance = useMemo(() => {
     if (!tokenAmount || userTokenBalance === undefined) return false
     return tokenAmount > userTokenBalance
@@ -257,7 +277,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     }
   }
 
-  const canDeposit = !!tokenAmount && !insufficientBalance && selectedAsset !== undefined && selectedTier !== undefined
+  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined
 
   const handleDepositClick = () => {
     if (!canDeposit) return
@@ -389,7 +409,12 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
           </p>
         )}
 
-        <div className='flex-1'>
+        <div className='flex-1 space-y-1'>
+          {isBelowMinimum && minimumForDisplay && (
+            <p className='text-sm text-destructive'>
+              Minimum deposit is ${minimumForDisplay} USD.
+            </p>
+          )}
           {insufficientBalance && (
             <p className='text-sm text-destructive'>
               Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
@@ -398,7 +423,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         </div>
 
         <div>
-        {needsApproval && tokenAmount && !insufficientBalance ? (
+        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum ? (
           <Button
             onClick={handleApprove}
             disabled={isProcessing || !tokenAmount}

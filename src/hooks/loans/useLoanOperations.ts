@@ -46,7 +46,7 @@ export interface UseLoanOperationsReturn {
   approveTokenAllowance: (amount: bigint) => Promise<`0x${string}` | undefined>
   extendLoan: (
     loanId: `0x${string}`,
-    maxExtension: bigint
+    extendTime: bigint
   ) => Promise<`0x${string}` | undefined>
 
   // Transaction states
@@ -605,55 +605,13 @@ export const useLoanOperations = (
 
   // Function to extend a loan by max allowed extension
   const extendLoan = useCallback(
-    async (loanId: `0x${string}`, maxExtension: bigint) => {
+    async (loanId: `0x${string}`, extendTime: bigint) => {
       if (!address) throw new Error('Wallet not connected')
-      if (!maxExtension) throw new Error('Max extension not provided')
-
-      // Use the max loan extension from config
-      const extensionTime = maxExtension
-
-      // The contract will handle the fee transfer, but we need to ensure allowance is set
-      const txHash = await extendLoanContract({
-        args: [loanId, extensionTime]
-      })
-
-      // Wait for transaction to be confirmed
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
-
-      // If extension was successful, invalidate queries
-      if (txHash && address) {
-        await Promise.all([
-          // Invalidate wagmi-generated queries
-          queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey
-              return (
-                Array.isArray(key) &&
-                key.some(
-                  (part) =>
-                    typeof part === 'object' &&
-                    part !== null &&
-                    'args' in part &&
-                    Array.isArray(part.args) &&
-                    part.args[0] === address
-                )
-              )
-            }
-          }),
-          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) && query.queryKey[0] === 'loan'
-          }),
-          queryClient.invalidateQueries()
-        ])
-      }
-
+      const txHash = await extendLoanContract({ args: [loanId, extendTime] })
+      await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, extendLoanContract, publicClient, queryClient]
+    [address, extendLoanContract, waitAndInvalidate]
   )
 
   return {

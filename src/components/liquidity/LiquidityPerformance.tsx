@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { useReadContract } from 'wagmi'
+import { useReadContract, useAccount } from 'wagmi'
 import { liquidityPoolAbi } from '@/src/generated'
 import {
   Card,
@@ -125,6 +125,7 @@ function isValidAddress(addr: string): boolean {
 
 export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProps) {
   const { toast } = useToast()
+  const { address: connectedAddress } = useAccount()
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
   const [transferAccountModal, setTransferAccountModal] = useState<TransferAccountModal>(emptyAccountModal)
   const [compoundModal, setCompoundModal] = useState<{ open: boolean; selectedTierIndex: number | null }>({ open: false, selectedTierIndex: null })
@@ -453,7 +454,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                     description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
                     actionName: 'Claim',
                     action: () => claimEarnings(),
-                    successMsg: 'Earnings claimed successfully.',
+                    successMsg: `${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} claimed successfully.`,
                   })
                 }
                 disabled={isProcessing !== null}
@@ -632,6 +633,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
                 setTransferAccountModal((m) => ({ ...m, address: e.target.value }))
               }
             />
+            {isValidAddress(transferAccountModal.address) &&
+              connectedAddress &&
+              transferAccountModal.address.toLowerCase() === connectedAddress.toLowerCase() && (
+              <p className='text-sm text-destructive'>You cannot transfer your account to yourself.</p>
+            )}
           </div>
           <div className='flex items-start gap-3 pt-1'>
             <Checkbox
@@ -657,7 +663,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             disabled={
               !isValidAddress(transferAccountModal.address) ||
               !transferAccountModal.confirmed ||
-              isProcessing !== null
+              isProcessing !== null ||
+              (!!connectedAddress && transferAccountModal.address.toLowerCase() === connectedAddress.toLowerCase())
             }
             onClick={async () => {
               const to = transferAccountModal.address as `0x${string}`

@@ -31,6 +31,7 @@ export interface Loan {
   elapsedTimeInCycle: bigint
 
   // Computed helper properties (derived from contract data)
+  originalDuration: bigint // Duration at loan creation (max allowed extension)
   remainingBalance: bigint // Calculated from contract values, not manually
   dueTimestamp: bigint // Calculated from timeToDefault
 }
