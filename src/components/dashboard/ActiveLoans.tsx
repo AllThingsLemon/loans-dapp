@@ -52,7 +52,8 @@ import {
   Clock,
   AlertCircle,
   Copy,
-  Check
+  Check,
+  Info
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
@@ -536,7 +537,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Calendar className='h-3 w-3' />
-                    Due Date
+                    Loan End Date
                   </p>
                   <p className='font-medium'>
                     {new Date(Number(loan.dueTimestamp) * 1000).toLocaleDateString()}
@@ -546,26 +547,27 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
                     {isOverdue ? 'Overdue' : 'Time Until Default'}
-                  </p>
-                  <div className='font-medium'>
-                    {loan.status === LOAN_STATUS.ACTIVE ? (
+                    {!isOverdue && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span>
-                              <CountdownTimer
-                                targetDate={displayDueDate}
-                                compact
-                                showIcon={false}
-                                animate
-                              />
-                            </span>
+                            <Info className='h-3 w-3 cursor-pointer' />
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Time includes a safety buffer to account for blockchain timing.</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
+                    )}
+                  </p>
+                  <div className='font-medium'>
+                    {loan.status === LOAN_STATUS.ACTIVE ? (
+                      <CountdownTimer
+                        targetDate={displayDueDate}
+                        compact
+                        showIcon={false}
+                        animate
+                      />
                     ) : (
                       <span className='text-muted-foreground'>N/A</span>
                     )}
