@@ -544,7 +544,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {isOverdue ? 'Overdue' : loan.cyclesAhead > 0n ? 'Time Until Default' : 'Time Until Due'}
+                    {isOverdue ? 'Overdue' : 'Time Until Default'}
                   </p>
                   <div className='font-medium'>
                     {loan.status === LOAN_STATUS.ACTIVE ? (
