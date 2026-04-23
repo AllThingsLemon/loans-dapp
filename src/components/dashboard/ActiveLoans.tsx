@@ -538,13 +538,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Due Date
                   </p>
                   <p className='font-medium'>
-                    {displayDueDate.toLocaleDateString()}
+                    {new Date(Number(loan.dueTimestamp) * 1000).toLocaleDateString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {isOverdue ? 'Overdue' : 'Time Until Due'}
+                    {isOverdue ? 'Overdue' : loan.cyclesAhead > 0n ? 'Time Until Default' : 'Time Until Due'}
                   </p>
                   <div className='font-medium'>
                     {loan.status === LOAN_STATUS.ACTIVE ? (

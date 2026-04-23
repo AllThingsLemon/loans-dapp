@@ -80,21 +80,23 @@ export const useLoanConfig = () => {
 
   const error = configError || interestConfigsError || originationFeesError
 
-  // Calculate duration range from all configs
+  // Derive slider range from APR configs that align with the loan cycle duration.
+  // Stale testnet configs with sub-cycle durations (not divisible by loanCycleDuration)
+  // are excluded so they don't skew the min/max or misalign the step.
   const durationRange = useMemo(() => {
-    if (interestAprConfigs.length === 0) {
-      return { min: 0, max: 0 }
+    if (!loanConfig || interestAprConfigs.length === 0) return { min: 0, max: 0 }
+
+    const cycleDuration = loanConfig.loanCycleDuration
+    const aligned = interestAprConfigs.filter(
+      (c) => cycleDuration > 0n && c.minDuration % cycleDuration === 0n
+    )
+    if (aligned.length === 0) return { min: 0, max: 0 }
+
+    return {
+      min: Number(aligned.reduce((a, b) => a.minDuration < b.minDuration ? a : b).minDuration),
+      max: Number(aligned.reduce((a, b) => a.maxDuration > b.maxDuration ? a : b).maxDuration),
     }
-
-    const minDuration = Math.min(
-      ...interestAprConfigs.map((config) => Number(config.minDuration))
-    )
-    const maxDuration = Math.max(
-      ...interestAprConfigs.map((config) => Number(config.maxDuration))
-    )
-
-    return { min: minDuration, max: maxDuration }
-  }, [interestAprConfigs])
+  }, [loanConfig, interestAprConfigs])
 
   return {
     loanConfig,

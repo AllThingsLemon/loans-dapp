@@ -83,19 +83,13 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-  // Calculate display due date with truncation logic
+  // Countdown target: now + timeToDefault minus a 1-day buffer so users see
+  // urgency before the contract actually defaults them. Accounts for prepayments
+  // (cyclesAhead) since timeToDefault already reflects those on-chain.
   const getDisplayDueDate = useCallback((loanData: Loan): Date => {
-    // Get the actual contract due date
-    const contractDueDate = new Date(Number(loanData.dueTimestamp) * 1000)
-
-    // Subtract 1 hour from contract due date
-    const adjustedDate = new Date(contractDueDate.getTime() - 60 * 60 * 1000)
-
-    // Truncate to start of day at 00:00 UTC
-    const truncatedDate = new Date(adjustedDate)
-    truncatedDate.setUTCHours(0, 0, 0, 0)
-
-    return truncatedDate
+    const now = Date.now()
+    const ONE_DAY_MS = 24 * 60 * 60 * 1000
+    return new Date(now + Number(loanData.timeToDefault) * 1000 - ONE_DAY_MS)
   }, [])
 
   // Simple check if loan payment is overdue (for UI state only)
