@@ -8,7 +8,7 @@ export default function Header() {
   const pathname = usePathname()
 
   return (
-    <div className='flex items-center justify-center w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
+    <div className='sticky top-0 z-50 flex items-center justify-center w-full border-b border-border/40 bg-background'>
       <header className='flex items-center justify-between p-4 min-w-full max-w-screen-xl'>
         <div className='flex items-center space-x-3'>
           <Link href='/' className='flex items-center space-x-3'>
