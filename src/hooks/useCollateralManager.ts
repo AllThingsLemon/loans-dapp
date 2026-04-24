@@ -58,21 +58,26 @@ function useCollateralAsset(
 }
 
 // Wrap the per-asset hook so we can call it for a known set of addresses.
-// We load up to 4 assets; add more entries if collateral options grow.
+// React hooks must run in the same order every render, so we use fixed slots.
+// We load up to 8 assets; add more slots here if collateral options grow past 8.
 function useCollateralAssets(addresses: readonly `0x${string}`[]) {
   const a0 = useCollateralAsset(addresses[0])
   const a1 = useCollateralAsset(addresses[1])
   const a2 = useCollateralAsset(addresses[2])
   const a3 = useCollateralAsset(addresses[3])
+  const a4 = useCollateralAsset(addresses[4])
+  const a5 = useCollateralAsset(addresses[5])
+  const a6 = useCollateralAsset(addresses[6])
+  const a7 = useCollateralAsset(addresses[7])
 
   return useMemo(() => {
-    const slots = [a0, a1, a2, a3].slice(0, addresses.length)
+    const slots = [a0, a1, a2, a3, a4, a5, a6, a7].slice(0, addresses.length)
     return {
       infos: slots.map((s) => s.info).filter((i): i is CollateralTokenInfo => !!i),
       isLoading: slots.some((s) => s.isLoading),
       error: slots.find((s) => s.error)?.error ?? null
     }
-  }, [a0, a1, a2, a3, addresses.length])
+  }, [a0, a1, a2, a3, a4, a5, a6, a7, addresses.length])
 }
 
 export function useCollateralManager(): UseCollateralManagerReturn {

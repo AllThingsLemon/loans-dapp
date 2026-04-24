@@ -121,8 +121,12 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const { toast } = useToast()
 
   // Collateral manager — auto-selects when only one token is configured.
-  // When multi-collateral ships, pull setSelectedCollateral + supportedCollateralTokens here.
-  const { selectedCollateral } = useCollateralManager()
+  // When multiple are configured, the user must pick via the selector in LoanParameters.
+  const {
+    selectedCollateral,
+    setSelectedCollateral,
+    supportedCollateralTokens
+  } = useCollateralManager()
 
   // Per-asset config (ltvOptions, interestAprConfigs depend on selected collateral)
   const perAssetConfig = useLoanConfig(selectedCollateral?.address)
@@ -158,14 +162,15 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         )
       )
     }
-    if (perAssetConfig.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
-      const ltvPercentage = Number(
-        formatPercentage(
-          perAssetConfig.ltvOptions[0].ltv,
-          tokenConfig.ltvDecimals
-        )
+    // Snap LTV to the first option for the selected collateral — on first load (ltv===0)
+    // and when the user switches collateral tokens and the current LTV isn't in the new set.
+    if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
+      const availableLtvs = perAssetConfig.ltvOptions.map((opt) =>
+        Number(formatPercentage(opt.ltv, tokenConfig.ltvDecimals))
       )
-      setLtv(ltvPercentage)
+      if (ltv === 0 || !availableLtvs.includes(ltv)) {
+        setLtv(availableLtvs[0])
+      }
     }
     if (initialHookData.durationRange.min > 0 && duration === 0) {
       setDuration(initialHookData.durationRange.min)
@@ -478,6 +483,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         durationRange={initialHookData.durationRange}
         configLoading={initialHookData.isLoading || perAssetConfig.isLoading}
         availableLiquidity={loanOperations.availableLiquidity}
+        supportedCollateralTokens={supportedCollateralTokens}
+        selectedCollateral={selectedCollateral}
+        setSelectedCollateral={setSelectedCollateral}
         isDashboard={isDashboard}
       />
 
