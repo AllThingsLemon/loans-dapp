@@ -467,16 +467,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         // loan struct (and loanConfig.balloonPaymentGraceDuration) so the value
         // does not shift when the component re-renders. Three phases:
         //
-        //   1. Interest NOT fully paid (remainingCycles > 0):
-        //      count to the next cycle's payment deadline — capped at the loan
-        //      end date so the single-cycle case collapses to the loan end.
-        //      Label: "Time Until Default" (missing that deadline defaults the loan).
+        //   1. Interest NOT fully paid:
+        //      count to the next cycle's payment deadline (capped at the loan
+        //      end date) − 1 day. Label: "Time Until Default".
         //   2. Interest fully paid, before loan end:
-        //      count to createdAt + duration. Label: "Time to Loan End".
+        //      count to createdAt + duration. No buffer. Label: "Time to Loan End".
         //   3. Interest fully paid, past loan end (balloon grace window):
-        //      count to loanEnd + balloonGrace − 1 day. The 1-day buffer is a
-        //      user-facing warning window so the countdown hits zero ahead of
-        //      the contract's actual default. Label: "Time Until Default".
+        //      count to loanEnd + balloonGrace − 1 day. Label: "Time Until Default".
+        // The 1-day buffer in Phases 1 and 3 is a user-facing warning window so
+        // the countdown hits zero ahead of the contract's actual default. On
+        // testnet (cycles smaller than a day) the buffer dominates and the
+        // timer reads "Make Payment Now" through the entire active phase —
+        // expected, since this is sized for mainnet cycle lengths.
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
         const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
@@ -495,7 +497,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         let countdownTarget: Date
         let countdownLabel: string
         if (!interestFullyPaid) {
-          countdownTarget = new Date(nextPaymentDeadlineMs)
+          countdownTarget = new Date(nextPaymentDeadlineMs - ONE_DAY_MS)
           countdownLabel = 'Time Until Default'
         } else if (!pastLoanEnd) {
           countdownTarget = new Date(loanEndMs)
