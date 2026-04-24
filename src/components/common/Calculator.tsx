@@ -420,20 +420,13 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
             'Your loan has been created and will appear in your active loans!'
         })
 
-        // Reset inputs to defaults
-        if (initialHookData.loanConfig?.minLoanAmount && tokenConfig) {
-          setLoanAmount(
-            Number(formatUnits(initialHookData.loanConfig.minLoanAmount, tokenConfig.loanToken.decimals))
-          )
-        }
-        if (initialHookData.durationRange.min > 0) {
-          setDuration(initialHookData.durationRange.min)
-        }
-        if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
-          setLtv(
-            Number(formatPercentage(perAssetConfig.ltvOptions[0].ltv, tokenConfig.ltvDecimals))
-          )
-        }
+        // Full reset \u2014 force the user to re-pick collateral and re-enter loan terms
+        // if they want another loan. Loan amount and duration repopulate to
+        // contract defaults via the init effect; LTV stays 0 until a collateral is picked.
+        setSelectedCollateral(undefined)
+        setLoanAmount(0)
+        setDuration(0)
+        setLtv(0)
       }
     } catch (error) {
       const contractError = error as ContractError

@@ -23,7 +23,7 @@ interface LoanParametersProps {
   availableLiquidity?: bigint
   supportedCollateralTokens: CollateralTokenInfo[]
   selectedCollateral: CollateralTokenInfo | undefined
-  setSelectedCollateral: (token: CollateralTokenInfo) => void
+  setSelectedCollateral: (token: CollateralTokenInfo | undefined) => void
   isDashboard?: boolean
 }
 
@@ -46,8 +46,9 @@ export function LoanParameters({
   setSelectedCollateral,
   isDashboard = false
 }: LoanParametersProps) {
-  const hasMultipleCollateral = supportedCollateralTokens.length > 1
-  const needsCollateralChoice = hasMultipleCollateral && !selectedCollateral
+  // Always show the selector — the user must pick, even if only one token is configured.
+  const hasCollateralOptions = supportedCollateralTokens.length > 0
+  const needsCollateralChoice = hasCollateralOptions && !selectedCollateral
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
@@ -95,8 +96,8 @@ export function LoanParameters({
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-6'>
-        {/* Collateral Token Selector — only shown when more than one is configured */}
-        {hasMultipleCollateral && (
+        {/* Collateral Token Selector — always required; the user must pick before the rest of the form is usable */}
+        {hasCollateralOptions && (
           <div>
             <label
               className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
