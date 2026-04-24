@@ -21,9 +21,10 @@ export interface UseLoansReturn {
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
   extendLoan: (
     loanId: `0x${string}`,
-    maxExtension: bigint
+    extendTime: bigint
   ) => Promise<`0x${string}` | undefined>
   approveLoanFee: (feeAmount?: bigint) => Promise<`0x${string}` | undefined>
+  approveCollateral: (collateralToken: `0x${string}`, collateralAmount: bigint) => Promise<`0x${string}` | undefined>
   payLoan: (
     loanId: `0x${string}`,
     amount: bigint
@@ -38,6 +39,7 @@ export interface UseLoansReturn {
   // Loan creation & simulation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
+  grossOriginationFee: bigint | undefined
   calculationData:
     | {
         interestAmount: bigint | undefined
@@ -54,6 +56,11 @@ export interface UseLoansReturn {
   userLoanTokenBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
+  currentCollateralAllowance: bigint | undefined
+
+  // Liquidity
+  availableLiquidity: bigint | undefined
+  hasInsufficientLiquidity: boolean
 
   // Contract addresses
   loansContractAddress: `0x${string}` | undefined

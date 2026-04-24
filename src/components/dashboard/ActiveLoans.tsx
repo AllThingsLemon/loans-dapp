@@ -50,9 +50,14 @@ import {
   DollarSign,
   Percent,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check,
+  Info
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
+import { useCollateralManager } from '@/src/hooks/useCollateralManager'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -73,13 +78,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     isTransacting,
     userLoanTokenBalance,
     userLmlnBalance,
-    loanConfig
+    loanConfig,
+    interestAprConfigs,
   } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
+  const { getCollateralByAddress } = useCollateralManager()
   const {
     isLoanOverdue,
     isLoanInGracePeriod,
-    getDisplayDueDate,
     getPaymentProgress,
     minimumPayment,
     isPaymentRequired,
@@ -101,12 +107,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [selectedLoanForExtension, setSelectedLoanForExtension] = useState<
     `0x${string}` | null
   >(null)
+  const [extensionDuration, setExtensionDuration] = useState(0)
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
   const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
     useState<`0x${string}` | null>(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
+  const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+
+  const handleCopyLoanId = (id: string) => {
+    navigator.clipboard.writeText(id)
+    setCopiedLoanId(id)
+    setTimeout(() => setCopiedLoanId(null), 2000)
+  }
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)
   const formatMinimumPayment = (loan: Loan): string => {
@@ -190,7 +204,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveTokenAllowance(paymentWei)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now make the payment!'
       })
     } catch (error: any) {
@@ -224,7 +238,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Withdrawal Successful',
+          title: '\u2705 Withdrawal Successful',
           description: 'Your collateral has been withdrawn successfully!'
         })
 
@@ -253,7 +267,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       await approveLoanFee(loan.originationFee)
 
       toast({
-        title: 'Approval Successful',
+        title: '\u2705 Approval Successful',
         description: 'You can now extend your loan!'
       })
     } catch (error: any) {
@@ -264,44 +278,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   }
 
   const handleExtension = async (loan: Loan) => {
-    // Check if we have sufficient LMLN allowance
-    if (!currentLmlnAllowance || currentLmlnAllowance < loan.originationFee) {
-      toast({
-        title: 'Insufficient Allowance',
-        description: 'Please approve LMLN tokens first',
-        variant: 'destructive'
-      })
-      return
-    }
-
-    // Check if we have loan config
-    if (!loanConfig?.maxLoanExtension) {
-      toast({
-        title: 'Configuration Error',
-        description: 'Loan configuration not loaded',
-        variant: 'destructive'
-      })
-      return
-    }
-
+    if (!extensionDuration) return
     setIsProcessingExtension(true)
     try {
-      const result = await extendLoan(loan.id, loanConfig.maxLoanExtension)
-
-      if (result) {
-        await refetch()
-
-        toast({
-          title: 'Extension Successful',
-          description: `Your loan has been extended by ${loanConfig ? formatDuration(loanConfig.maxLoanExtension) : 'the maximum allowed time'}!`
-        })
-
-        // Close the dialog and clear state
-        setSelectedLoanForExtension(null)
-        setIsApprovingExtension(false)
-        setIsProcessingExtension(false)
-        setIsExtensionDialogOpen(false)
-      }
+      await extendLoan(loan.id, BigInt(extensionDuration))
+      toast({
+        title: '✅ Extension Successful',
+        description: `Your loan has been extended by ${formatDuration(BigInt(extensionDuration))}.`
+      })
+      setSelectedLoanForExtension(null)
+      setIsApprovingExtension(false)
+      setIsProcessingExtension(false)
+      setIsExtensionDialogOpen(false)
     } catch (error: any) {
       handleContractError(error as ContractError, toast, 'Extension Failed')
     } finally {
@@ -386,7 +374,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         await refetch()
 
         toast({
-          title: 'Payment Successful',
+          title: '\u2705 Payment Successful',
           description: 'Your payment has been processed successfully!'
         })
 
@@ -471,10 +459,53 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   return (
     <div className='space-y-4'>
       {activeLoans.map((loan) => {
-        const displayDueDate = getDisplayDueDate(loan)
         const progress = getPaymentProgress(loan)
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
+
+        // Countdown target — derived entirely from absolute timestamps on the
+        // loan struct (and loanConfig.balloonPaymentGraceDuration) so the value
+        // does not shift when the component re-renders. Three phases:
+        //
+        //   1. Interest NOT fully paid:
+        //      count to the next cycle's payment deadline (capped at the loan
+        //      end date) − 1 day. Label: "Time Until Default".
+        //   2. Interest fully paid, before loan end:
+        //      count to createdAt + duration. No buffer. Label: "Time to Loan End".
+        //   3. Interest fully paid, past loan end (balloon grace window):
+        //      count to loanEnd + balloonGrace − 1 day. Label: "Time Until Default".
+        // The 1-day buffer in Phases 1 and 3 is a user-facing warning window so
+        // the countdown hits zero ahead of the contract's actual default. On
+        // testnet (cycles smaller than a day) the buffer dominates and the
+        // timer reads "Make Payment Now" through the entire active phase —
+        // expected, since this is sized for mainnet cycle lengths.
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000
+        const loanEndMs = Number(loan.dueTimestamp) * 1000
+        const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
+          ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
+          : 0
+        const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
+
+        // End of the next cycle the user must pay, accounting for prepayments.
+        const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
+        const nextCycleEndMs = Number(
+          loan.createdAt + nextCycleIndex * loan.loanCycleDuration
+        ) * 1000
+        const nextPaymentDeadlineMs = Math.min(nextCycleEndMs, loanEndMs)
+
+        let countdownTarget: Date
+        let countdownLabel: string
+        if (!isInGracePeriod) {
+          countdownTarget = new Date(nextPaymentDeadlineMs - ONE_DAY_MS)
+          countdownLabel = 'Time Until Default'
+        } else if (!pastLoanEnd) {
+          countdownTarget = new Date(loanEndMs)
+          countdownLabel = 'Time to Loan End'
+        } else {
+          countdownTarget = new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
+          countdownLabel = 'Time Until Default'
+        }
+        const showCountdownTooltip = countdownLabel === 'Time Until Default'
 
         return (
           <Card key={loan.id}>
@@ -483,8 +514,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='flex items-center gap-3'>
                   <CreditCard className='h-5 w-5 text-green-600' />
                   <div>
-                    <CardTitle className='text-lg'>
+                    <CardTitle className='text-lg flex items-center gap-1.5'>
                       Loan #{truncateAddress(loan.id)}
+                      <button
+                        type='button'
+                        onClick={() => handleCopyLoanId(loan.id)}
+                        className='text-muted-foreground hover:text-foreground transition-colors'
+                        title='Copy loan ID'
+                      >
+                        {copiedLoanId === loan.id ? (
+                          <Check className='h-3.5 w-3.5 text-green-600' />
+                        ) : (
+                          <Copy className='h-3.5 w-3.5' />
+                        )}
+                      </button>
                     </CardTitle>
                     <CardDescription>
                       Protocol Loan • {getLoanStatusLabel(loan.status)}
@@ -538,21 +581,33 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Calendar className='h-3 w-3' />
-                    Due Date
+                    Loan End Date
                   </p>
                   <p className='font-medium'>
-                    {displayDueDate.toLocaleDateString()}
+                    {new Date(Number(loan.dueTimestamp) * 1000).toLocaleDateString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {isOverdue ? 'Overdue' : 'Time Until Due'}
+                    {countdownLabel}
+                    {showCountdownTooltip && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className='h-3 w-3 cursor-pointer' />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Time includes a safety buffer to account for blockchain timing.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </p>
                   <div className='font-medium'>
                     {loan.status === LOAN_STATUS.ACTIVE ? (
                       <CountdownTimer
-                        targetDate={displayDueDate}
+                        targetDate={countdownTarget}
                         compact
                         showIcon={false}
                         animate
@@ -611,8 +666,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
-                    {loan.transpiredCycles.toString()}/
-                    {loan.totalCycles.toString()}
+                    {(() => {
+                      // Pure real-time progress through the cycle schedule —
+                      // payments don't advance this cell. UNLOCKED/COMPLETED
+                      // loans surface N/N because combineLoanData resolves
+                      // transpiredCycles to totalCycles for non-ACTIVE loans.
+                      const done = loan.transpiredCycles
+                      const capped = done > loan.totalCycles ? loan.totalCycles : done
+                      return capped.toString()
+                    })()}
+                    /{loan.totalCycles.toString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -620,7 +683,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='text-sm font-medium'>
                     {formatAmountWithSymbol(
                       loan.collateralAmount,
-                      tokenConfig?.nativeToken.symbol || 'Token'
+                      getCollateralByAddress(loan.collateralToken)?.symbol || 'Token'
                     )}
                   </p>
                 </div>
@@ -865,155 +928,136 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         size='sm'
                         onClick={() => {
                           setSelectedLoanForExtension(loan.id)
+                          setExtensionDuration(loanConfig ? Number(loanConfig.minLoanDuration) : 0)
                           setIsExtensionDialogOpen(true)
                         }}
                       >
                         Extend Loan
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className='sm:max-w-md'>
                       <DialogHeader>
                         <DialogTitle>Extend Loan</DialogTitle>
                         <DialogDescription>
-                          Extend loan #{truncateAddress(loan.id)} by{' '}
-                          {loanConfig
-                            ? formatDuration(loanConfig.maxLoanExtension)
-                            : 'max allowed time'}
+                          Select how long you&apos;d like to extend loan #{truncateAddress(loan.id)}.
                         </DialogDescription>
                       </DialogHeader>
-                      <div className='space-y-4'>
-                        <div className='bg-muted/50 p-4 rounded-lg space-y-3'>
-                          <h4 className='font-medium text-sm'>
-                            What is a loan extension?
-                          </h4>
-                          <p className='text-sm text-muted-foreground'>
-                            A loan extension adds{' '}
-                            {loanConfig
-                              ? formatDuration(loanConfig.maxLoanExtension)
-                              : 'additional time'}{' '}
-                            to your loan duration, giving you more time to
-                            repay. This extension applies to the end of your
-                            loan term, not the principal payment payoff period.
-                          </p>
-                          <div className='space-y-2 pt-2'>
-                            <div className='flex justify-between text-sm'>
-                              <span className='text-muted-foreground'>
-                                Current Due Date:
-                              </span>
-                              <span className='font-medium'>
-                                {formatTimestamp(
-                                  loan.dueTimestamp
-                                ).toLocaleDateString()}
-                              </span>
-                            </div>
-                            <div className='flex justify-between text-sm'>
-                              <span className='text-muted-foreground'>
-                                New Due Date:
-                              </span>
-                              <span className='font-medium'>
-                                {loanConfig
-                                  ? new Date(
-                                      Number(loan.dueTimestamp) * 1000 +
-                                        Number(loanConfig.maxLoanExtension) *
-                                          1000
-                                    ).toLocaleDateString()
-                                  : 'Calculating...'}
-                              </span>
-                            </div>
-                            <div className='flex justify-between text-sm'>
-                              <span className='text-muted-foreground'>
-                                APR:
-                              </span>
-                              <span className='font-medium'>
-                                {tokenConfig
-                                  ? formatPercentage(
-                                      loan.interestApr,
-                                      tokenConfig.aprDecimals
-                                    ) + '%'
-                                  : '...'}
-                              </span>
-                            </div>
-                            <div className='flex justify-between text-sm pt-2 border-t'>
-                              <span className='text-muted-foreground'>
-                                Extension Fee:
-                              </span>
-                              <span className='font-medium'>
-                                {formatAmountWithSymbol(
-                                  loan.originationFee,
-                                  tokenConfig?.feeToken.symbol || 'LMLN'
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                      {(() => {
+                        const minDur = loanConfig ? Number(loanConfig.minLoanDuration) : 0
+                        const maxDur = Number(loan.originalDuration)
+                        const stepDur = loanConfig ? Number(loanConfig.loanCycleDuration) : 1
+                        const aprConfig = interestAprConfigs.find(
+                          (c) => extensionDuration >= Number(c.minDuration) && extensionDuration <= Number(c.maxDuration)
+                        )
+                        const aprPct = aprConfig && tokenConfig
+                          ? formatPercentage(aprConfig.interestApr, tokenConfig.aprDecimals) + '%'
+                          : '—'
+                        const newDueDate = extensionDuration > 0
+                          ? new Date(Number(loan.dueTimestamp) * 1000 + extensionDuration * 1000).toLocaleDateString()
+                          : '—'
+                        const ltvPct = tokenConfig
+                          ? formatPercentage(loan.ltv, tokenConfig.ltvDecimals) + '%'
+                          : '—'
+                        const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
+                        const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < loan.originationFee
 
-                        <div className='flex gap-2'>
-                          {(() => {
-                            // Check if approval is needed for extension fee
-                            const needsApproval =
-                              !currentLmlnAllowance ||
-                              currentLmlnAllowance < loan.originationFee
-                            const hasInsufficientBalance =
-                              userLmlnBalance &&
-                              userLmlnBalance < loan.originationFee
+                        return (
+                          <div className='space-y-5'>
+                            {/* Duration slider */}
+                            <div>
+                              <label className='block text-sm font-medium mb-2'>
+                                Extension Duration: {extensionDuration > 0 ? formatDuration(BigInt(extensionDuration)) : '—'}
+                              </label>
+                              {minDur > 0 && maxDur > 0 ? (
+                                <>
+                                  <input
+                                    type='range'
+                                    min={minDur}
+                                    max={maxDur}
+                                    step={stepDur}
+                                    value={extensionDuration || minDur}
+                                    onChange={(e) => setExtensionDuration(Number(e.target.value))}
+                                    className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider'
+                                  />
+                                  <div className='flex justify-between text-sm text-muted-foreground mt-1'>
+                                    <span>{formatDuration(BigInt(minDur))}</span>
+                                    <span>{formatDuration(BigInt(maxDur))}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <p className='text-sm text-muted-foreground'>Loading configuration...</p>
+                              )}
+                            </div>
 
-                            if (hasInsufficientBalance) {
-                              return (
-                                <div className='text-sm text-red-600 flex items-center gap-2'>
-                                  <AlertCircle className='h-4 w-4' />
-                                  <span>
-                                    Insufficient LMLN balance for extension fee
+                            {/* Summary */}
+                            <div className='bg-muted/50 p-4 rounded-lg space-y-2'>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>Estimated APR</span>
+                                <span className='font-medium text-yellow-600'>{aprPct}</span>
+                              </div>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>LTV Ratio</span>
+                                <span className='font-medium text-yellow-600'>{ltvPct}</span>
+                              </div>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>Current Due Date</span>
+                                <span className='font-medium'>
+                                  {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>New Due Date</span>
+                                <span className='font-medium'>{newDueDate}</span>
+                              </div>
+                              {loan.originationFee > 0n && (
+                                <div className='flex justify-between text-sm pt-2 border-t'>
+                                  <span className='text-muted-foreground'>Extension Fee</span>
+                                  <span className='font-medium'>
+                                    {formatAmountWithSymbol(loan.originationFee, tokenConfig?.feeToken.symbol || 'LMLN')}
                                   </span>
                                 </div>
-                              )
-                            }
+                              )}
+                            </div>
 
-                            if (needsApproval) {
-                              return (
+                            {/* Actions */}
+                            <div className='flex gap-2'>
+                              {hasInsufficientBalance ? (
+                                <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4' />
+                                  <span>Insufficient LMLN balance for extension fee</span>
+                                </div>
+                              ) : needsApproval && loan.originationFee > 0n ? (
                                 <Button
                                   onClick={() => handleExtensionApproval(loan)}
-                                  disabled={
-                                    isApprovingExtension ||
-                                    isProcessingExtension
-                                  }
+                                  disabled={isApprovingExtension || isProcessingExtension}
                                   className='flex-1'
                                 >
-                                  {isApprovingExtension
-                                    ? 'Approving...'
-                                    : 'Approve LMLN'}
+                                  {isApprovingExtension ? 'Approving...' : 'Approve LMLN'}
                                 </Button>
-                              )
-                            } else {
-                              return (
+                              ) : (
                                 <Button
                                   onClick={() => handleExtension(loan)}
-                                  disabled={
-                                    isApprovingExtension ||
-                                    isProcessingExtension ||
-                                    needsApproval
-                                  }
+                                  disabled={isProcessingExtension || extensionDuration === 0}
                                   className='flex-1'
                                 >
-                                  {isProcessingExtension
-                                    ? 'Processing...'
-                                    : 'Confirm Extension'}
+                                  {isProcessingExtension ? 'Processing...' : 'Confirm Extension'}
                                 </Button>
-                              )
-                            }
-                          })()}
-                          <Button
-                            variant='outline'
-                            onClick={() => {
-                              setSelectedLoanForExtension(null)
-                              setIsApprovingExtension(false)
-                              setIsProcessingExtension(false)
-                              setIsExtensionDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
+                              )}
+                              <Button
+                                variant='outline'
+                                onClick={() => {
+                                  setSelectedLoanForExtension(null)
+                                  setIsApprovingExtension(false)
+                                  setIsProcessingExtension(false)
+                                  setIsExtensionDialogOpen(false)
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </DialogContent>
                   </Dialog>
                 )}
@@ -1042,6 +1086,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           onClose={closeWithdrawalModal}
           loan={activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)}
           tokenConfig={tokenConfig}
+          collateralSymbol={(() => {
+            const loan = activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)
+            return loan ? getCollateralByAddress(loan.collateralToken)?.symbol : undefined
+          })()}
           isWithdrawing={isWithdrawingCollateral}
           onConfirmWithdrawal={confirmWithdrawal}
         />

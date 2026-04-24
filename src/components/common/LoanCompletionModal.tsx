@@ -17,6 +17,7 @@ interface LoanCompletionModalProps {
   onClose: () => void
   loan: any
   tokenConfig: any
+  collateralSymbol?: string
   isWithdrawing: boolean
   onConfirmWithdrawal: () => Promise<void>
 }
@@ -26,9 +27,15 @@ export function LoanCompletionModal({
   onClose,
   loan,
   tokenConfig,
+  collateralSymbol,
   isWithdrawing,
   onConfirmWithdrawal
 }: LoanCompletionModalProps) {
+  // After a successful withdrawal the loan transitions to COMPLETED and is
+  // filtered out of activeLoans. The modal may re-render once with loan=undefined
+  // before the parent's closeWithdrawalModal runs, so don't crash on it.
+  if (!loan) return null
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className='sm:max-w-md'>
@@ -75,7 +82,7 @@ export function LoanCompletionModal({
                 <span className='font-semibold text-green-800'>
                   {formatAmountWithSymbol(
                     loan.collateralAmount,
-                    tokenConfig?.nativeToken.symbol || 'Token'
+                    collateralSymbol || tokenConfig?.nativeToken.symbol || 'Token'
                   )}
                 </span>
               </div>

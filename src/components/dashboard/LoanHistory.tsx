@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Card,
   CardContent,
@@ -25,7 +26,9 @@ import {
   XCircle,
   DollarSign,
   Calendar,
-  Percent
+  Percent,
+  Copy,
+  Check
 } from 'lucide-react'
 
 interface LoanHistoryProps {
@@ -35,12 +38,21 @@ interface LoanHistoryProps {
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const { loanHistory } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
+  const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+
+  const handleCopyLoanId = (id: string) => {
+    navigator.clipboard.writeText(id)
+    setCopiedLoanId(id)
+    setTimeout(() => setCopiedLoanId(null), 2000)
+  }
 
   const getStatusIcon = (status: number) => {
     switch (status) {
       case 1: // paid
         return <CheckCircle className='h-4 w-4 text-green-600' />
       case 2: // defaulted
+        return <XCircle className='h-4 w-4 text-red-600' />
+      case 4: // liquidated
         return <XCircle className='h-4 w-4 text-red-600' />
       default:
         return <History className='h-4 w-4 text-muted-foreground' />
@@ -104,7 +116,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                 <p className='font-medium'>
                   {formatAmountWithSymbol(
                     loan.paidAmount,
-                    tokenConfig?.nativeToken.symbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token'
                   )}
                 </p>
                 <p className='text-sm text-muted-foreground'>total paid</p>
@@ -131,8 +143,20 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                 <div className='flex items-center gap-3'>
                   {getStatusIcon(loan.status)}
                   <div>
-                    <CardTitle className='text-lg'>
+                    <CardTitle className='text-lg flex items-center gap-1.5'>
                       Loan #{truncateAddress(loan.id)}
+                      <button
+                        type='button'
+                        onClick={() => handleCopyLoanId(loan.id)}
+                        className='text-muted-foreground hover:text-foreground transition-colors'
+                        title='Copy loan ID'
+                      >
+                        {copiedLoanId === loan.id ? (
+                          <Check className='h-3.5 w-3.5 text-green-600' />
+                        ) : (
+                          <Copy className='h-3.5 w-3.5' />
+                        )}
+                      </button>
                     </CardTitle>
                     <CardDescription>
                       Protocol Loan • {getLoanStatusLabel(loan.status)}
@@ -199,7 +223,7 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                     <p className='text-lg font-semibold text-green-600'>
                       {formatAmountWithSymbol(
                         loan.paidAmount,
-                        tokenConfig?.nativeToken.symbol || 'Token'
+                        tokenConfig?.loanToken.symbol || 'Token'
                       )}
                     </p>
                   </div>

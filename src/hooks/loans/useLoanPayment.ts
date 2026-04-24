@@ -83,39 +83,30 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-  // Calculate display due date with truncation logic
-  const getDisplayDueDate = useCallback((loanData: Loan): Date => {
-    // Get the actual contract due date
-    const contractDueDate = new Date(Number(loanData.dueTimestamp) * 1000)
-
-    // Subtract 1 hour from contract due date
-    const adjustedDate = new Date(contractDueDate.getTime() - 60 * 60 * 1000)
-
-    // Truncate to start of day at 00:00 UTC
-    const truncatedDate = new Date(adjustedDate)
-    truncatedDate.setUTCHours(0, 0, 0, 0)
-
-    return truncatedDate
+  // Overdue once the loan is past its end date. The contract still allows
+  // payments during the balloonPaymentGraceDuration window, but from the
+  // user's perspective the principal payment is late.
+  const isLoanOverdue = useCallback((loanData: Loan): boolean => {
+    if (loanData.status !== LOAN_STATUS.ACTIVE) {
+      return false
+    }
+    return Date.now() >= Number(loanData.dueTimestamp) * 1000
   }, [])
 
-  // Simple check if loan payment is overdue (for UI state only)
-  const isLoanOverdue = useCallback(
-    (loanData: Loan): boolean => {
-      if (loanData.status !== LOAN_STATUS.ACTIVE) {
-        return false
-      }
-      const displayDueDate = getDisplayDueDate(loanData)
-      return displayDueDate.getTime() < Date.now()
-    },
-    [getDisplayDueDate]
-  )
-
-  // Check if loan is in grace period (all interest paid, only principal remains)
+  // Grace period: every cycle's interest has been credited (real-time elapsed
+  // cycles + prepaid cycles cover all configured cycles), so the only thing
+  // left is the balloon principal payment.
+  //
+  // We can't use loanData.remainingCycles for this — on this contract it
+  // returns totalCycles − transpiredCycles − 1, i.e. it's purely time-based
+  // and ignores prepayments. We also can't use paidAmount >= interestAmount —
+  // once any principal is paid, paidAmount dwarfs interestAmount, making the
+  // check trivially true even while cycle interest is unpaid.
   const isLoanInGracePeriod = useCallback((loanData: Loan): boolean => {
     if (loanData.status !== LOAN_STATUS.ACTIVE) {
       return false
     }
-    return loanData.paidAmount >= loanData.interestAmount
+    return loanData.transpiredCycles + loanData.cyclesAhead >= loanData.totalCycles
   }, [])
 
   const getPaymentProgress = useCallback((loanData: Loan) => {
@@ -147,7 +138,6 @@ export const useLoanPayment = (
     isValidAmount,
     isLoanOverdue,
     isLoanInGracePeriod,
-    getDisplayDueDate,
     getPaymentProgress,
     // New status-aware properties
     isPaymentRequired,

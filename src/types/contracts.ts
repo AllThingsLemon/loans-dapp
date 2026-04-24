@@ -1,18 +1,19 @@
 // Contract response types with proper structure
 
 export interface LoanStructResponse {
-  readonly [0]: string // account
-  readonly [1]: bigint // createdAt
-  readonly [2]: bigint // loanAmount
-  readonly [3]: bigint // duration
-  readonly [4]: bigint // interestAmount
-  readonly [5]: bigint // interestApr
-  readonly [6]: bigint // paidAmount
-  readonly [7]: bigint // ltv
-  readonly [8]: bigint // originationFee
-  readonly [9]: bigint // collateralAmount
-  readonly [10]: bigint // loanCycleDuration
-  readonly [11]: boolean // collateralWithdrawn
+  readonly [0]: string  // account
+  readonly [1]: string  // collateralToken
+  readonly [2]: bigint  // createdAt
+  readonly [3]: bigint  // loanAmount
+  readonly [4]: bigint  // duration
+  readonly [5]: bigint  // originalDuration
+  readonly [6]: bigint  // interestAmount
+  readonly [7]: bigint  // interestApr
+  readonly [8]: bigint  // paidAmount
+  readonly [9]: bigint  // ltv
+  readonly [10]: bigint // originationFee
+  readonly [11]: bigint // collateralAmount
+  readonly [12]: bigint // loanCycleDuration
 }
 
 export interface LoanConfigResponse {
@@ -21,7 +22,7 @@ export interface LoanConfigResponse {
   readonly [2]: bigint // maxLoanDuration
   readonly [3]: bigint // balloonPaymentGraceDuration
   readonly [4]: bigint // loanCycleDuration
-  readonly [5]: bigint // maxLoanExtension
+  readonly [5]: bigint // aprYearDuration
 }
 
 export interface InterestConfigResponse {
@@ -34,17 +35,18 @@ export interface InterestConfigResponse {
 export function parseLoanStruct(data: LoanStructResponse) {
   return {
     account: data[0] as `0x${string}`,
-    createdAt: data[1],
-    loanAmount: data[2],
-    duration: data[3],
-    interestAmount: data[4],
-    interestApr: data[5],
-    paidAmount: data[6],
-    ltv: data[7],
-    originationFee: data[8],
-    collateralAmount: data[9],
-    loanCycleDuration: data[10],
-    collateralWithdrawn: data[11]
+    collateralToken: data[1] as `0x${string}`,
+    createdAt: data[2],
+    loanAmount: data[3],
+    duration: data[4],
+    originalDuration: data[5],
+    interestAmount: data[6],
+    interestApr: data[7],
+    paidAmount: data[8],
+    ltv: data[9],
+    originationFee: data[10],
+    collateralAmount: data[11],
+    loanCycleDuration: data[12]
   }
 }
 
@@ -55,7 +57,7 @@ export function parseLoanConfig(data: LoanConfigResponse) {
     maxLoanDuration: data[2],
     balloonPaymentGraceDuration: data[3],
     loanCycleDuration: data[4],
-    maxLoanExtension: data[5]
+    aprYearDuration: data[5]
   }
 }
 

@@ -9,6 +9,7 @@ export interface Loan {
   // From loans mapping
   id: `0x${string}`
   account: `0x${string}`
+  collateralToken: `0x${string}`
   createdAt: bigint
   loanAmount: bigint
   duration: bigint
@@ -18,7 +19,6 @@ export interface Loan {
   ltv: bigint
   originationFee: bigint
   collateralAmount: bigint
-  collateralWithdrawn: boolean
 
   // From getter functions (separate calls)
   status: number
@@ -31,14 +31,15 @@ export interface Loan {
   elapsedTimeInCycle: bigint
 
   // Computed helper properties (derived from contract data)
+  originalDuration: bigint // Duration at loan creation (max allowed extension)
+  loanCycleDuration: bigint // From loans struct — used for adaptive countdown buffer
   remainingBalance: bigint // Calculated from contract values, not manually
   dueTimestamp: bigint // Calculated from timeToDefault
 }
 
 export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
-  // Use focused hooks for specific concerns
   const userData = useUserLoans()
-  const config = useLoanConfig()
+  const config = useLoanConfig(options?.loanRequest?.collateralToken)
   const operations = useLoanOperations(options)
 
   return {
@@ -53,6 +54,7 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     createLoan: operations.createLoan,
     extendLoan: operations.extendLoan,
     approveLoanFee: operations.approveLoanFee,
+    approveCollateral: operations.approveCollateral,
     payLoan: operations.payLoan,
     pullCollateral: operations.pullCollateral,
     approveTokenAllowance: operations.approveTokenAllowance,
@@ -64,6 +66,7 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     // Loan creation & simulation data
     requiredCollateral: operations.requiredCollateral,
     hasInsufficientLmln: operations.hasInsufficientLmln,
+    grossOriginationFee: operations.grossOriginationFee,
     calculationData: operations.calculationData,
 
     // User balance info
@@ -71,6 +74,11 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     userLoanTokenBalance: operations.userLoanTokenBalance,
     currentAllowance: operations.currentAllowance,
     currentLmlnAllowance: operations.currentLmlnAllowance,
+    currentCollateralAllowance: operations.currentCollateralAllowance,
+
+    // Liquidity
+    availableLiquidity: operations.availableLiquidity,
+    hasInsufficientLiquidity: operations.hasInsufficientLiquidity,
 
     // Contract addresses
     loansContractAddress: operations.loansContractAddress,

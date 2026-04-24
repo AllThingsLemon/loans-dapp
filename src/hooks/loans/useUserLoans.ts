@@ -51,9 +51,25 @@ const combineLoanData = (
 
   // Use contract data for calculations, not manual math
   const totalOwed = loan.loanAmount + loan.interestAmount
-  const remainingBalance = totalOwed - loan.paidAmount
-  const currentTime = BigInt(Math.floor(Date.now() / 1000))
-  const dueTimestamp = timeToDefault ? currentTime + timeToDefault : currentTime
+  const remainingBalance = loan.paidAmount >= totalOwed ? 0n : totalOwed - loan.paidAmount
+  // dueTimestamp is the fixed loan maturity date (createdAt + duration).
+  // timeToDefault extends when the borrower is ahead on payments and must NOT
+  // be used as the due date — it would show a date beyond loan maturity.
+  const dueTimestamp = loan.createdAt + loan.duration
+
+  // Derived totalCycles (deterministic from struct) so non-ACTIVE loans still
+  // render a meaningful Cycles Transpired cell — the on-chain getters are only
+  // queried for ACTIVE loans, but UNLOCKED loans still appear in activeLoans
+  // and need to show 2/2 (or N/N) instead of 0/0.
+  const derivedTotalCycles = loan.loanCycleDuration > 0n
+    ? loan.duration / loan.loanCycleDuration
+    : 0n
+  const isActive = status === LOAN_STATUS.ACTIVE
+  const resolvedTotalCycles = isActive ? (totalCycles ?? 0n) : derivedTotalCycles
+  const resolvedTranspiredCycles = isActive
+    ? (transpiredCycles ?? 0n)
+    : derivedTotalCycles
+  const resolvedRemainingCycles = isActive ? (remainingCycles ?? 0n) : 0n
 
   return {
     id: loanId,
@@ -61,20 +77,22 @@ const combineLoanData = (
     createdAt: loan.createdAt,
     loanAmount: loan.loanAmount,
     duration: loan.duration,
+    originalDuration: loan.originalDuration,
     interestAmount: loan.interestAmount,
     interestApr: loan.interestApr,
     paidAmount: loan.paidAmount,
     ltv: loan.ltv,
     originationFee: loan.originationFee,
+    collateralToken: loan.collateralToken,
     collateralAmount: loan.collateralAmount,
-    collateralWithdrawn: loan.collateralWithdrawn,
+    loanCycleDuration: loan.loanCycleDuration,
 
     // Contract-derived values with defaults
     status: status ?? LOAN_STATUS.ACTIVE,
     paymentAmount: paymentAmount ?? 0n,
-    transpiredCycles: transpiredCycles ?? 0n,
-    totalCycles: totalCycles ?? 0n,
-    remainingCycles: remainingCycles ?? 0n,
+    transpiredCycles: resolvedTranspiredCycles,
+    totalCycles: resolvedTotalCycles,
+    remainingCycles: resolvedRemainingCycles,
     cyclesAhead: cyclesAhead ?? 0n,
     timeToDefault: timeToDefault ?? 0n,
     elapsedTimeInCycle: elapsedTimeInCycle ?? 0n,
@@ -93,6 +111,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
     isLoading: loadingIds,
     error: idsError,
     refetch: refetchLoanIds
+  // @ts-ignore — wagmi codegen: "Type instantiation is excessively deep" with large ABI
   } = useReadLoansGetAccountLoanIds({
     args: address ? [address, 0n, 50n] : undefined
   })
@@ -195,7 +214,8 @@ export const useUserLoans = (): UseUserLoansReturn => {
     return loans.filter(
       (loan) =>
         loan?.status === LOAN_STATUS.COMPLETED ||
-        loan?.status === LOAN_STATUS.DEFAULT
+        loan?.status === LOAN_STATUS.DEFAULT ||
+        loan?.status === LOAN_STATUS.LIQUIDATED
     )
   }, [loans])
 

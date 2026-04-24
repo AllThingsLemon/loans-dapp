@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { formatUnits } from 'viem'
 import { formatPercentage, formatDurationRange } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
+import type { CollateralTokenInfo } from '../../hooks/useCollateralManager'
 
 interface LoanParametersProps {
   loanAmount: number
@@ -19,6 +20,10 @@ interface LoanParametersProps {
   ltvOptions: any[]
   durationRange: { min: number; max: number }
   configLoading: boolean
+  availableLiquidity?: bigint
+  supportedCollateralTokens: CollateralTokenInfo[]
+  selectedCollateral: CollateralTokenInfo | undefined
+  setSelectedCollateral: (token: CollateralTokenInfo | undefined) => void
   isDashboard?: boolean
 }
 
@@ -35,8 +40,15 @@ export function LoanParameters({
   ltvOptions,
   durationRange,
   configLoading,
+  availableLiquidity,
+  supportedCollateralTokens,
+  selectedCollateral,
+  setSelectedCollateral,
   isDashboard = false
 }: LoanParametersProps) {
+  // Always show the selector — the user must pick, even if only one token is configured.
+  const hasCollateralOptions = supportedCollateralTokens.length > 0
+  const needsCollateralChoice = hasCollateralOptions && !selectedCollateral
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
@@ -55,6 +67,25 @@ export function LoanParameters({
   const maxLtvPercentage =
     ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
 
+  // Check if loan amount is below minimum
+  const minLoanAmount = loanConfig?.minLoanAmount && tokenConfig
+    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig.loanToken.decimals || 18))
+    : 0
+  const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
+
+  const maxLoanAmount = availableLiquidity !== undefined && tokenConfig
+    ? Number(formatUnits(availableLiquidity, tokenConfig.loanToken.decimals || 18))
+    : loanConfig?.minLoanAmount
+      ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
+      : 100000
+
+  const hasNoLiquidity = availableLiquidity !== undefined && availableLiquidity === 0n
+
+  // Safe index for the slider — use the actual percentage as value instead of indexOf
+  const ltvStep = ltvPercentages.length >= 2
+    ? ltvPercentages[1] - ltvPercentages[0]
+    : 10
+
   return (
     <Card
       className={`${!isDashboard ? 'animate-slide-in-left bg-gradient-to-br from-gray-900 via-black to-gray-800 border-gray-700 text-white' : ''}`}
@@ -65,6 +96,49 @@ export function LoanParameters({
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-6'>
+        {/* Collateral Token Selector — always required; the user must pick before the rest of the form is usable */}
+        {hasCollateralOptions && (
+          <div>
+            <label
+              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
+            >
+              🪙 Choose your collateral token
+            </label>
+            <div className='flex flex-wrap gap-2'>
+              {supportedCollateralTokens.map((token) => {
+                const isSelected =
+                  selectedCollateral?.address.toLowerCase() ===
+                  token.address.toLowerCase()
+                return (
+                  <button
+                    key={token.address}
+                    type='button'
+                    onClick={() => setSelectedCollateral(token)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                      isSelected
+                        ? !isDashboard
+                          ? 'bg-yellow-400 border-yellow-400 text-black'
+                          : 'bg-primary border-primary text-primary-foreground'
+                        : !isDashboard
+                          ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                          : 'bg-muted border-border text-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {token.symbol}
+                  </button>
+                )
+              })}
+            </div>
+            {needsCollateralChoice && (
+              <p
+                className={`text-sm mt-2 ${!isDashboard ? 'text-yellow-300' : 'text-muted-foreground'}`}
+              >
+                Select a collateral token to see APR and LTV options.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Loan Amount Input */}
         <div>
           <label
@@ -72,15 +146,17 @@ export function LoanParameters({
           >
             💰 How much do you need?
           </label>
-          <div className='relative'>
+          <div className='relative flex items-center'>
             <span
-              className={`absolute left-3 top-3 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+              className={`absolute left-3 top-1/2 -translate-y-1/2 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
               $
             </span>
             <Input
               type='number'
               value={loanAmount === 0 ? '' : loanAmount}
+              disabled={hasNoLiquidity}
+              onWheel={(e) => e.currentTarget.blur()}
               onChange={(e) => {
                 const value = e.target.value
                 if (value === '') {
@@ -89,15 +165,7 @@ export function LoanParameters({
                 }
 
                 const numValue = Number(value)
-                const maxAmount = loanConfig?.minLoanAmount
-                  ? Number(
-                      formatUnits(
-                        loanConfig.minLoanAmount,
-                        tokenConfig?.loanToken.decimals || 18
-                      )
-                    ) * 100
-                  : 100000
-                if (numValue <= maxAmount) {
+                if (numValue <= maxLoanAmount) {
                   setLoanAmount(numValue)
                 }
               }}
@@ -123,32 +191,36 @@ export function LoanParameters({
                     )
                   : '1000'
               }
-              max={
-                loanConfig?.minLoanAmount
-                  ? Number(
-                      formatUnits(
-                        loanConfig.minLoanAmount,
-                        tokenConfig?.loanToken.decimals || 18
-                      )
-                    ) * 100
-                  : 100000
-              }
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400' : ''}`}
+              max={maxLoanAmount}
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed' : 'disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
               placeholder='10000'
             />
           </div>
-          <div
-            className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-          >
-            {tokenConfig?.loanToken.symbol || 'Token'} - $
-            {loanConfig?.minLoanAmount
-              ? formatUnits(
-                  loanConfig.minLoanAmount,
-                  tokenConfig?.loanToken.decimals || 18
-                )
-              : '1000'}{' '}
-            minimum loan
-          </div>
+          {hasNoLiquidity ? (
+            <p className='text-sm text-red-500 mt-1'>
+              No liquidity available — loans are currently unavailable.
+            </p>
+          ) : (
+            <div
+              className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
+            >
+              <span>
+                {tokenConfig?.loanToken.symbol || 'Token'} — $
+                {loanConfig?.minLoanAmount
+                  ? formatUnits(
+                      loanConfig.minLoanAmount,
+                      tokenConfig?.loanToken.decimals || 18
+                    )
+                  : '1000'}{' '}
+                min
+              </span>
+              <span>
+                {availableLiquidity !== undefined
+                  ? `$${Math.floor(Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18))).toLocaleString()} available`
+                  : 'Loading liquidity...'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Duration Slider */}
@@ -162,9 +234,11 @@ export function LoanParameters({
             <div
               className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
-              {configLoading
-                ? 'Loading durations...'
-                : 'No durations available'}
+              {needsCollateralChoice
+                ? 'Select a collateral token first.'
+                : configLoading
+                  ? 'Loading durations...'
+                  : 'No durations available'}
             </div>
           ) : (
             <>
@@ -172,7 +246,7 @@ export function LoanParameters({
                 type='range'
                 min={minDuration}
                 max={maxDuration}
-                step={loanConfig.loanCycleDuration}
+                step={Number(loanConfig.loanCycleDuration)}
                 value={duration}
                 disabled={interestAprConfigs.length === 0}
                 onChange={(e) => {
@@ -202,22 +276,24 @@ export function LoanParameters({
             <div
               className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
-              {configLoading
-                ? 'Loading LTV options...'
-                : 'No LTV options available'}
+              {needsCollateralChoice
+                ? 'Select a collateral token first.'
+                : configLoading
+                  ? 'Loading LTV options...'
+                  : 'No LTV options available'}
             </div>
           ) : (
             <>
               <input
                 type='range'
-                min={0}
-                max={ltvPercentages.length - 1}
-                step={1}
-                value={ltvPercentages.indexOf(ltv)}
+                min={minLtvPercentage}
+                max={maxLtvPercentage}
+                step={ltvStep}
+                value={ltv}
                 disabled={ltvOptions.length === 0}
                 onChange={(e) => {
-                  const index = Number(e.target.value)
-                  setLtv(ltvPercentages[index])
+                  const pct = Number(e.target.value)
+                  setLtv(pct)
                 }}
                 className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider disabled:opacity-50 disabled:cursor-not-allowed'
               />

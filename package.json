@@ -43,6 +43,7 @@
     "@web3modal/ethereum": "^2.7.1",
     "@web3modal/react": "^2.7.1",
     "@web3modal/wagmi": "^5.1.4",
+    "camelcase-css": "^2.0.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -67,6 +68,8 @@
     "@cloudflare/next-on-pages": "^1.13.12",
     "@cloudflare/workers-types": "^4.20240821.1",
     "@hey-api/openapi-ts": "^0.53.7",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
@@ -83,6 +86,7 @@
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-react": "^7.36.1",
     "globals": "^15.9.0",
+    "jsdom": "^27.0.1",
     "postcss": "^8.4.45",
     "prettier": "^3.3.3",
     "prettier-eslint": "^16.3.0",
@@ -90,6 +94,7 @@
     "typescript": "^5",
     "typescript-eslint": "^8.6.0",
     "vercel": "^37.2.1",
+    "vitest": "^4.0.18",
     "wrangler": "^4.20.0"
   }
 }

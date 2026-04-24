@@ -6,10 +6,8 @@ import { formatUnits, parseUnits } from 'viem'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
 import {
-  parsePercentage,
   formatPercentage,
-  formatTokenAmount,
-  formatDurationRange
+  formatTokenAmount
 } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import { LoanParameters } from '../calculator/LoanParameters'
@@ -19,6 +17,8 @@ import {
   isUserRejection,
   type ContractError
 } from '../../utils/errorHandling'
+import { useCollateralManager } from '../../hooks/useCollateralManager'
+import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -31,7 +31,8 @@ const formatContractCalculation = (
     firstLoanPayment?: bigint
     loanCycleDuration?: bigint
   },
-  tokenConfig: any
+  tokenConfig: any,
+  collateralDecimals: number
 ) => {
   if (!calculationData || !tokenConfig) return null
 
@@ -45,7 +46,7 @@ const formatContractCalculation = (
       ? Number(
           formatTokenAmount(
             calculationData.collateralAmount,
-            tokenConfig.nativeToken.decimals
+            collateralDecimals
           )
         )
       : 0,
@@ -117,9 +118,21 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
 
+  // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
+  // even when only one token is configured. No auto-selection.
+  const {
+    selectedCollateral,
+    setSelectedCollateral,
+    supportedCollateralTokens
+  } = useCollateralManager()
+
+  // Per-asset config (ltvOptions, interestAprConfigs depend on selected collateral)
+  const perAssetConfig = useLoanConfig(selectedCollateral?.address)
+
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   // UI loading states for transactions
+  const [isApprovingCollateral, setIsApprovingCollateral] = useState(false)
   const [isApprovingLoanFee, setIsApprovingLoanFee] = useState(false)
   const [isCreatingLoan, setIsCreatingLoan] = useState(false)
 
@@ -147,24 +160,24 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         )
       )
     }
-    if (initialHookData.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
-      const ltvPercentage = Number(
-        formatPercentage(
-          initialHookData.ltvOptions[0].ltv,
-          tokenConfig.ltvDecimals
-        )
+    // Snap LTV to the first option for the selected collateral — on first load (ltv===0)
+    // and when the user switches collateral tokens and the current LTV isn't in the new set.
+    if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
+      const availableLtvs = perAssetConfig.ltvOptions.map((opt) =>
+        Number(formatPercentage(opt.ltv, tokenConfig.ltvDecimals))
       )
-      setLtv(ltvPercentage)
+      if (ltv === 0 || !availableLtvs.includes(ltv)) {
+        setLtv(availableLtvs[0])
+      }
     }
-    if (initialHookData.interestAprConfigs.length > 0 && duration === 0) {
-      // Set initial duration to the midpoint of the first config
-      const firstConfig = initialHookData.interestAprConfigs[0]
-      setDuration(Number(firstConfig.minDuration))
+    if (initialHookData.durationRange.min > 0 && duration === 0) {
+      setDuration(initialHookData.durationRange.min)
     }
   }, [
     initialHookData.loanConfig,
-    initialHookData.ltvOptions,
-    initialHookData.interestAprConfigs,
+    perAssetConfig.ltvOptions,
+    perAssetConfig.interestAprConfigs,
+    initialHookData.durationRange,
     tokenConfig
   ])
 
@@ -176,6 +189,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Create loan request for simulation
   const loanRequest = useMemo(() => {
     if (
+      !selectedCollateral ||
       !loanAmount ||
       !selectedDuration ||
       selectedDuration === 0n ||
@@ -184,7 +198,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
       return undefined
 
-    const request = {
+    return {
+      collateralToken: selectedCollateral.address,
       loanAmount: parseUnits(
         loanAmount.toString(),
         tokenConfig.loanToken.decimals
@@ -192,8 +207,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       duration: selectedDuration,
       ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
     }
-    return request
-  }, [loanAmount, selectedDuration, ltv, tokenConfig])
+  }, [selectedCollateral, loanAmount, selectedDuration, ltv, tokenConfig])
 
   // Get origination fee for selected LTV
   const selectedLtvOption = useMemo(() => {
@@ -203,12 +217,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     const ltvDecimal = (ltv / 100).toString()
     const ltvInContractFormat = parseUnits(ltvDecimal, tokenConfig.ltvDecimals)
 
-    const found = initialHookData.ltvOptions.find(
+    return perAssetConfig.ltvOptions.find(
       (option) => option.ltv === ltvInContractFormat
     )
-
-    return found
-  }, [initialHookData.ltvOptions, ltv, tokenConfig])
+  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
 
   // Get the loan operations with the calculated request
   const loanOperations = useLoans({
@@ -233,7 +245,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
 
     // Check if we're still loading contract configuration
-    if (!tokenConfig || initialHookData.interestAprConfigs.length === 0) {
+    if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
       return {
         ...base,
         priceError: 'Loading contract data...'
@@ -253,7 +265,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     // Format the contract calculation data
     const formatted = formatContractCalculation(
       loanOperations.calculationData,
-      tokenConfig
+      tokenConfig,
+      selectedCollateral?.decimals ?? 18
     )
 
     if (!formatted) {
@@ -272,7 +285,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     const isValid =
       !loanOperations.isSimulating &&
       !!loanOperations.calculationData &&
-      !loanOperations.hasInsufficientLmln
+      !loanOperations.hasInsufficientLmln &&
+      !loanOperations.hasInsufficientLiquidity
 
     const priceError = buildPriceError(
       loanOperations.isSimulating,
@@ -280,7 +294,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       formatted.originationFeeLmln,
       loanOperations.userLmlnBalance,
       tokenConfig
-    )
+    ) || (loanOperations.hasInsufficientLiquidity
+      ? 'Insufficient pool liquidity for this loan amount'
+      : undefined)
 
     return {
       ...base,
@@ -298,28 +314,62 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.calculationData,
     loanOperations.isSimulating,
     tokenConfig,
+    selectedCollateral,
     loanOperations.hasInsufficientLmln,
-    initialHookData.interestAprConfigs,
+    loanOperations.hasInsufficientLiquidity,
+    perAssetConfig.interestAprConfigs,
     loanOperations.userLmlnBalance
   ])
 
-  // Check if approval is needed for loan creation
+  // Check if collateral ERC20 approval is needed (WLEMX → CollateralManager)
+  const needsCollateralApproval = useMemo(() => {
+    const collateralAmount = loanOperations.calculationData?.collateralAmount
+    if (!collateralAmount || collateralAmount === 0n) return false
+    if (loanOperations.currentCollateralAllowance === undefined) return true
+    return loanOperations.currentCollateralAllowance < collateralAmount
+  }, [
+    loanOperations.calculationData?.collateralAmount,
+    loanOperations.currentCollateralAllowance
+  ])
+
+  // Check if LMLN fee approval is needed.
+  // Compare against raw originationFee — the approval itself adds a buffer for the transfer tax.
+  // Using the grossed-up amount as the threshold causes an infinite approval loop when the
+  // LMLN price shifts, because the previously approved gross amount no longer meets the new gross threshold.
   const needsApproval = useMemo(() => {
-    if (!loanOperations.calculationData?.originationFee) {
-      return false
-    }
-    // If allowance is not loaded yet, assume approval is needed
-    if (loanOperations.currentLmlnAllowance === undefined) {
-      return true
-    }
-    return (
-      loanOperations.currentLmlnAllowance <
-      loanOperations.calculationData.originationFee
-    )
+    const originationFee = loanOperations.calculationData?.originationFee
+    if (!originationFee) return false
+    if (loanOperations.currentLmlnAllowance === undefined) return true
+    return loanOperations.currentLmlnAllowance < originationFee
   }, [
     loanOperations.calculationData?.originationFee,
     loanOperations.currentLmlnAllowance
   ])
+
+  // Handle collateral ERC20 approval (WLEMX → CollateralManager)
+  const handleApproveCollateral = async () => {
+    if (!selectedCollateral || !loanOperations.calculationData?.collateralAmount) return
+    setIsApprovingCollateral(true)
+    try {
+      await loanOperations.approveCollateral(
+        selectedCollateral.address,
+        loanOperations.calculationData.collateralAmount
+      )
+      toast({
+        title: '✅ Collateral Approved',
+        description: `${selectedCollateral.symbol} approved. You can now approve the origination fee.`
+      })
+    } catch (error) {
+      const contractError = error as ContractError
+      if (isUserRejection(contractError)) {
+        setIsDialogOpen(false)
+      } else {
+        handleContractError(contractError, toast, 'Collateral Approval Failed')
+      }
+    } finally {
+      setIsApprovingCollateral(false)
+    }
+  }
 
   // Handle loan fee approval
   const handleApproveLoanFee = async () => {
@@ -329,7 +379,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
       if (result) {
         toast({
-          title: 'Approval Successful',
+          title: '\u2705 Approval Successful',
           description:
             'LMLN tokens approved for loan fee. You can now create the loan!'
         })
@@ -363,10 +413,18 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       if (result) {
         setIsDialogOpen(false)
         toast({
-          title: 'Loan Created Successfully',
+          title: '\u2705 Loan Created Successfully',
           description:
             'Your loan has been created and will appear in your active loans!'
         })
+
+        // Full reset \u2014 force the user to re-pick collateral and re-enter loan terms
+        // if they want another loan. Loan amount and duration repopulate to
+        // contract defaults via the init effect; LTV stays 0 until a collateral is picked.
+        setSelectedCollateral(undefined)
+        setLoanAmount(0)
+        setDuration(0)
+        setLtv(0)
       }
     } catch (error) {
       const contractError = error as ContractError
@@ -411,25 +469,34 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         setLtv={setLtv}
         loanConfig={initialHookData.loanConfig}
         tokenConfig={tokenConfig}
-        interestAprConfigs={initialHookData.interestAprConfigs}
-        ltvOptions={initialHookData.ltvOptions}
+        interestAprConfigs={perAssetConfig.interestAprConfigs}
+        ltvOptions={perAssetConfig.ltvOptions}
         durationRange={initialHookData.durationRange}
-        configLoading={initialHookData.isLoading}
+        configLoading={initialHookData.isLoading || perAssetConfig.isLoading}
+        availableLiquidity={loanOperations.availableLiquidity}
+        supportedCollateralTokens={supportedCollateralTokens}
+        selectedCollateral={selectedCollateral}
+        setSelectedCollateral={setSelectedCollateral}
         isDashboard={isDashboard}
       />
 
       <LoanSummary
         calculation={calculation}
         tokenConfig={tokenConfig}
+        collateralSymbol={selectedCollateral?.symbol}
         hasInsufficientLmln={loanOperations.hasInsufficientLmln}
+        hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
+        isApprovingCollateral={isApprovingCollateral}
         isApprovingLoanFee={isApprovingLoanFee}
         isCreatingLoan={isCreatingLoan}
         isDialogOpen={isDialogOpen}
         setIsDialogOpen={setIsDialogOpen}
         handleCreateLoan={handleCreateLoan}
+        handleApproveCollateral={handleApproveCollateral}
         handleApproveLoanFee={handleApproveLoanFee}
+        needsCollateralApproval={needsCollateralApproval}
         needsApproval={needsApproval}
         isDashboard={isDashboard}
         selectedLtvOption={selectedLtvOption}

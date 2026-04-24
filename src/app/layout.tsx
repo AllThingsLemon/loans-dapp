@@ -1,5 +1,6 @@
 import '../css/globals.css'
 import Header from '@/src/components/common/Header'
+import Footer from '@/src/components/common/Footer'
 import { Providers } from '@/src/components/common/Providers'
 import { Toaster } from '@/src/components/ui/toaster'
 
@@ -41,10 +42,13 @@ export default function RootLayout({
         <link rel='icon' href='/images/lemloans-logo.png' />
         <link rel='apple-touch-icon' href='/images/lemloans-logo.png' />
       </head>
-      <body>
+      <body className='flex flex-col min-h-screen'>
         <Providers>
           <Header />
-          {children}
+          <main className='flex-1'>
+            {children}
+          </main>
+          <Footer />
           <Toaster />
         </Providers>
       </body>

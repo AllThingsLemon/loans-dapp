@@ -12,7 +12,7 @@ export interface LoanConfiguration {
   maxLoanDuration: bigint
   balloonPaymentGraceDuration: bigint
   loanCycleDuration: bigint
-  maxLoanExtension: bigint
+  aprYearDuration: bigint
 }
 
 export interface InterestAprConfig {
@@ -21,51 +21,49 @@ export interface InterestAprConfig {
   interestApr: bigint
 }
 
-export const useLoanConfig = () => {
-  // Get loan configuration
+export const useLoanConfig = (asset?: `0x${string}`) => {
   const {
     data: loanConfigRaw,
     isLoading: loadingConfig,
     error: configError
   } = useReadLoansLoanConfig()
 
-  // Convert array to object structure using safe parser
   const loanConfig = useMemo(() => {
     if (!loanConfigRaw) return undefined
     return parseLoanConfig(loanConfigRaw as LoanConfigResponse)
   }, [loanConfigRaw])
 
-  // Get all interest APR configs directly
-  const {
-    data: interestAprConfigsRaw,
-    isLoading: loadingInterestConfigs,
-    error: interestConfigsError
-  } = useReadLoansGetAllInterestAprConfigs()
+  // @ts-ignore - wagmi deep type instantiation
+  const interestAprConfigsResult = useReadLoansGetAllInterestAprConfigs({
+    args: asset ? [asset] : undefined,
+    query: { enabled: !!asset }
+  })
+  const interestAprConfigsRaw = interestAprConfigsResult.data
+  const loadingInterestConfigs = interestAprConfigsResult.isLoading
+  const interestConfigsError = interestAprConfigsResult.error
 
-  // Parse the interest configs
   const interestAprConfigs = useMemo(() => {
     if (!interestAprConfigsRaw) return []
-    const parsed = interestAprConfigsRaw.map((config) => ({
+    return interestAprConfigsRaw.map((config) => ({
       minDuration: config.minDuration,
       maxDuration: config.maxDuration,
       interestApr: config.interestApr
     }))
-
-    return parsed
   }, [interestAprConfigsRaw])
 
-  // Get all origination fees directly
+  // @ts-ignore - wagmi deep type instantiation
   const {
     data: originationFeesRaw,
     isLoading: loadingOriginationFees,
     error: originationFeesError
-  } = useReadLoansGetAllOriginationFees()
+  } = useReadLoansGetAllOriginationFees({
+    args: asset ? [asset] : undefined,
+    query: { enabled: !!asset }
+  })
 
-  // Parse origination fees into LTV options
   const ltvOptions = useMemo(() => {
     if (!originationFeesRaw) return []
     const [ltvs = [], fees = []] = originationFeesRaw || []
-
     return ltvs
       .map((ltv, index) => ({
         ltv,
@@ -75,25 +73,17 @@ export const useLoanConfig = () => {
   }, [originationFeesRaw])
 
   const isLoading =
-    loadingConfig || loadingInterestConfigs || loadingOriginationFees
+    loadingConfig || (!!asset && (loadingInterestConfigs || loadingOriginationFees))
 
   const error = configError || interestConfigsError || originationFeesError
 
-  // Calculate duration range from all configs
   const durationRange = useMemo(() => {
-    if (interestAprConfigs.length === 0) {
-      return { min: 0, max: 0 }
+    if (!loanConfig) return { min: 0, max: 0 }
+    return {
+      min: Number(loanConfig.minLoanDuration),
+      max: Number(loanConfig.maxLoanDuration)
     }
-
-    const minDuration = Math.min(
-      ...interestAprConfigs.map((config) => Number(config.minDuration))
-    )
-    const maxDuration = Math.max(
-      ...interestAprConfigs.map((config) => Number(config.maxDuration))
-    )
-
-    return { min: minDuration, max: maxDuration }
-  }, [interestAprConfigs])
+  }, [loanConfig])
 
   return {
     loanConfig,
