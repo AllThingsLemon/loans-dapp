@@ -17,7 +17,6 @@ export interface UseCollateralManagerReturn {
   supportedCollateralTokens: CollateralTokenInfo[]
   selectedCollateral: CollateralTokenInfo | undefined
   setSelectedCollateral: (token: CollateralTokenInfo | undefined) => void
-  collateralManagerAddress: `0x${string}` | undefined
   getCollateralByAddress: (addr: string) => CollateralTokenInfo | undefined
   isLoading: boolean
   error: Error | null
@@ -126,7 +125,6 @@ export function useCollateralManager(): UseCollateralManagerReturn {
     supportedCollateralTokens,
     selectedCollateral,
     setSelectedCollateral,
-    collateralManagerAddress: cmAddress,
     getCollateralByAddress,
     isLoading: assetsLoading || metaLoading,
     error: assetsError ?? metaError ?? null

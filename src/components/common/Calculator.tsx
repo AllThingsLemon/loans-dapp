@@ -6,10 +6,8 @@ import { formatUnits, parseUnits } from 'viem'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
 import {
-  parsePercentage,
   formatPercentage,
-  formatTokenAmount,
-  formatDurationRange
+  formatTokenAmount
 } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import { LoanParameters } from '../calculator/LoanParameters'
@@ -120,8 +118,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
 
-  // Collateral manager — auto-selects when only one token is configured.
-  // When multiple are configured, the user must pick via the selector in LoanParameters.
+  // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
+  // even when only one token is configured. No auto-selection.
   const {
     selectedCollateral,
     setSelectedCollateral,
