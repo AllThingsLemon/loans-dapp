@@ -102,7 +102,7 @@ export class Web3ErrorBoundary extends Component<Props, State> {
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-4'>
-            {this.state.error && (
+            {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className='text-xs text-red-600' open>
                 <summary className='cursor-pointer font-medium'>
                   Technical Details
