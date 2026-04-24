@@ -13,16 +13,20 @@ import { loanConfigQueryOptions } from '@/src/hooks/query/loanQueries'
 interface LoanSummaryProps {
   calculation: any
   tokenConfig: any
+  collateralSymbol?: string
   hasInsufficientLmln: boolean
   hasInsufficientLiquidity: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
+  isApprovingCollateral: boolean
   isApprovingLoanFee: boolean
   isCreatingLoan: boolean
   isDialogOpen: boolean
   setIsDialogOpen: (open: boolean) => void
   handleCreateLoan: () => Promise<void>
+  handleApproveCollateral: () => Promise<void>
   handleApproveLoanFee: () => Promise<void>
+  needsCollateralApproval: boolean
   needsApproval: boolean
   isDashboard?: boolean
   selectedLtvOption?: { ltv: bigint; fee: bigint }
@@ -31,20 +35,25 @@ interface LoanSummaryProps {
 export function LoanSummary({
   calculation,
   tokenConfig,
+  collateralSymbol,
   hasInsufficientLmln,
   hasInsufficientLiquidity,
   userLmlnBalance,
   operationError,
+  isApprovingCollateral,
   isApprovingLoanFee,
   isCreatingLoan,
   isDialogOpen,
   setIsDialogOpen,
   handleCreateLoan,
+  handleApproveCollateral,
   handleApproveLoanFee,
+  needsCollateralApproval,
   needsApproval,
   isDashboard = false,
   selectedLtvOption
 }: LoanSummaryProps) {
+  const collateral = collateralSymbol || tokenConfig?.nativeToken.symbol
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false)
 
   const handleDisclaimerContinue = () => {
@@ -87,13 +96,13 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                {tokenConfig?.nativeToken.symbol} Collateral
+                {collateral} Collateral
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
                 {calculation.lemonRequired > 0
-                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${tokenConfig?.nativeToken.symbol}`
+                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${collateral}`
                   : calculation.priceError || 'Calculating...'}
               </span>
             </div>
@@ -235,11 +244,15 @@ export function LoanSummary({
               onClose={() => setIsDialogOpen(false)}
               calculation={calculation}
               tokenConfig={tokenConfig}
+              collateralSymbol={collateralSymbol}
               operationError={operationError}
+              isApprovingCollateral={isApprovingCollateral}
               isApprovingLoanFee={isApprovingLoanFee}
               isCreatingLoan={isCreatingLoan}
               handleCreateLoan={handleCreateLoan}
+              handleApproveCollateral={handleApproveCollateral}
               handleApproveLoanFee={handleApproveLoanFee}
+              needsCollateralApproval={needsCollateralApproval}
               needsApproval={needsApproval}
             />
           </div>

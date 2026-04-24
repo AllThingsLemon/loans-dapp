@@ -4,10 +4,10 @@ import {
   useReadLoansLoanToken,
   useReadLoansOriginationFeeToken,
   useReadLoansLtvDecimals,
-  useReadLoansAprDecimals,
-  useReadLoansCollateralTokenDecimals
+  useReadLoansAprDecimals
 } from '../generated'
 import erc20Abi from '../abis/ERC20.json'
+import { DEFAULT_DECIMALS } from '../constants'
 
 // Export types for use in other hooks
 export interface TokenInfo {
@@ -26,7 +26,6 @@ export interface ContractTokenConfiguration {
   }
   ltvDecimals: number
   aprDecimals: number
-  collateralTokenDecimals: number
 }
 
 export interface UseContractTokenConfigurationResult {
@@ -36,17 +35,15 @@ export interface UseContractTokenConfigurationResult {
 }
 
 /**
- * Hook to fetch and cache all contract token configuration including symbols and decimals
- * Fetches precision constants, token addresses, and ERC20 metadata from Loans contract
+ * Hook to fetch and cache contract token configuration including symbols and decimals.
+ * Collateral token info (decimals, symbol) now comes from useCollateralManager per-token.
  */
 export function useContractTokenConfiguration(): UseContractTokenConfigurationResult {
   const publicClient = usePublicClient()
 
-  // Get native token info from chain config
   const nativeTokenSymbol =
     publicClient?.chain?.nativeCurrency?.symbol ?? 'LEMX'
 
-  // Fetch precision constants from Loans contract
   const {
     data: ltvDecimals,
     isLoading: ltvDecimalsLoading,
@@ -60,26 +57,17 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
   } = useReadLoansAprDecimals()
 
   const {
-    data: collateralTokenDecimals,
-    isLoading: collateralTokenDecimalsLoading,
-    error: collateralTokenDecimalsError
-  } = useReadLoansCollateralTokenDecimals()
-
-  // Fetch loan token address
-  const {
     data: loanTokenAddress,
     isLoading: loanTokenLoading,
     error: loanTokenError
   } = useReadLoansLoanToken()
 
-  // Fetch fee token address
   const {
     data: feeTokenAddress,
     isLoading: feeTokenLoading,
     error: feeTokenError
   } = useReadLoansOriginationFeeToken()
 
-  // Fetch loan token decimals
   const {
     data: loanTokenDecimals,
     isLoading: loanDecimalsLoading,
@@ -88,12 +76,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     address: loanTokenAddress,
     abi: erc20Abi,
     functionName: 'decimals',
-    query: {
-      enabled: !!loanTokenAddress
-    }
+    query: { enabled: !!loanTokenAddress }
   })
 
-  // Fetch loan token symbol
   const {
     data: loanTokenSymbol,
     isLoading: loanSymbolLoading,
@@ -102,12 +87,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     address: loanTokenAddress,
     abi: erc20Abi,
     functionName: 'symbol',
-    query: {
-      enabled: !!loanTokenAddress
-    }
+    query: { enabled: !!loanTokenAddress }
   })
 
-  // Fetch fee token decimals
   const {
     data: feeTokenDecimals,
     isLoading: feeDecimalsLoading,
@@ -116,12 +98,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     address: feeTokenAddress,
     abi: erc20Abi,
     functionName: 'decimals',
-    query: {
-      enabled: !!feeTokenAddress
-    }
+    query: { enabled: !!feeTokenAddress }
   })
 
-  // Fetch fee token symbol
   const {
     data: feeTokenSymbol,
     isLoading: feeSymbolLoading,
@@ -130,16 +109,12 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     address: feeTokenAddress,
     abi: erc20Abi,
     functionName: 'symbol',
-    query: {
-      enabled: !!feeTokenAddress
-    }
+    query: { enabled: !!feeTokenAddress }
   })
 
-  // Calculate loading state
   const isLoading =
     ltvDecimalsLoading ||
     aprDecimalsLoading ||
-    collateralTokenDecimalsLoading ||
     loanTokenLoading ||
     feeTokenLoading ||
     loanDecimalsLoading ||
@@ -147,11 +122,9 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     feeDecimalsLoading ||
     feeSymbolLoading
 
-  // Collect all errors
   const error =
     ltvDecimalsError ||
     aprDecimalsError ||
-    collateralTokenDecimalsError ||
     loanTokenError ||
     feeTokenError ||
     loanDecimalsError ||
@@ -159,14 +132,10 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
     feeDecimalsError ||
     feeSymbolError
 
-  // Memoize the token configuration
   const tokenConfig = useMemo((): ContractTokenConfiguration | undefined => {
-
-
     if (
       ltvDecimals === undefined ||
       aprDecimals === undefined ||
-      collateralTokenDecimals === undefined ||
       !loanTokenAddress ||
       !feeTokenAddress ||
       loanTokenDecimals === undefined ||
@@ -174,12 +143,11 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
       !loanTokenSymbol ||
       !feeTokenSymbol
     ) {
-  
       return undefined
     }
 
     try {
-      const config: ContractTokenConfiguration = {
+      return {
         loanToken: {
           address: loanTokenAddress,
           symbol: loanTokenSymbol as string,
@@ -192,23 +160,17 @@ export function useContractTokenConfiguration(): UseContractTokenConfigurationRe
         },
         nativeToken: {
           symbol: nativeTokenSymbol,
-          decimals: Number(collateralTokenDecimals)
+          decimals: DEFAULT_DECIMALS.NATIVE_TOKEN
         },
         ltvDecimals: Number(ltvDecimals),
-        aprDecimals: Number(aprDecimals),
-        collateralTokenDecimals: Number(collateralTokenDecimals)
+        aprDecimals: Number(aprDecimals)
       }
-
-  
-      return config
-    } catch (err) {
-      console.error('❌ Error creating tokenConfig:', err)
+    } catch {
       return undefined
     }
   }, [
     ltvDecimals,
     aprDecimals,
-    collateralTokenDecimals,
     loanTokenAddress,
     feeTokenAddress,
     loanTokenDecimals,

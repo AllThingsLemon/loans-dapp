@@ -56,7 +56,7 @@ export const usePricing = (): PriceData => {
     : undefined
   const tokenSymbol = tokenConfig?.nativeToken.symbol
   const feeTokenSymbol = tokenConfig?.feeToken.symbol
-  const tokenDecimals = tokenConfig?.collateralTokenDecimals
+  const tokenDecimals = tokenConfig?.nativeToken.decimals
 
   // Format price values
   const spotPrice = useMemo(() => {

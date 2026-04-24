@@ -186,7 +186,6 @@ describe('pullEarnings special case', () => {
       'withdrawLiquidity',
       'claimEarnings',
       'compoundEarnings',
-      'relockLiquidity',
       'approveToken',
     ]
 

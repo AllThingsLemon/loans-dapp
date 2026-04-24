@@ -11,7 +11,6 @@ export function useLiquidityPool() {
     requestWithdrawal: operations.requestWithdrawal,
     claimEarnings: operations.claimEarnings,
     compoundEarnings: operations.compoundEarnings,
-    relockLiquidity: operations.relockLiquidity,
     pullEarnings: operations.pullEarnings,
     transferAccount: operations.transferAccount,
     claimWithdrawal: operations.claimWithdrawal,

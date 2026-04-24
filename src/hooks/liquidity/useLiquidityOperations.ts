@@ -7,7 +7,6 @@ import {
   useWriteLiquidityPoolRequestWithdrawal,
   useWriteLiquidityPoolClaimEarnings,
   useWriteLiquidityPoolCompoundEarnings,
-  useWriteLiquidityPoolRelockLiquidity,
   useWriteLiquidityPoolPullEarnings,
   useWriteLiquidityPoolTransferAccount,
   useWriteLiquidityPoolClaimWithdrawal,
@@ -27,7 +26,6 @@ export interface UseLiquidityOperationsReturn {
   requestWithdrawal: (amount: bigint) => Promise<`0x${string}` | undefined>
   claimEarnings: () => Promise<`0x${string}` | undefined>
   compoundEarnings: (lockDuration: bigint) => Promise<`0x${string}` | undefined>
-  relockLiquidity: (amount: bigint, lockDuration: bigint) => Promise<`0x${string}` | undefined>
   pullEarnings: () => Promise<`0x${string}` | undefined>
   transferAccount: (to: `0x${string}`) => Promise<`0x${string}` | undefined>
   claimWithdrawal: (requestId: bigint) => Promise<`0x${string}` | undefined>
@@ -51,6 +49,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { data: withdrawFeeUSD } = useReadLiquidityPoolWithdrawFeeUsd()
 
   // Get native fee conversion: pass USD amount, get native wei amount
+  // @ts-ignore - wagmi deep type instantiation
   const { data: depositNativeFee } = useReadLoansGetNativeFee({
     args: depositFeeUSD !== undefined ? [depositFeeUSD] : undefined,
     query: { enabled: depositFeeUSD !== undefined },
@@ -72,9 +71,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   const { writeContractAsync: compoundEarningsFn, isPending: isCompounding } =
     useWriteLiquidityPoolCompoundEarnings({ mutation: { retry: false } })
-
-  const { writeContractAsync: relockLiquidityFn, isPending: isRelocking } =
-    useWriteLiquidityPoolRelockLiquidity({ mutation: { retry: false } })
 
   const { writeContractAsync: pullEarningsFn, isPending: isPulling } =
     useWriteLiquidityPoolPullEarnings({ mutation: { retry: false } })
@@ -227,16 +223,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     [address, compoundEarningsFn, depositNativeFee, waitAndInvalidate]
   )
 
-  const relockLiquidity = useCallback(
-    async (amount: bigint, lockDuration: bigint) => {
-      if (!address) throw new Error('Wallet not connected')
-      const txHash = await relockLiquidityFn({ args: [amount, lockDuration] })
-      await waitAndInvalidate(txHash)
-      return txHash
-    },
-    [address, relockLiquidityFn, waitAndInvalidate]
-  )
-
   const pullEarnings = useCallback(async () => {
     const txHash = await pullEarningsFn({})
     await waitAndInvalidate(txHash)
@@ -305,7 +291,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isRequestingWithdrawal ||
     isClaiming ||
     isCompounding ||
-    isRelocking ||
     isPulling ||
     isTransferringAccount ||
     isClaimingWithdrawal ||
@@ -318,7 +303,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     requestWithdrawal,
     claimEarnings,
     compoundEarnings,
-    relockLiquidity,
     pullEarnings,
     transferAccount,
     claimWithdrawal,
