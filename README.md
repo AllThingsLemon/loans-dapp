@@ -30,9 +30,10 @@ All variables must be prefixed `NEXT_PUBLIC_` to be available in the browser.
 | Variable | Required | Description |
 |---|---|---|
 | `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Yes | WalletConnect Cloud project ID |
-| `NEXT_PUBLIC_LEMON_LOANS_ADDRESS` | Yes | Loans contract address on LemonChain mainnet |
-| `NEXT_PUBLIC_CITRON_LOANS_ADDRESS` | Testnet only | Loans contract address on Citron testnet |
-| `NEXT_PUBLIC_SUPPORTED_CHAINS` | No | Comma-separated chain ids (e.g. `1006,1005`). First entry is the default. Defaults to LemonChain mainnet (`1006`) when unset. Surfaces in the wallet network list and the header chain switcher dropdown. |
+| `NEXT_PUBLIC_LEMON_LOANS_ADDRESS` | When 1006 is in supported chains | Loans contract address on LemonChain mainnet |
+| `NEXT_PUBLIC_CITRON_LOANS_ADDRESS` | When 1005 is in supported chains | Loans contract address on Citron testnet |
+| `NEXT_PUBLIC_BSC_LOANS_ADDRESS` | When 56 is in supported chains | Loans contract address on BNB Smart Chain mainnet |
+| `NEXT_PUBLIC_SUPPORTED_CHAINS` | No | Comma-separated chain ids (e.g. `1006,56`). First entry is the default. Defaults to LemonChain mainnet (`1006`) when unset. Known ids: `1006` LemonChain mainnet, `1005` Citron testnet, `56` BNB Smart Chain mainnet. |
 
 Only the Loans contract address is required per chain. The rest of the protocol contracts (`CollateralManager`, `LiquidityPool`, `SwapManager`) are discovered on-chain at app load via `Loans.collateralManager()`, `Loans.liquidityPool()`, and `LiquidityPool.swapManager()`.
 
@@ -45,7 +46,8 @@ For Cloudflare Pages deployments, secrets must be set via the Wrangler CLI rathe
 ```bash
 npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-name=loans-dapp
 npx wrangler pages secret put NEXT_PUBLIC_LEMON_LOANS_ADDRESS --project-name=loans-dapp
-# And, for testnet builds, NEXT_PUBLIC_CITRON_LOANS_ADDRESS
+npx wrangler pages secret put NEXT_PUBLIC_BSC_LOANS_ADDRESS --project-name=loans-dapp
+# Plus NEXT_PUBLIC_CITRON_LOANS_ADDRESS for builds that include the Citron testnet.
 ```
 
 Non-sensitive public variables can alternatively be set in `wrangler.toml` under `[vars]`.
