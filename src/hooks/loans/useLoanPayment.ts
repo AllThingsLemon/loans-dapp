@@ -83,29 +83,15 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-  // Countdown target: now + timeToDefault minus a buffer so users see urgency
-  // before the contract actually defaults them. The buffer is one loan cycle
-  // (capped at 1 day) so short-cycle testnet loans don't show as Overdue at
-  // creation time when timeToDefault is only a few cycles.
-  const getDisplayDueDate = useCallback((loanData: Loan): Date => {
-    const now = Date.now()
-    const ONE_DAY_MS = 24 * 60 * 60 * 1000
-    const cycleDurationMs = Number(loanData.loanCycleDuration ?? 0n) * 1000
-    const buffer = cycleDurationMs > 0 ? Math.min(ONE_DAY_MS, cycleDurationMs) : ONE_DAY_MS
-    return new Date(now + Number(loanData.timeToDefault) * 1000 - buffer)
+  // Overdue once the loan is past its end date. The contract still allows
+  // payments during the balloonPaymentGraceDuration window, but from the
+  // user's perspective the principal payment is late.
+  const isLoanOverdue = useCallback((loanData: Loan): boolean => {
+    if (loanData.status !== LOAN_STATUS.ACTIVE) {
+      return false
+    }
+    return Date.now() >= Number(loanData.dueTimestamp) * 1000
   }, [])
-
-  // Simple check if loan payment is overdue (for UI state only)
-  const isLoanOverdue = useCallback(
-    (loanData: Loan): boolean => {
-      if (loanData.status !== LOAN_STATUS.ACTIVE) {
-        return false
-      }
-      const displayDueDate = getDisplayDueDate(loanData)
-      return displayDueDate.getTime() < Date.now()
-    },
-    [getDisplayDueDate]
-  )
 
   // Grace period: all cycle payments are done and only the balloon (principal) remains.
   // Cannot use paidAmount >= interestAmount — once principal is paid, paidAmount dwarfs
@@ -146,7 +132,6 @@ export const useLoanPayment = (
     isValidAmount,
     isLoanOverdue,
     isLoanInGracePeriod,
-    getDisplayDueDate,
     getPaymentProgress,
     // New status-aware properties
     isPaymentRequired,

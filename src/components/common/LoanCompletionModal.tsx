@@ -31,6 +31,11 @@ export function LoanCompletionModal({
   isWithdrawing,
   onConfirmWithdrawal
 }: LoanCompletionModalProps) {
+  // After a successful withdrawal the loan transitions to COMPLETED and is
+  // filtered out of activeLoans. The modal may re-render once with loan=undefined
+  // before the parent's closeWithdrawalModal runs, so don't crash on it.
+  if (!loan) return null
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className='sm:max-w-md'>

@@ -86,7 +86,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const {
     isLoanOverdue,
     isLoanInGracePeriod,
-    getDisplayDueDate,
     getPaymentProgress,
     minimumPayment,
     isPaymentRequired,
@@ -464,31 +463,26 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
-        // Countdown target and label depend on payment state:
-        // 1. Grace period, before loan end: count to exact loan end (no buffer)
-        // 2. Grace period, after loan end:  count to end + balloonPaymentGraceDuration - 1 day
-        // 3. Normal (interest not fully paid): count to now + timeToDefault - 1 day
+        // Countdown target — always derived from the loan's absolute timestamps
+        // (createdAt + duration, plus loanConfig.balloonPaymentGraceDuration),
+        // so the value does not shift when the component re-renders.
+        //   1. Before loan end: count to createdAt + duration ("Time to Loan End")
+        //   2. After loan end:  count to loanEnd + grace − 1 day ("Time Until Default")
+        // The one-day buffer is a user-facing warning window so the countdown
+        // hits zero ahead of the contract's actual default.
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
-        const now = Date.now()
-        const pastLoanEnd = isInGracePeriod && now >= loanEndMs
         const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
           ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
           : 0
+        const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
 
-        const countdownTarget: Date = isInGracePeriod && !pastLoanEnd
-          ? new Date(loanEndMs)
-          : pastLoanEnd
-            ? new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
-            : getDisplayDueDate(loan)
+        const countdownTarget: Date = pastLoanEnd
+          ? new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
+          : new Date(loanEndMs)
 
-        const countdownLabel = isOverdue
-          ? 'Overdue'
-          : isInGracePeriod && !pastLoanEnd
-            ? 'Time to Loan End'
-            : 'Time Until Default'
-
-        const showCountdownTooltip = !isOverdue && !(isInGracePeriod && !pastLoanEnd)
+        const countdownLabel = pastLoanEnd ? 'Time Until Default' : 'Time to Loan End'
+        const showCountdownTooltip = pastLoanEnd
 
         return (
           <Card key={loan.id}>
