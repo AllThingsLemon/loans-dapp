@@ -26,15 +26,17 @@ Only the Loans contract address is required per chain. The rest of the protocol 
 - `LiquidityPool` ← `Loans.liquidityPool()`
 - `SwapManager` ← `LiquidityPool.swapManager()`
 
-Add the following to `.env` (or Cloudflare Pages secrets — see README):
+Add the following to `.env` (or Cloudflare Pages secrets — see README). Provide a Loans address for every chain id you list in `NEXT_PUBLIC_SUPPORTED_CHAINS`:
 
 ```
 NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=...
-NEXT_PUBLIC_LEMON_LOANS_ADDRESS=0x...
-NEXT_PUBLIC_CITRON_LOANS_ADDRESS=0x...            # testnet only
+NEXT_PUBLIC_SUPPORTED_CHAINS=1006,56               # comma-separated chain ids; first is default
+NEXT_PUBLIC_LEMON_LOANS_ADDRESS=0x...              # required when 1006 is listed
+NEXT_PUBLIC_BSC_LOANS_ADDRESS=0x...                # required when 56 is listed
+NEXT_PUBLIC_CITRON_LOANS_ADDRESS=0x...             # required when 1005 is listed (testnet)
 ```
 
-Then rebuild so `wagmi generate` picks up the new Loans address:
+Then rebuild so `wagmi generate` picks up the new Loans address(es):
 
 ```bash
 npm run build
