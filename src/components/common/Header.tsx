@@ -3,7 +3,6 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChainSwitcher } from './ChainSwitcher'
 
 export default function Header() {
   const pathname = usePathname()
@@ -48,10 +47,7 @@ export default function Header() {
             </Link>
           </nav>
         </div>
-        <div className='flex items-center gap-3'>
-          <ChainSwitcher />
-          <ConnectButton chainStatus='none' />
-        </div>
+        <ConnectButton />
       </header>
     </div>
   )
