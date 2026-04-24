@@ -649,8 +649,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
-                    {loan.transpiredCycles.toString()}/
-                    {loan.totalCycles.toString()}
+                    {(loan.transpiredCycles > loan.totalCycles
+                      ? loan.totalCycles
+                      : loan.transpiredCycles
+                    ).toString()}
+                    /{loan.totalCycles.toString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
