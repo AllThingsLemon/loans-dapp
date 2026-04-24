@@ -666,15 +666,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </p>
                   <p className='text-sm font-medium'>
                     {(() => {
-                      // Show "cycles done" — the larger of real-time transpired
-                      // and (totalCycles − remainingCycles), so prepayments
-                      // advance the cell as soon as they're credited.
-                      const fromRemaining =
-                        loan.totalCycles > loan.remainingCycles
-                          ? loan.totalCycles - loan.remainingCycles
-                          : 0n
-                      const trans = loan.transpiredCycles
-                      const done = trans > fromRemaining ? trans : fromRemaining
+                      // Show "cycles done" — real-time elapsed cycles plus any
+                      // cycles already credited via prepayment, capped at
+                      // totalCycles. Driven by the same fields as
+                      // isLoanInGracePeriod so the cell flips to N/N at the
+                      // moment the user finishes paying interest.
+                      const done = loan.transpiredCycles + loan.cyclesAhead
                       const capped = done > loan.totalCycles ? loan.totalCycles : done
                       return capped.toString()
                     })()}
