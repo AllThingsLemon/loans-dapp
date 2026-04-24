@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useAccount, useChainId, usePublicClient, useWriteContract } from 'wagmi'
+import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
 import { erc20Abi } from 'viem'
 import {
@@ -12,14 +12,12 @@ import {
   useWriteLiquidityPoolClaimWithdrawal,
   useWriteLiquidityPoolFundWithdrawalQueue,
   useWriteLiquidityPoolProcessSwaps,
-  useReadLiquidityPoolDepositFeeUsd,
-  useReadLiquidityPoolWithdrawFeeUsd,
   useReadLoansGetNativeFee,
   loansAddress,
   loansAbi,
-  liquidityPoolAddress,
   liquidityPoolAbi,
 } from '@/src/generated'
+import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 
 export interface UseLiquidityOperationsReturn {
   deposit: (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => Promise<`0x${string}` | undefined>
@@ -44,9 +42,25 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
 
-  // Native fee reads
-  const { data: depositFeeUSD } = useReadLiquidityPoolDepositFeeUsd()
-  const { data: withdrawFeeUSD } = useReadLiquidityPoolWithdrawFeeUsd()
+  // LiquidityPool address resolved from Loans.liquidityPool()
+  const { liquidityPool: lpAddress } = useProtocolAddresses()
+
+  // Native fee reads — use useReadContract directly to avoid TS deep-instantiation
+  // errors when overriding address on the generated LP hooks.
+  const { data: depositFeeUSDRaw } = useReadContract({
+    address: lpAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'depositFeeUSD',
+    query: { enabled: !!lpAddress },
+  })
+  const { data: withdrawFeeUSDRaw } = useReadContract({
+    address: lpAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'withdrawFeeUSD',
+    query: { enabled: !!lpAddress },
+  })
+  const depositFeeUSD = depositFeeUSDRaw as bigint | undefined
+  const withdrawFeeUSD = withdrawFeeUSDRaw as bigint | undefined
 
   // Get native fee conversion: pass USD amount, get native wei amount
   // @ts-ignore - wagmi deep type instantiation
@@ -130,17 +144,17 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const deposit = useCallback(
     async (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => {
       if (!address) throw new Error('Wallet not connected')
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
 
       // Always resolve the native fee fresh from chain to avoid stale hook state.
       // The deposit() function on LiquidityPool is payable and requires TLEMX fee.
       let nativeFee = depositNativeFee ?? 0n
       if (publicClient) {
         try {
-          const lpAddr = liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
           const loansAddr = loansAddress[chainId as keyof typeof loansAddress]
-          if (lpAddr && loansAddr) {
+          if (loansAddr) {
             const feeUSD = await publicClient.readContract({
-              address: lpAddr,
+              address: lpAddress,
               abi: liquidityPoolAbi,
               functionName: 'depositFeeUSD',
             }) as bigint
@@ -161,24 +175,22 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       let gasEstimate: bigint | undefined
       if (publicClient) {
         try {
-          const lpAddr = liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
-          if (lpAddr) {
-            const estimated = await publicClient.estimateContractGas({
-              address: lpAddr,
-              abi: liquidityPoolAbi,
-              functionName: 'deposit',
-              args: [token, amount, lockDuration, nonEarning],
-              value: nativeFee,
-              account: address,
-            })
-            gasEstimate = (estimated * 120n) / 100n // 20% buffer
-          }
+          const estimated = await publicClient.estimateContractGas({
+            address: lpAddress,
+            abi: liquidityPoolAbi,
+            functionName: 'deposit',
+            args: [token, amount, lockDuration, nonEarning],
+            value: nativeFee,
+            account: address,
+          })
+          gasEstimate = (estimated * 120n) / 100n // 20% buffer
         } catch {
           // gas estimation failed — send without gas override and let wallet decide
         }
       }
 
       const txHash = await depositFn({
+        address: lpAddress,
         args: [token, amount, lockDuration, nonEarning],
         value: nativeFee,
         ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
@@ -186,33 +198,38 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, chainId, depositFn, depositNativeFee, publicClient, waitAndInvalidate]
+    [address, chainId, lpAddress, depositFn, depositNativeFee, publicClient, waitAndInvalidate]
   )
 
   const requestWithdrawal = useCallback(
     async (amount: bigint) => {
       if (!address) throw new Error('Wallet not connected')
-      const txHash = await requestWithdrawalFn({ args: [amount] })
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      const txHash = await requestWithdrawalFn({ address: lpAddress, args: [amount] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, requestWithdrawalFn, waitAndInvalidate]
+    [address, lpAddress, requestWithdrawalFn, waitAndInvalidate]
   )
 
   const claimEarnings = useCallback(async () => {
     if (!address) throw new Error('Wallet not connected')
+    if (!lpAddress) throw new Error('LiquidityPool address not resolved')
     const txHash = await claimEarningsFn({
+      address: lpAddress,
       value: withdrawNativeFee ?? 0n,
       gas: 300_000n,
     })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [address, claimEarningsFn, withdrawNativeFee, waitAndInvalidate])
+  }, [address, lpAddress, claimEarningsFn, withdrawNativeFee, waitAndInvalidate])
 
   const compoundEarnings = useCallback(
     async (lockDuration: bigint) => {
       if (!address) throw new Error('Wallet not connected')
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
       const txHash = await compoundEarningsFn({
+        address: lpAddress,
         args: [lockDuration],
         value: depositNativeFee ?? 0n,
         gas: 500_000n,
@@ -220,29 +237,33 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, compoundEarningsFn, depositNativeFee, waitAndInvalidate]
+    [address, lpAddress, compoundEarningsFn, depositNativeFee, waitAndInvalidate]
   )
 
   const pullEarnings = useCallback(async () => {
-    const txHash = await pullEarningsFn({})
+    if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+    const txHash = await pullEarningsFn({ address: lpAddress })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [pullEarningsFn, waitAndInvalidate])
+  }, [lpAddress, pullEarningsFn, waitAndInvalidate])
 
   const transferAccount = useCallback(
     async (to: `0x${string}`) => {
       if (!address) throw new Error('Wallet not connected')
-      const txHash = await transferAccountFn({ args: [to] })
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      const txHash = await transferAccountFn({ address: lpAddress, args: [to] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, transferAccountFn, waitAndInvalidate]
+    [address, lpAddress, transferAccountFn, waitAndInvalidate]
   )
 
   const claimWithdrawal = useCallback(
     async (requestId: bigint) => {
       if (!address) throw new Error('Wallet not connected')
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
       const txHash = await claimWithdrawalFn({
+        address: lpAddress,
         args: [requestId],
         value: withdrawNativeFee ?? 0n,
         gas: 300_000n,
@@ -250,22 +271,24 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, claimWithdrawalFn, withdrawNativeFee, waitAndInvalidate]
+    [address, lpAddress, claimWithdrawalFn, withdrawNativeFee, waitAndInvalidate]
   )
 
   const fundWithdrawalQueue = useCallback(async () => {
-    const txHash = await fundWithdrawalQueueFn({})
+    if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+    const txHash = await fundWithdrawalQueueFn({ address: lpAddress })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [fundWithdrawalQueueFn, waitAndInvalidate])
+  }, [lpAddress, fundWithdrawalQueueFn, waitAndInvalidate])
 
   const processSwaps = useCallback(
     async (token: `0x${string}`) => {
-      const txHash = await processSwapsFn({ args: [token] })
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      const txHash = await processSwapsFn({ address: lpAddress, args: [token] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [processSwapsFn, waitAndInvalidate]
+    [lpAddress, processSwapsFn, waitAndInvalidate]
   )
 
   const approveToken = useCallback(
