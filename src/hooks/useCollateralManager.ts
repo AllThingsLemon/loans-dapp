@@ -114,10 +114,13 @@ export function useCollateralManager(): UseCollateralManagerReturn {
   // before the loan calculator is usable. This is enforced in the LoanParameters UI.
 
   const getCollateralByAddress = useMemo(
-    () => (addr: string) =>
-      supportedCollateralTokens.find(
-        (t) => t.address.toLowerCase() === addr.toLowerCase()
-      ),
+    () => (addr: string | undefined) => {
+      if (!addr) return undefined
+      const target = addr.toLowerCase()
+      return supportedCollateralTokens.find(
+        (t) => t.address.toLowerCase() === target
+      )
+    },
     [supportedCollateralTokens]
   )
 

@@ -102,12 +102,14 @@ export class Web3ErrorBoundary extends Component<Props, State> {
             </CardDescription>
           </CardHeader>
           <CardContent className='space-y-4'>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
-              <details className='text-xs text-red-600'>
+            {this.state.error && (
+              <details className='text-xs text-red-600' open>
                 <summary className='cursor-pointer font-medium'>
                   Technical Details
                 </summary>
-                <pre className='mt-2 whitespace-pre-wrap bg-red-100 p-2 rounded'>
+                <pre className='mt-2 whitespace-pre-wrap bg-red-100 p-2 rounded max-h-64 overflow-auto'>
+                  {this.state.error.message}
+                  {'\n\n'}
                   {this.state.error.stack}
                 </pre>
               </details>
