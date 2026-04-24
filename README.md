@@ -32,7 +32,7 @@ All variables must be prefixed `NEXT_PUBLIC_` to be available in the browser.
 | `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` | Yes | WalletConnect Cloud project ID |
 | `NEXT_PUBLIC_LEMON_LOANS_ADDRESS` | Yes | Loans contract address on LemonChain mainnet |
 | `NEXT_PUBLIC_CITRON_LOANS_ADDRESS` | Testnet only | Loans contract address on Citron testnet |
-| `NEXT_PUBLIC_INCLUDE_TESTNET` | No | Set to `true` to include Citron testnet in the wallet network list |
+| `NEXT_PUBLIC_SUPPORTED_CHAINS` | No | Comma-separated chain keys (e.g. `lemon,citron`). First entry is the default. Defaults to `lemon` when unset. Surfaces in the wallet network list and the header chain switcher dropdown. |
 
 Only the Loans contract address is required per chain. The rest of the protocol contracts (`CollateralManager`, `LiquidityPool`, `SwapManager`) are discovered on-chain at app load via `Loans.collateralManager()`, `Loans.liquidityPool()`, and `LiquidityPool.swapManager()`.
 
