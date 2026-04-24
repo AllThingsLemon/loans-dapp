@@ -144,22 +144,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get initial loan config and options - moved up to avoid initialization error
   const initialHookData: UseLoansReturn = useLoans()
 
-  // Set initial values from contract config
+  // Set initial values from contract config (loanAmount stays at 0 so the
+  // input shows the placeholder — the user has to type the desired amount).
   useEffect(() => {
-    if (
-      initialHookData.loanConfig &&
-      initialHookData.loanConfig.minLoanAmount &&
-      loanAmount === 0
-    ) {
-      setLoanAmount(
-        Number(
-          formatUnits(
-            initialHookData.loanConfig.minLoanAmount,
-            tokenConfig?.loanToken.decimals || 18
-          )
-        )
-      )
-    }
     // Snap LTV to the first option for the selected collateral — on first load (ltv===0)
     // and when the user switches collateral tokens and the current LTV isn't in the new set.
     if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
