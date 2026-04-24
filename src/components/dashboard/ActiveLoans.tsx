@@ -463,26 +463,48 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
-        // Countdown target — always derived from the loan's absolute timestamps
-        // (createdAt + duration, plus loanConfig.balloonPaymentGraceDuration),
-        // so the value does not shift when the component re-renders.
-        //   1. Before loan end: count to createdAt + duration ("Time to Loan End")
-        //   2. After loan end:  count to loanEnd + grace − 1 day ("Time Until Default")
-        // The one-day buffer is a user-facing warning window so the countdown
-        // hits zero ahead of the contract's actual default.
+        // Countdown target — derived entirely from absolute timestamps on the
+        // loan struct (and loanConfig.balloonPaymentGraceDuration) so the value
+        // does not shift when the component re-renders. Three phases:
+        //
+        //   1. Interest NOT fully paid (remainingCycles > 0):
+        //      count to the next cycle's payment deadline — capped at the loan
+        //      end date so the single-cycle case collapses to the loan end.
+        //      Label: "Time Until Default" (missing that deadline defaults the loan).
+        //   2. Interest fully paid, before loan end:
+        //      count to createdAt + duration. Label: "Time to Loan End".
+        //   3. Interest fully paid, past loan end (balloon grace window):
+        //      count to loanEnd + balloonGrace − 1 day. The 1-day buffer is a
+        //      user-facing warning window so the countdown hits zero ahead of
+        //      the contract's actual default. Label: "Time Until Default".
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
         const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
           ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
           : 0
         const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
+        const interestFullyPaid = loan.remainingCycles === 0n
 
-        const countdownTarget: Date = pastLoanEnd
-          ? new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
-          : new Date(loanEndMs)
+        // End of the next cycle the user must pay, accounting for prepayments.
+        const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
+        const nextCycleEndMs = Number(
+          loan.createdAt + nextCycleIndex * loan.loanCycleDuration
+        ) * 1000
+        const nextPaymentDeadlineMs = Math.min(nextCycleEndMs, loanEndMs)
 
-        const countdownLabel = pastLoanEnd ? 'Time Until Default' : 'Time to Loan End'
-        const showCountdownTooltip = pastLoanEnd
+        let countdownTarget: Date
+        let countdownLabel: string
+        if (!interestFullyPaid) {
+          countdownTarget = new Date(nextPaymentDeadlineMs)
+          countdownLabel = 'Time Until Default'
+        } else if (!pastLoanEnd) {
+          countdownTarget = new Date(loanEndMs)
+          countdownLabel = 'Time to Loan End'
+        } else {
+          countdownTarget = new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
+          countdownLabel = 'Time Until Default'
+        }
+        const showCountdownTooltip = countdownLabel === 'Time Until Default'
 
         return (
           <Card key={loan.id}>
