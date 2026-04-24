@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useReadContract } from 'wagmi'
 import {
   useReadCollateralManagerGetSupportedAssets,
@@ -110,8 +110,14 @@ export function useCollateralManager(): UseCollateralManagerReturn {
   const { infos: supportedCollateralTokens, isLoading: metaLoading, error: metaError } =
     useCollateralAssets(cmAddress, allowedAddresses)
 
-  // No auto-selection — the user must always explicitly pick a collateral token
-  // before the loan calculator is usable. This is enforced in the LoanParameters UI.
+  // Auto-select when only one collateral token is configured — the selector UI
+  // is hidden in that case (LoanParameters checks supportedCollateralTokens.length).
+  // When two or more are configured the user must pick explicitly.
+  useEffect(() => {
+    if (supportedCollateralTokens.length === 1 && !selectedCollateral) {
+      setSelectedCollateral(supportedCollateralTokens[0])
+    }
+  }, [supportedCollateralTokens, selectedCollateral])
 
   const getCollateralByAddress = useMemo(
     () => (addr: string | undefined) => {
