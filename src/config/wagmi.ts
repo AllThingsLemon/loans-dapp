@@ -48,25 +48,25 @@ const lemon = {
   }
 } as const satisfies Chain
 
-// Map env keys → chain definitions. Add new chains here when the protocol
-// is deployed on additional networks.
-const SUPPORTED_CHAIN_REGISTRY: Record<string, Chain> = {
-  lemon,
-  citron
+// Registry of every chain the protocol could be deployed on, keyed by
+// chain id. Add new chains here as deployments expand.
+const SUPPORTED_CHAIN_REGISTRY: Record<number, Chain> = {
+  [lemon.id]: lemon,
+  [citron.id]: citron
 }
 
 // Resolve the active chain set from NEXT_PUBLIC_SUPPORTED_CHAINS, a
-// comma-separated list of registry keys (e.g. "lemon,citron"). Order matters —
-// the first entry is the default the wallet connects to. Defaults to "lemon"
-// when the env var is missing.
+// comma-separated list of chain ids (e.g. "1006,1005"). Order matters —
+// the first entry is the default the wallet connects to. Defaults to the
+// LemonChain mainnet id when the env var is missing or unparseable.
 const resolveSupportedChains = (): readonly [Chain, ...Chain[]] => {
-  const raw = process.env.NEXT_PUBLIC_SUPPORTED_CHAINS ?? 'lemon'
-  const keys = raw
+  const raw = process.env.NEXT_PUBLIC_SUPPORTED_CHAINS ?? String(lemon.id)
+  const ids = raw
     .split(',')
-    .map((k) => k.trim().toLowerCase())
-    .filter((k) => k.length > 0)
-  const resolved = keys
-    .map((k) => SUPPORTED_CHAIN_REGISTRY[k])
+    .map((k) => Number.parseInt(k.trim(), 10))
+    .filter((id) => Number.isFinite(id))
+  const resolved = ids
+    .map((id) => SUPPORTED_CHAIN_REGISTRY[id])
     .filter((c): c is Chain => !!c)
   if (resolved.length === 0) return [lemon] as const
   return resolved as unknown as readonly [Chain, ...Chain[]]

@@ -50,7 +50,7 @@ export default function Header() {
         </div>
         <div className='flex items-center gap-3'>
           <ChainSwitcher />
-          <ConnectButton />
+          <ConnectButton chainStatus='none' />
         </div>
       </header>
     </div>
