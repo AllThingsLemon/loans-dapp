@@ -103,6 +103,7 @@ export function LoanParameters({
               type='number'
               value={loanAmount === 0 ? '' : loanAmount}
               disabled={hasNoLiquidity}
+              onWheel={(e) => e.currentTarget.blur()}
               onChange={(e) => {
                 const value = e.target.value
                 if (value === '') {

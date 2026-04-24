@@ -56,6 +56,7 @@ import {
   Info
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
+import { useCollateralManager } from '@/src/hooks/useCollateralManager'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
 
 interface ActiveLoansProps {
@@ -81,6 +82,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     interestAprConfigs,
   } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
+  const { getCollateralByAddress } = useCollateralManager()
   const {
     isLoanOverdue,
     isLoanInGracePeriod,
@@ -647,8 +649,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
-                    {loan.transpiredCycles.toString()}/
-                    {loan.totalCycles.toString()}
+                    {(loan.transpiredCycles > loan.totalCycles
+                      ? loan.totalCycles
+                      : loan.transpiredCycles
+                    ).toString()}
+                    /{loan.totalCycles.toString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -656,7 +661,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='text-sm font-medium'>
                     {formatAmountWithSymbol(
                       loan.collateralAmount,
-                      tokenConfig?.nativeToken.symbol || 'Token'
+                      getCollateralByAddress(loan.collateralToken)?.symbol || 'Token'
                     )}
                   </p>
                 </div>
@@ -1059,6 +1064,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           onClose={closeWithdrawalModal}
           loan={activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)}
           tokenConfig={tokenConfig}
+          collateralSymbol={(() => {
+            const loan = activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)
+            return loan ? getCollateralByAddress(loan.collateralToken)?.symbol : undefined
+          })()}
           isWithdrawing={isWithdrawingCollateral}
           onConfirmWithdrawal={confirmWithdrawal}
         />

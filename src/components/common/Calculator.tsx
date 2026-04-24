@@ -19,6 +19,8 @@ import {
   isUserRejection,
   type ContractError
 } from '../../utils/errorHandling'
+import { useCollateralManager } from '../../hooks/useCollateralManager'
+import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -31,7 +33,8 @@ const formatContractCalculation = (
     firstLoanPayment?: bigint
     loanCycleDuration?: bigint
   },
-  tokenConfig: any
+  tokenConfig: any,
+  collateralDecimals: number
 ) => {
   if (!calculationData || !tokenConfig) return null
 
@@ -45,7 +48,7 @@ const formatContractCalculation = (
       ? Number(
           formatTokenAmount(
             calculationData.collateralAmount,
-            tokenConfig.nativeToken.decimals
+            collateralDecimals
           )
         )
       : 0,
@@ -117,9 +120,17 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
 
+  // Collateral manager — auto-selects when only one token is configured.
+  // When multi-collateral ships, pull setSelectedCollateral + supportedCollateralTokens here.
+  const { selectedCollateral } = useCollateralManager()
+
+  // Per-asset config (ltvOptions, interestAprConfigs depend on selected collateral)
+  const perAssetConfig = useLoanConfig(selectedCollateral?.address)
+
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   // UI loading states for transactions
+  const [isApprovingCollateral, setIsApprovingCollateral] = useState(false)
   const [isApprovingLoanFee, setIsApprovingLoanFee] = useState(false)
   const [isCreatingLoan, setIsCreatingLoan] = useState(false)
 
@@ -147,10 +158,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         )
       )
     }
-    if (initialHookData.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
+    if (perAssetConfig.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
       const ltvPercentage = Number(
         formatPercentage(
-          initialHookData.ltvOptions[0].ltv,
+          perAssetConfig.ltvOptions[0].ltv,
           tokenConfig.ltvDecimals
         )
       )
@@ -161,8 +172,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     }
   }, [
     initialHookData.loanConfig,
-    initialHookData.ltvOptions,
-    initialHookData.interestAprConfigs,
+    perAssetConfig.ltvOptions,
+    perAssetConfig.interestAprConfigs,
     initialHookData.durationRange,
     tokenConfig
   ])
@@ -175,6 +186,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Create loan request for simulation
   const loanRequest = useMemo(() => {
     if (
+      !selectedCollateral ||
       !loanAmount ||
       !selectedDuration ||
       selectedDuration === 0n ||
@@ -183,7 +195,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
       return undefined
 
-    const request = {
+    return {
+      collateralToken: selectedCollateral.address,
       loanAmount: parseUnits(
         loanAmount.toString(),
         tokenConfig.loanToken.decimals
@@ -191,8 +204,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       duration: selectedDuration,
       ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
     }
-    return request
-  }, [loanAmount, selectedDuration, ltv, tokenConfig])
+  }, [selectedCollateral, loanAmount, selectedDuration, ltv, tokenConfig])
 
   // Get origination fee for selected LTV
   const selectedLtvOption = useMemo(() => {
@@ -202,12 +214,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     const ltvDecimal = (ltv / 100).toString()
     const ltvInContractFormat = parseUnits(ltvDecimal, tokenConfig.ltvDecimals)
 
-    const found = initialHookData.ltvOptions.find(
+    return perAssetConfig.ltvOptions.find(
       (option) => option.ltv === ltvInContractFormat
     )
-
-    return found
-  }, [initialHookData.ltvOptions, ltv, tokenConfig])
+  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
 
   // Get the loan operations with the calculated request
   const loanOperations = useLoans({
@@ -232,7 +242,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
 
     // Check if we're still loading contract configuration
-    if (!tokenConfig || initialHookData.interestAprConfigs.length === 0) {
+    if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
       return {
         ...base,
         priceError: 'Loading contract data...'
@@ -252,7 +262,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     // Format the contract calculation data
     const formatted = formatContractCalculation(
       loanOperations.calculationData,
-      tokenConfig
+      tokenConfig,
+      selectedCollateral?.decimals ?? 18
     )
 
     if (!formatted) {
@@ -300,29 +311,62 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.calculationData,
     loanOperations.isSimulating,
     tokenConfig,
+    selectedCollateral,
     loanOperations.hasInsufficientLmln,
     loanOperations.hasInsufficientLiquidity,
-    initialHookData.interestAprConfigs,
+    perAssetConfig.interestAprConfigs,
     loanOperations.userLmlnBalance
   ])
 
-  // Check if approval is needed for loan creation
+  // Check if collateral ERC20 approval is needed (WLEMX → CollateralManager)
+  const needsCollateralApproval = useMemo(() => {
+    const collateralAmount = loanOperations.calculationData?.collateralAmount
+    if (!collateralAmount || collateralAmount === 0n) return false
+    if (loanOperations.currentCollateralAllowance === undefined) return true
+    return loanOperations.currentCollateralAllowance < collateralAmount
+  }, [
+    loanOperations.calculationData?.collateralAmount,
+    loanOperations.currentCollateralAllowance
+  ])
+
+  // Check if LMLN fee approval is needed.
+  // Compare against raw originationFee — the approval itself adds a buffer for the transfer tax.
+  // Using the grossed-up amount as the threshold causes an infinite approval loop when the
+  // LMLN price shifts, because the previously approved gross amount no longer meets the new gross threshold.
   const needsApproval = useMemo(() => {
-    if (!loanOperations.calculationData?.originationFee) {
-      return false
-    }
-    // If allowance is not loaded yet, assume approval is needed
-    if (loanOperations.currentLmlnAllowance === undefined) {
-      return true
-    }
-    return (
-      loanOperations.currentLmlnAllowance <
-      loanOperations.calculationData.originationFee
-    )
+    const originationFee = loanOperations.calculationData?.originationFee
+    if (!originationFee) return false
+    if (loanOperations.currentLmlnAllowance === undefined) return true
+    return loanOperations.currentLmlnAllowance < originationFee
   }, [
     loanOperations.calculationData?.originationFee,
     loanOperations.currentLmlnAllowance
   ])
+
+  // Handle collateral ERC20 approval (WLEMX → CollateralManager)
+  const handleApproveCollateral = async () => {
+    if (!selectedCollateral || !loanOperations.calculationData?.collateralAmount) return
+    setIsApprovingCollateral(true)
+    try {
+      await loanOperations.approveCollateral(
+        selectedCollateral.address,
+        loanOperations.calculationData.collateralAmount
+      )
+      toast({
+        title: '✅ Collateral Approved',
+        description: `${selectedCollateral.symbol} approved. You can now approve the origination fee.`
+      })
+    } catch (error) {
+      const contractError = error as ContractError
+      if (isUserRejection(contractError)) {
+        setIsDialogOpen(false)
+      } else {
+        handleContractError(contractError, toast, 'Collateral Approval Failed')
+      }
+    } finally {
+      setIsApprovingCollateral(false)
+    }
+  }
 
   // Handle loan fee approval
   const handleApproveLoanFee = async () => {
@@ -380,9 +424,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         if (initialHookData.durationRange.min > 0) {
           setDuration(initialHookData.durationRange.min)
         }
-        if (initialHookData.ltvOptions.length > 0 && tokenConfig) {
+        if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
           setLtv(
-            Number(formatPercentage(initialHookData.ltvOptions[0].ltv, tokenConfig.ltvDecimals))
+            Number(formatPercentage(perAssetConfig.ltvOptions[0].ltv, tokenConfig.ltvDecimals))
           )
         }
       }
@@ -429,10 +473,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         setLtv={setLtv}
         loanConfig={initialHookData.loanConfig}
         tokenConfig={tokenConfig}
-        interestAprConfigs={initialHookData.interestAprConfigs}
-        ltvOptions={initialHookData.ltvOptions}
+        interestAprConfigs={perAssetConfig.interestAprConfigs}
+        ltvOptions={perAssetConfig.ltvOptions}
         durationRange={initialHookData.durationRange}
-        configLoading={initialHookData.isLoading}
+        configLoading={initialHookData.isLoading || perAssetConfig.isLoading}
         availableLiquidity={loanOperations.availableLiquidity}
         isDashboard={isDashboard}
       />
@@ -440,16 +484,20 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       <LoanSummary
         calculation={calculation}
         tokenConfig={tokenConfig}
+        collateralSymbol={selectedCollateral?.symbol}
         hasInsufficientLmln={loanOperations.hasInsufficientLmln}
         hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
+        isApprovingCollateral={isApprovingCollateral}
         isApprovingLoanFee={isApprovingLoanFee}
         isCreatingLoan={isCreatingLoan}
         isDialogOpen={isDialogOpen}
         setIsDialogOpen={setIsDialogOpen}
         handleCreateLoan={handleCreateLoan}
+        handleApproveCollateral={handleApproveCollateral}
         handleApproveLoanFee={handleApproveLoanFee}
+        needsCollateralApproval={needsCollateralApproval}
         needsApproval={needsApproval}
         isDashboard={isDashboard}
         selectedLtvOption={selectedLtvOption}

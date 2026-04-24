@@ -69,8 +69,9 @@ const combineLoanData = (
     paidAmount: loan.paidAmount,
     ltv: loan.ltv,
     originationFee: loan.originationFee,
+    collateralToken: loan.collateralToken,
     collateralAmount: loan.collateralAmount,
-    collateralWithdrawn: loan.collateralWithdrawn,
+    loanCycleDuration: loan.loanCycleDuration,
 
     // Contract-derived values with defaults
     status: status ?? LOAN_STATUS.ACTIVE,

@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
-import { useAccount, useChainId, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useChainId } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
-import { DEFAULT_DECIMALS, LOAN_STATUS } from '@/src/constants'
+import { LOAN_STATUS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
   useWriteLoansMakeLoanPayment,
@@ -15,7 +15,8 @@ import {
   loansAbi,
   useWriteLoansWithdrawCollateral,
   useWriteLoansExtendLoan,
-  readLoansLoanStatus
+  readLoansLoanStatus,
+  collateralManagerAddress
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
@@ -24,6 +25,7 @@ import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { loanKeys } from '../query/loanQueries'
 
 export interface LoanRequest {
+  collateralToken: `0x${string}` // ERC20 collateral token address
   loanAmount: bigint // wei (token decimals)
   duration: bigint // seconds
   ltv: bigint // percentage scaled by PRECISION (e.g., 50 * 1e8 = 50%)
@@ -38,6 +40,7 @@ export interface UseLoanOperationsReturn {
   // Operations
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
   approveLoanFee: (feeAmount?: bigint) => Promise<`0x${string}` | undefined>
+  approveCollateral: (collateralToken: `0x${string}`, collateralAmount: bigint) => Promise<`0x${string}` | undefined>
   payLoan: (
     loanId: `0x${string}`,
     amount: bigint
@@ -56,6 +59,7 @@ export interface UseLoanOperationsReturn {
   // Loan creation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
+  grossOriginationFee: bigint | undefined
   calculationData:
     | {
         interestAmount: bigint | undefined
@@ -75,6 +79,7 @@ export interface UseLoanOperationsReturn {
   userLoanTokenBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
+  currentCollateralAllowance: bigint | undefined
 
   // Liquidity
   availableLiquidity: bigint | undefined
@@ -98,6 +103,10 @@ export const useLoanOperations = (
   // Get loans contract address for current chain
   const loansContractAddress =
     loansAddress[chainId as keyof typeof loansAddress]
+
+  // Get collateral manager address for current chain
+  const cmAddress =
+    collateralManagerAddress[chainId as keyof typeof collateralManagerAddress]
 
   // Get contract token and decimal configuration
   const {
@@ -164,6 +173,26 @@ export const useLoanOperations = (
           : undefined,
       query: {
         enabled: !!feeTokenAddress && !!address && !!loansContractAddress
+      }
+    })
+
+  // LMLN token charges a transfer fee. Selector 0x9d11aaaa returns 10.
+  // The value is in basis points (BPS), denominator = 10000, so 10 BPS = 0.1%.
+  // approveLoanFee adds a 10% buffer on top of origFee so the transferFrom always succeeds
+  // even with minor LMLN price movement between approval and loan creation.
+  const LMLN_FEE_DENOMINATOR = 10000n
+  const LMLN_FEE_RATE_FALLBACK = 10n // 10 BPS = 0.1%
+  const LMLN_FEE_RATE_SELECTOR = '0x9d11aaaa' as `0x${string}`
+
+  // Get current collateral token allowance for CollateralManager
+  const { data: currentCollateralAllowance, refetch: refetchCollateralAllowance } =
+    useReadContract({
+      address: loanRequest?.collateralToken,
+      abi: erc20Abi,
+      functionName: 'allowance',
+      args: address && cmAddress ? [address, cmAddress] : undefined,
+      query: {
+        enabled: !!loanRequest?.collateralToken && !!address && !!cmAddress
       }
     })
 
@@ -237,10 +266,10 @@ export const useLoanOperations = (
     status
   } = useReadLoansCalculateLoanDetails({
     args: loanRequest
-      ? [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv]
+      ? [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv]
       : undefined,
     query: {
-      enabled: !!loanRequest,
+      enabled: !!loanRequest && !!loanRequest.collateralToken,
       retry: 3,
       retryDelay: 1000
     }
@@ -256,11 +285,15 @@ export const useLoanOperations = (
     firstLoanPayment
   ] = calculationData || []
 
-  // Check if user has sufficient LMLN for origination fee
-  // Use the actual origination fee from contract calculation if available, otherwise fall back to selectedLtvOption
+  // Gross origination fee = base fee + 0.1% transfer tax + 10% price buffer
+  const grossOriginationFee = originationFee
+    ? originationFee + originationFee * LMLN_FEE_RATE_FALLBACK / LMLN_FEE_DENOMINATOR + originationFee / 10n
+    : undefined
+
+  // Check if user has sufficient LMLN for origination fee (gross amount including transfer tax)
   const hasInsufficientLmln =
-    originationFee && userLmlnBalance !== undefined
-      ? userLmlnBalance < originationFee
+    grossOriginationFee && userLmlnBalance !== undefined
+      ? userLmlnBalance < grossOriginationFee
       : selectedLtvOption && userLmlnBalance !== undefined
       ? userLmlnBalance < selectedLtvOption.fee
       : false
@@ -272,7 +305,7 @@ export const useLoanOperations = (
 
       // Use provided fee amount (for extensions) or calculated origination fee (for new loans)
       const fee = feeAmount || originationFee
-      
+
       if (!fee || fee === 0n) {
         throw new Error('Origination fee not calculated. Please try again.')
       }
@@ -281,19 +314,34 @@ export const useLoanOperations = (
         throw new Error('Contract configuration not loaded. Please refresh and try again.')
       }
 
-      // Check if user has sufficient LMLN balance
-      if (userLmlnBalance !== undefined && userLmlnBalance < fee) {
-        const requiredFormatted = (Number(fee) / 1e18).toFixed(4)
+      // Read the current LMLN transfer fee rate via raw selector (10 BPS = 0.1% default)
+      let feeRate = LMLN_FEE_RATE_FALLBACK
+      if (publicClient) {
+        try {
+          const result = await publicClient.call({ to: feeTokenAddress, data: LMLN_FEE_RATE_SELECTOR })
+          if (result.data && result.data.length >= 66) {
+            feeRate = BigInt(result.data)
+          }
+        } catch { /* use default */ }
+      }
+      // Add the transfer tax plus a 10% price-fluctuation buffer so the approval stays
+      // valid even if the LMLN price moves between now and when initiateLoan executes.
+      const tokenFee = fee * feeRate / LMLN_FEE_DENOMINATOR
+      const grossFee = fee + tokenFee + fee / 10n // fee + 0.1% tax + 10% price buffer
+
+      // Check if user has sufficient LMLN balance for the gross amount
+      if (userLmlnBalance !== undefined && userLmlnBalance < grossFee) {
+        const requiredFormatted = (Number(grossFee) / 1e18).toFixed(4)
         const availableFormatted = (Number(userLmlnBalance) / 1e18).toFixed(4)
         throw new Error(`Insufficient LMLN balance. You need ${requiredFormatted} LMLN but only have ${availableFormatted} LMLN.`)
       }
 
-      // Approve LMLN tokens for origination fee
+      // Approve the gross amount so the transferFrom (fee + tax) succeeds
       const approvalTxHash = await approveToken({
         address: feeTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [loansContractAddress, fee]
+        args: [loansContractAddress, grossFee]
       })
 
       // Wait for approval transaction to be confirmed
@@ -315,6 +363,29 @@ export const useLoanOperations = (
       publicClient,
       refetchLmlnAllowance
     ]
+  )
+
+  const approveCollateral = useCallback(
+    async (collateralToken: `0x${string}`, amount: bigint) => {
+      if (!address) throw new Error('Wallet not connected')
+      if (!cmAddress) throw new Error('CollateralManager address not found')
+
+      const txHash = await approveToken({
+        address: collateralToken,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [cmAddress, amount]
+      })
+
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+      }
+
+      await refetchCollateralAllowance()
+
+      return txHash
+    },
+    [address, cmAddress, approveToken, publicClient, refetchCollateralAllowance]
   )
 
   const waitAndInvalidate = useCallback(
@@ -379,7 +450,6 @@ export const useLoanOperations = (
       }
 
       const nativeFee = initiateNativeFee ?? 0n
-      const totalValue = collateralAmount + nativeFee
 
       // Pre-simulate using eth_call (not eth_estimateGas) — viem decodes custom errors properly.
       // This surfaces the real revert reason before the wallet prompt appears.
@@ -388,16 +458,16 @@ export const useLoanOperations = (
           address: loansContractAddress,
           abi: loansAbi,
           functionName: 'initiateLoan',
-          args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
-          value: totalValue,
+          args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+          value: nativeFee,
           account: address,
         })
       }
 
-      // Execute the transaction — value includes collateral + native protocol fee
+      // Execute the transaction — collateral is pre-approved to CollateralManager via ERC20
       const txHash = await initiateLoan({
-        args: [loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
-        value: totalValue,
+        args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+        value: nativeFee,
       })
 
       await waitAndInvalidate(txHash)
@@ -618,6 +688,7 @@ export const useLoanOperations = (
     // Operations
     createLoan,
     approveLoanFee,
+    approveCollateral,
     payLoan,
     pullCollateral,
     approveTokenAllowance,
@@ -635,6 +706,7 @@ export const useLoanOperations = (
     // Loan creation data
     requiredCollateral: collateralAmount,
     hasInsufficientLmln,
+    grossOriginationFee,
     calculationData: calculationData
       ? {
           interestAmount,
@@ -654,6 +726,7 @@ export const useLoanOperations = (
     userLoanTokenBalance,
     currentAllowance,
     currentLmlnAllowance,
+    currentCollateralAllowance,
 
     // Liquidity
     availableLiquidity,

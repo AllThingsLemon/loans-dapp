@@ -5,7 +5,7 @@ import {
   useReadPriceDataFeedGetDailyAveragesHistory,
   useReadPriceDataFeedDecimals,
   useReadLoansPriceDataFeed,
-  useReadLoansCollateralToken,
+  useReadLoansNativeGasToken,
   useReadLoansOriginationFeeToken
 } from '@/src/generated'
 
@@ -47,7 +47,7 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     isLoading: isCollateralTokenAddressLoading,
     error: collateralTokenAddressError,
     refetch: refetchCollateralTokenAddress
-  } = useReadLoansCollateralToken()
+  } = useReadLoansNativeGasToken()
 
   const {
     data: originationFeeTokenAddress,

@@ -83,13 +83,16 @@ export const useLoanPayment = (
     return loan?.paymentAmount ?? 0n
   }, [loan?.paymentAmount])
 
-  // Countdown target: now + timeToDefault minus a 1-day buffer so users see
-  // urgency before the contract actually defaults them. Accounts for prepayments
-  // (cyclesAhead) since timeToDefault already reflects those on-chain.
+  // Countdown target: now + timeToDefault minus a buffer so users see urgency
+  // before the contract actually defaults them. The buffer is one loan cycle
+  // (capped at 1 day) so short-cycle testnet loans don't show as Overdue at
+  // creation time when timeToDefault is only a few cycles.
   const getDisplayDueDate = useCallback((loanData: Loan): Date => {
     const now = Date.now()
     const ONE_DAY_MS = 24 * 60 * 60 * 1000
-    return new Date(now + Number(loanData.timeToDefault) * 1000 - ONE_DAY_MS)
+    const cycleDurationMs = Number(loanData.loanCycleDuration ?? 0n) * 1000
+    const buffer = cycleDurationMs > 0 ? Math.min(ONE_DAY_MS, cycleDurationMs) : ONE_DAY_MS
+    return new Date(now + Number(loanData.timeToDefault) * 1000 - buffer)
   }, [])
 
   // Simple check if loan payment is overdue (for UI state only)
@@ -104,12 +107,14 @@ export const useLoanPayment = (
     [getDisplayDueDate]
   )
 
-  // Check if loan is in grace period (all interest paid, only principal remains)
+  // Grace period: all cycle payments are done and only the balloon (principal) remains.
+  // Cannot use paidAmount >= interestAmount — once principal is paid, paidAmount dwarfs
+  // interestAmount, making that check trivially true even when interest cycles remain.
   const isLoanInGracePeriod = useCallback((loanData: Loan): boolean => {
     if (loanData.status !== LOAN_STATUS.ACTIVE) {
       return false
     }
-    return loanData.paidAmount >= loanData.interestAmount
+    return loanData.remainingCycles === 0n
   }, [])
 
   const getPaymentProgress = useCallback((loanData: Loan) => {

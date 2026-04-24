@@ -17,6 +17,7 @@ interface LoanCompletionModalProps {
   onClose: () => void
   loan: any
   tokenConfig: any
+  collateralSymbol?: string
   isWithdrawing: boolean
   onConfirmWithdrawal: () => Promise<void>
 }
@@ -26,6 +27,7 @@ export function LoanCompletionModal({
   onClose,
   loan,
   tokenConfig,
+  collateralSymbol,
   isWithdrawing,
   onConfirmWithdrawal
 }: LoanCompletionModalProps) {
@@ -75,7 +77,7 @@ export function LoanCompletionModal({
                 <span className='font-semibold text-green-800'>
                   {formatAmountWithSymbol(
                     loan.collateralAmount,
-                    tokenConfig?.nativeToken.symbol || 'Token'
+                    collateralSymbol || tokenConfig?.nativeToken.symbol || 'Token'
                   )}
                 </span>
               </div>
