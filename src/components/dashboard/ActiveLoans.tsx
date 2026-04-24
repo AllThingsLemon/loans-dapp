@@ -665,10 +665,19 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Cycles Transpired
                   </p>
                   <p className='text-sm font-medium'>
-                    {(loan.transpiredCycles > loan.totalCycles
-                      ? loan.totalCycles
-                      : loan.transpiredCycles
-                    ).toString()}
+                    {(() => {
+                      // Show "cycles done" — the larger of real-time transpired
+                      // and (totalCycles − remainingCycles), so prepayments
+                      // advance the cell as soon as they're credited.
+                      const fromRemaining =
+                        loan.totalCycles > loan.remainingCycles
+                          ? loan.totalCycles - loan.remainingCycles
+                          : 0n
+                      const trans = loan.transpiredCycles
+                      const done = trans > fromRemaining ? trans : fromRemaining
+                      const capped = done > loan.totalCycles ? loan.totalCycles : done
+                      return capped.toString()
+                    })()}
                     /{loan.totalCycles.toString()}
                   </p>
                 </div>
