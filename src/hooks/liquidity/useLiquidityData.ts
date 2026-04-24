@@ -1,15 +1,14 @@
 import { useMemo, useCallback } from 'react'
-import { useAccount, useChainId, useReadContract, usePublicClient } from 'wagmi'
+import { useAccount, useReadContract, usePublicClient } from 'wagmi'
 import { erc20Abi, parseAbiItem } from 'viem'
 import { useQuery } from '@tanstack/react-query'
 import {
-  useReadLiquidityPoolStableToken,
-  liquidityPoolAddress,
   liquidityPoolAbi,
   useReadLoansGetLiquidityStatus,
   useReadLoansTotalLoansIssued,
   useReadLoansCumulativeLoanValue,
 } from '@/src/generated'
+import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 import {
   parseUserStatus,
   parsePoolStatus,
@@ -81,18 +80,24 @@ const DEPOSITED_EVENT = parseAbiItem(
 
 export function useLiquidityData(): UseLiquidityDataReturn {
   const { address } = useAccount()
-  const chainId = useChainId()
   const publicClient = usePublicClient()
 
-  const liquidityPoolContractAddress =
-    liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
+  // LiquidityPool address is resolved on-chain via Loans.liquidityPool()
+  const { liquidityPool: liquidityPoolContractAddress } = useProtocolAddresses()
 
-  // Get stable token address from LiquidityPool
+  // Get stable token address from LiquidityPool — use useReadContract directly
+  // because the generated hook hits TS deep-instantiation limits when address is overridden.
   const {
-    data: stableTokenAddress,
+    data: stableTokenAddressRaw,
     isLoading: stableTokenLoading,
     error: stableTokenError,
-  } = useReadLiquidityPoolStableToken()
+  } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'stableToken',
+    query: { enabled: !!liquidityPoolContractAddress },
+  })
+  const stableTokenAddress = stableTokenAddressRaw as `0x${string}` | undefined
 
   // Get stable token metadata
   const { data: stableTokenSymbol } = useReadContract({

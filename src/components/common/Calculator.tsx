@@ -6,10 +6,8 @@ import { formatUnits, parseUnits } from 'viem'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
 import {
-  parsePercentage,
   formatPercentage,
-  formatTokenAmount,
-  formatDurationRange
+  formatTokenAmount
 } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import { LoanParameters } from '../calculator/LoanParameters'
@@ -120,9 +118,13 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
 
-  // Collateral manager — auto-selects when only one token is configured.
-  // When multi-collateral ships, pull setSelectedCollateral + supportedCollateralTokens here.
-  const { selectedCollateral } = useCollateralManager()
+  // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
+  // even when only one token is configured. No auto-selection.
+  const {
+    selectedCollateral,
+    setSelectedCollateral,
+    supportedCollateralTokens
+  } = useCollateralManager()
 
   // Per-asset config (ltvOptions, interestAprConfigs depend on selected collateral)
   const perAssetConfig = useLoanConfig(selectedCollateral?.address)
@@ -158,14 +160,15 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         )
       )
     }
-    if (perAssetConfig.ltvOptions.length > 0 && ltv === 0 && tokenConfig) {
-      const ltvPercentage = Number(
-        formatPercentage(
-          perAssetConfig.ltvOptions[0].ltv,
-          tokenConfig.ltvDecimals
-        )
+    // Snap LTV to the first option for the selected collateral — on first load (ltv===0)
+    // and when the user switches collateral tokens and the current LTV isn't in the new set.
+    if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
+      const availableLtvs = perAssetConfig.ltvOptions.map((opt) =>
+        Number(formatPercentage(opt.ltv, tokenConfig.ltvDecimals))
       )
-      setLtv(ltvPercentage)
+      if (ltv === 0 || !availableLtvs.includes(ltv)) {
+        setLtv(availableLtvs[0])
+      }
     }
     if (initialHookData.durationRange.min > 0 && duration === 0) {
       setDuration(initialHookData.durationRange.min)
@@ -415,20 +418,13 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
             'Your loan has been created and will appear in your active loans!'
         })
 
-        // Reset inputs to defaults
-        if (initialHookData.loanConfig?.minLoanAmount && tokenConfig) {
-          setLoanAmount(
-            Number(formatUnits(initialHookData.loanConfig.minLoanAmount, tokenConfig.loanToken.decimals))
-          )
-        }
-        if (initialHookData.durationRange.min > 0) {
-          setDuration(initialHookData.durationRange.min)
-        }
-        if (perAssetConfig.ltvOptions.length > 0 && tokenConfig) {
-          setLtv(
-            Number(formatPercentage(perAssetConfig.ltvOptions[0].ltv, tokenConfig.ltvDecimals))
-          )
-        }
+        // Full reset \u2014 force the user to re-pick collateral and re-enter loan terms
+        // if they want another loan. Loan amount and duration repopulate to
+        // contract defaults via the init effect; LTV stays 0 until a collateral is picked.
+        setSelectedCollateral(undefined)
+        setLoanAmount(0)
+        setDuration(0)
+        setLtv(0)
       }
     } catch (error) {
       const contractError = error as ContractError
@@ -478,6 +474,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         durationRange={initialHookData.durationRange}
         configLoading={initialHookData.isLoading || perAssetConfig.isLoading}
         availableLiquidity={loanOperations.availableLiquidity}
+        supportedCollateralTokens={supportedCollateralTokens}
+        selectedCollateral={selectedCollateral}
+        setSelectedCollateral={setSelectedCollateral}
         isDashboard={isDashboard}
       />
 

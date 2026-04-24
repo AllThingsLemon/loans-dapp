@@ -20,24 +20,27 @@ This matters most for reflection/SafeMoon-style tokens, which take fees by defau
 
 ## Step 1 — Set environment variables
 
-Add the deployed contract addresses and your WalletConnect project ID to `.env` (or Cloudflare Pages secrets — see README):
+Only the Loans contract address is required per chain. The rest of the protocol addresses are discovered on-chain at app load:
+
+- `CollateralManager` ← `Loans.collateralManager()`
+- `LiquidityPool` ← `Loans.liquidityPool()`
+- `SwapManager` ← `LiquidityPool.swapManager()`
+
+Add the following to `.env` (or Cloudflare Pages secrets — see README):
 
 ```
 NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID=...
 NEXT_PUBLIC_LEMON_LOANS_ADDRESS=0x...
-NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS=0x...
-NEXT_PUBLIC_LEMON_COLLATERAL_MANAGER_ADDRESS=0x...
 NEXT_PUBLIC_CITRON_LOANS_ADDRESS=0x...            # testnet only
-NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS=0x...   # testnet only
-NEXT_PUBLIC_CITRON_COLLATERAL_MANAGER_ADDRESS=0x...# testnet only
-NEXT_PUBLIC_CITRON_SWAP_MANAGER_ADDRESS=0x...     # testnet only
 ```
 
-Then rebuild so `wagmi generate` picks up the new addresses:
+Then rebuild so `wagmi generate` picks up the new Loans address:
 
 ```bash
 npm run build
 ```
+
+> Make sure the on-chain wiring in Steps 3 and 9 is correct before deploying — if `Loans.collateralManager()` or `Loans.liquidityPool()` return the zero address the UI will not be able to read anything downstream.
 
 ---
 
@@ -342,7 +345,7 @@ Run through this before opening to users. Repeat the asset-specific rows for eve
 
 | # | Check | How to verify | Expected result |
 |---|---|---|---|
-| 1 | Environment variables set | `.env` / Cloudflare secrets | All `NEXT_PUBLIC_*` vars populated, including `*_COLLATERAL_MANAGER_ADDRESS` |
+| 1 | Environment variables set | `.env` / Cloudflare secrets | `NEXT_PUBLIC_*_LOANS_ADDRESS` populated; all other contract addresses come from on-chain reads |
 | 2 | Build passes | `npm run build` | No errors |
 | 3 | SwapManager wired | `LiquidityPool.swapManager()` | SwapManager address |
 | 4 | CollateralManager wired | Loans/CollateralManager reference each other, PriceHelper set | Successful `initiateLoan` |

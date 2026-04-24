@@ -15,13 +15,13 @@ import {
   loansAbi,
   useWriteLoansWithdrawCollateral,
   useWriteLoansExtendLoan,
-  readLoansLoanStatus,
-  collateralManagerAddress
+  readLoansLoanStatus
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 import { erc20Abi } from 'viem'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
+import { useProtocolAddresses } from '../useProtocolAddresses'
 import { loanKeys } from '../query/loanQueries'
 
 export interface LoanRequest {
@@ -104,9 +104,8 @@ export const useLoanOperations = (
   const loansContractAddress =
     loansAddress[chainId as keyof typeof loansAddress]
 
-  // Get collateral manager address for current chain
-  const cmAddress =
-    collateralManagerAddress[chainId as keyof typeof collateralManagerAddress]
+  // Collateral manager address is resolved on-chain from Loans.collateralManager()
+  const { collateralManager: cmAddress } = useProtocolAddresses()
 
   // Get contract token and decimal configuration
   const {

@@ -13,7 +13,11 @@ import LiquidityPoolAbi from './src/abis/LiquidityPool.json'
 import PriceHelperAbi from './src/abis/PriceHelper.json'
 import CollateralManagerAbi from './src/abis/CollateralManager.json'
 
-// Chain configuration following wagmi best practices
+// Only the Loans address is sourced from env. Every other protocol contract
+// address is discovered on-chain at runtime via useProtocolAddresses():
+//   CollateralManager  = Loans.collateralManager()
+//   LiquidityPool      = Loans.liquidityPool()
+//   SwapManager        = LiquidityPool.swapManager()
 const CHAINS = {
   LEMON: 1006,
   CITRON: 1005,
@@ -21,18 +25,9 @@ const CHAINS = {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
 
-// Contract addresses by chain (following wagmi patterns)
-const ADDRESSES = {
-  [CHAINS.LEMON]: {
-    loans: (process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-    liquidityPool: (process.env.NEXT_PUBLIC_LEMON_LIQUIDITY_POOL_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-    collateralManager: (process.env.NEXT_PUBLIC_LEMON_COLLATERAL_MANAGER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-  },
-  [CHAINS.CITRON]: {
-    loans: (process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-    liquidityPool: (process.env.NEXT_PUBLIC_CITRON_LIQUIDITY_POOL_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-    collateralManager: (process.env.NEXT_PUBLIC_CITRON_COLLATERAL_MANAGER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-  },
+const LOANS_ADDRESSES = {
+  [CHAINS.LEMON]: (process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+  [CHAINS.CITRON]: (process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
 } as const
 
 export default defineConfig({
@@ -41,36 +36,27 @@ export default defineConfig({
     {
       name: 'Loans',
       abi: LoansAbi as Abi,
-      address: {
-        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].loans,
-        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].loans,
-      }
+      address: LOANS_ADDRESSES,
     },
     {
       name: 'PriceDataFeed',
       abi: PriceDataFeedAbi as Abi,
-      // Address will be dynamically obtained from Loans contract
+      // Address resolved at runtime from Loans.priceDataFeed()
     },
     {
       name: 'PriceHelper',
       abi: PriceHelperAbi as Abi,
-      // Address will be dynamically obtained from LiquidityPool contract via priceHelper()
+      // Address resolved at runtime from LiquidityPool.priceHelper()
     },
     {
       name: 'LiquidityPool',
       abi: LiquidityPoolAbi as Abi,
-      address: {
-        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].liquidityPool,
-        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].liquidityPool,
-      }
+      // Address resolved at runtime from Loans.liquidityPool()
     },
     {
       name: 'CollateralManager',
       abi: CollateralManagerAbi as Abi,
-      address: {
-        [CHAINS.CITRON]: ADDRESSES[CHAINS.CITRON].collateralManager,
-        [CHAINS.LEMON]: ADDRESSES[CHAINS.LEMON].collateralManager,
-      }
+      // Address resolved at runtime from Loans.collateralManager()
     },
   ],
   plugins: [

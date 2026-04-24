@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { formatUnits } from 'viem'
 import { formatPercentage, formatDurationRange } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
+import type { CollateralTokenInfo } from '../../hooks/useCollateralManager'
 
 interface LoanParametersProps {
   loanAmount: number
@@ -20,6 +21,9 @@ interface LoanParametersProps {
   durationRange: { min: number; max: number }
   configLoading: boolean
   availableLiquidity?: bigint
+  supportedCollateralTokens: CollateralTokenInfo[]
+  selectedCollateral: CollateralTokenInfo | undefined
+  setSelectedCollateral: (token: CollateralTokenInfo | undefined) => void
   isDashboard?: boolean
 }
 
@@ -37,8 +41,14 @@ export function LoanParameters({
   durationRange,
   configLoading,
   availableLiquidity,
+  supportedCollateralTokens,
+  selectedCollateral,
+  setSelectedCollateral,
   isDashboard = false
 }: LoanParametersProps) {
+  // Always show the selector — the user must pick, even if only one token is configured.
+  const hasCollateralOptions = supportedCollateralTokens.length > 0
+  const needsCollateralChoice = hasCollateralOptions && !selectedCollateral
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
@@ -86,6 +96,49 @@ export function LoanParameters({
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-6'>
+        {/* Collateral Token Selector — always required; the user must pick before the rest of the form is usable */}
+        {hasCollateralOptions && (
+          <div>
+            <label
+              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
+            >
+              🪙 Choose your collateral token
+            </label>
+            <div className='flex flex-wrap gap-2'>
+              {supportedCollateralTokens.map((token) => {
+                const isSelected =
+                  selectedCollateral?.address.toLowerCase() ===
+                  token.address.toLowerCase()
+                return (
+                  <button
+                    key={token.address}
+                    type='button'
+                    onClick={() => setSelectedCollateral(token)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
+                      isSelected
+                        ? !isDashboard
+                          ? 'bg-yellow-400 border-yellow-400 text-black'
+                          : 'bg-primary border-primary text-primary-foreground'
+                        : !isDashboard
+                          ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                          : 'bg-muted border-border text-foreground hover:bg-accent'
+                    }`}
+                  >
+                    {token.symbol}
+                  </button>
+                )
+              })}
+            </div>
+            {needsCollateralChoice && (
+              <p
+                className={`text-sm mt-2 ${!isDashboard ? 'text-yellow-300' : 'text-muted-foreground'}`}
+              >
+                Select a collateral token to see APR and LTV options.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Loan Amount Input */}
         <div>
           <label
@@ -181,9 +234,11 @@ export function LoanParameters({
             <div
               className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
-              {configLoading
-                ? 'Loading durations...'
-                : 'No durations available'}
+              {needsCollateralChoice
+                ? 'Select a collateral token first.'
+                : configLoading
+                  ? 'Loading durations...'
+                  : 'No durations available'}
             </div>
           ) : (
             <>
@@ -221,9 +276,11 @@ export function LoanParameters({
             <div
               className={`text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
             >
-              {configLoading
-                ? 'Loading LTV options...'
-                : 'No LTV options available'}
+              {needsCollateralChoice
+                ? 'Select a collateral token first.'
+                : configLoading
+                  ? 'Loading LTV options...'
+                  : 'No LTV options available'}
             </div>
           ) : (
             <>

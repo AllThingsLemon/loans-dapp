@@ -28,8 +28,7 @@ import {
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
 import type { LockDurationTier } from '@/src/types/liquidity'
-import { liquidityPoolAbi, liquidityPoolAddress } from '@/src/generated'
-import { useChainId } from 'wagmi'
+import { liquidityPoolAbi } from '@/src/generated'
 
 function formatLockDuration(duration: bigint): string {
   const s = Number(duration)
@@ -70,9 +69,6 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
   const { toast } = useToast()
   const { address } = useAccount()
-  const chainId = useChainId()
-
-  const lpAddress = liquidityPoolAddress[chainId as keyof typeof liquidityPoolAddress]
 
   const {
     stableTokenAddress,
@@ -83,6 +79,9 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     refetch,
   } = liquidityPool
 
+  // Alias kept for clarity at the read-call sites below
+  const lpAddress = liquidityPoolContractAddress
+
   const stableDecimals = stableTokenDecimals ?? 18
 
   // Read supported assets from the pool
@@ -90,6 +89,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getSupportedAssets',
+    query: { enabled: !!lpAddress },
   })
   const allAssets = useMemo((): `0x${string}`[] => {
     if (!supportedAssetsRaw) return []
