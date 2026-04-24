@@ -57,6 +57,20 @@ const combineLoanData = (
   // be used as the due date — it would show a date beyond loan maturity.
   const dueTimestamp = loan.createdAt + loan.duration
 
+  // Derived totalCycles (deterministic from struct) so non-ACTIVE loans still
+  // render a meaningful Cycles Transpired cell — the on-chain getters are only
+  // queried for ACTIVE loans, but UNLOCKED loans still appear in activeLoans
+  // and need to show 2/2 (or N/N) instead of 0/0.
+  const derivedTotalCycles = loan.loanCycleDuration > 0n
+    ? loan.duration / loan.loanCycleDuration
+    : 0n
+  const isActive = status === LOAN_STATUS.ACTIVE
+  const resolvedTotalCycles = isActive ? (totalCycles ?? 0n) : derivedTotalCycles
+  const resolvedTranspiredCycles = isActive
+    ? (transpiredCycles ?? 0n)
+    : derivedTotalCycles
+  const resolvedRemainingCycles = isActive ? (remainingCycles ?? 0n) : 0n
+
   return {
     id: loanId,
     account: loan.account,
@@ -76,9 +90,9 @@ const combineLoanData = (
     // Contract-derived values with defaults
     status: status ?? LOAN_STATUS.ACTIVE,
     paymentAmount: paymentAmount ?? 0n,
-    transpiredCycles: transpiredCycles ?? 0n,
-    totalCycles: totalCycles ?? 0n,
-    remainingCycles: remainingCycles ?? 0n,
+    transpiredCycles: resolvedTranspiredCycles,
+    totalCycles: resolvedTotalCycles,
+    remainingCycles: resolvedRemainingCycles,
     cyclesAhead: cyclesAhead ?? 0n,
     timeToDefault: timeToDefault ?? 0n,
     elapsedTimeInCycle: elapsedTimeInCycle ?? 0n,

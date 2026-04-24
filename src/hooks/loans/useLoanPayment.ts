@@ -93,14 +93,20 @@ export const useLoanPayment = (
     return Date.now() >= Number(loanData.dueTimestamp) * 1000
   }, [])
 
-  // Grace period: all cycle payments are done and only the balloon (principal) remains.
-  // Cannot use paidAmount >= interestAmount — once principal is paid, paidAmount dwarfs
-  // interestAmount, making that check trivially true even when interest cycles remain.
+  // Grace period: every cycle's interest has been credited (real-time elapsed
+  // cycles + prepaid cycles cover all configured cycles), so the only thing
+  // left is the balloon principal payment.
+  //
+  // We can't use loanData.remainingCycles for this — on this contract it
+  // returns totalCycles − transpiredCycles − 1, i.e. it's purely time-based
+  // and ignores prepayments. We also can't use paidAmount >= interestAmount —
+  // once any principal is paid, paidAmount dwarfs interestAmount, making the
+  // check trivially true even while cycle interest is unpaid.
   const isLoanInGracePeriod = useCallback((loanData: Loan): boolean => {
     if (loanData.status !== LOAN_STATUS.ACTIVE) {
       return false
     }
-    return loanData.remainingCycles === 0n
+    return loanData.transpiredCycles + loanData.cyclesAhead >= loanData.totalCycles
   }, [])
 
   const getPaymentProgress = useCallback((loanData: Loan) => {
