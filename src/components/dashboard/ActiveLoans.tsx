@@ -485,7 +485,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
           : 0
         const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
-        const interestFullyPaid = loan.remainingCycles === 0n
 
         // End of the next cycle the user must pay, accounting for prepayments.
         const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
@@ -496,7 +495,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
         let countdownTarget: Date
         let countdownLabel: string
-        if (!interestFullyPaid) {
+        if (!isInGracePeriod) {
           countdownTarget = new Date(nextPaymentDeadlineMs - ONE_DAY_MS)
           countdownLabel = 'Time Until Default'
         } else if (!pastLoanEnd) {
