@@ -12,7 +12,10 @@ export const formatAmountWithSymbol = (
   symbol: string,
   decimals = 18
 ): string => {
-  const formattedAmount = parseFloat(formatAmount(amount, decimals)).toFixed(2)
+  const formattedAmount = parseFloat(formatAmount(amount, decimals)).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
   return `${formattedAmount} ${symbol}`
 }
 
