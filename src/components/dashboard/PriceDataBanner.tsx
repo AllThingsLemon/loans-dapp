@@ -55,14 +55,14 @@ function PriceDataBannerError({ error }: { error: Error }) {
 }
 
 export function PriceDataBanner() {
-  const { 
-    spotPrice, 
-    monthlyAverage, 
-    lmlnPrice, 
-    tokenSymbol, 
-    feeTokenSymbol, 
-    isLoading, 
-    error 
+  const {
+    spotPrice,
+    monthlyAverage,
+    feeTokenPrice,
+    collateralSymbol,
+    feeTokenSymbol,
+    isLoading,
+    error
   } = usePricing()
 
   if (isLoading) return <PriceDataBannerSkeleton />
@@ -86,26 +86,26 @@ export function PriceDataBanner() {
         <div className='flex items-center gap-8'>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
-              {tokenSymbol} Price
+              {collateralSymbol ?? 'Collateral'} Price
             </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
-              ${spotPrice}
+              ${spotPrice ?? '—'}
             </p>
           </div>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
-              {tokenSymbol} Monthly Avg
+              {collateralSymbol ?? 'Collateral'} Monthly Avg
             </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
-              ${monthlyAverage}
+              ${monthlyAverage ?? '—'}
             </p>
           </div>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
-              {feeTokenSymbol} Price
+              {feeTokenSymbol ?? 'Fee'} Price
             </p>
             <p className='text-base font-bold text-gray-900 dark:text-gray-100'>
-              ${lmlnPrice || '0.0000'}
+              ${feeTokenPrice ?? '—'}
             </p>
           </div>
         </div>

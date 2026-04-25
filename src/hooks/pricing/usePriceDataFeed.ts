@@ -5,7 +5,6 @@ import {
   useReadPriceDataFeedGetDailyAveragesHistory,
   useReadPriceDataFeedDecimals,
   useReadLoansPriceDataFeed,
-  useReadLoansNativeGasToken,
   useReadLoansOriginationFeeToken
 } from '@/src/generated'
 
@@ -33,8 +32,18 @@ export interface UsePriceDataFeedReturn {
   refetch: () => Promise<void>
 }
 
-export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
-  // Get contract addresses from Loans contract
+/**
+ * Reads price data for a single collateral token plus the origination fee token.
+ *
+ * The collateral token is passed in by the caller (typically the first asset
+ * registered on the CollateralManager). We deliberately do NOT use
+ * Loans.nativeGasToken here — that's the chain's gas token (e.g. WBNB on BSC)
+ * which the price feed isn't required to track. The price banner cares about
+ * the actual collateral the user posts, which lives on CollateralManager.
+ */
+export const usePriceDataFeed = (
+  collateralTokenAddress: `0x${string}` | undefined
+): UsePriceDataFeedReturn => {
   const {
     data: priceDataFeedAddress,
     isLoading: isPriceDataFeedAddressLoading,
@@ -43,20 +52,12 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
   } = useReadLoansPriceDataFeed()
 
   const {
-    data: collateralTokenAddress,
-    isLoading: isCollateralTokenAddressLoading,
-    error: collateralTokenAddressError,
-    refetch: refetchCollateralTokenAddress
-  } = useReadLoansNativeGasToken()
-
-  const {
     data: originationFeeTokenAddress,
     isLoading: isOriginationFeeTokenAddressLoading,
     error: originationFeeTokenAddressError,
     refetch: refetchOriginationFeeTokenAddress
   } = useReadLoansOriginationFeeToken()
 
-  // Get spot price from PriceDataFeed contract
   const {
     data: spotPrice,
     isLoading: isSpotPriceLoading,
@@ -70,7 +71,6 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     }
   })
 
-  // Get 30-day average price from PriceDataFeed contract
   const {
     data: monthlyAverage,
     isLoading: isMonthlyAverageLoading,
@@ -84,12 +84,13 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     }
   })
 
-  // Get LMLN price using getDailyAveragesHistory (last 1 day)
+  // Origination-fee-token price via getDailyAveragesHistory (last 1 day).
+  // Returns DailyAverageEntry[]: [{ averagePrice, timestamp, dataPoints, confidence }]
   const {
-    data: lmlnPriceData,
-    isLoading: isLmlnPriceLoading,
-    error: lmlnPriceError,
-    refetch: refetchLmlnPrice
+    data: feeTokenPriceHistory,
+    isLoading: isFeeTokenPriceLoading,
+    error: feeTokenPriceError,
+    refetch: refetchFeeTokenPrice
   } = useReadPriceDataFeedGetDailyAveragesHistory({
     address: priceDataFeedAddress,
     args: originationFeeTokenAddress ? [originationFeeTokenAddress, 1] : undefined,
@@ -97,12 +98,8 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
       enabled: !!(priceDataFeedAddress && originationFeeTokenAddress)
     }
   })
+  const originationFeeTokenPrice = feeTokenPriceHistory?.[0]?.averagePrice
 
-  // Extract the averagePrice from the DailyAverageEntry struct
-  // getDailyAveragesHistory returns: [{ averagePrice, timestamp, dataPoints, confidence }]
-  const originationFeeTokenPrice = lmlnPriceData?.[0]?.averagePrice
-
-  // Get decimals from PriceDataFeed contract
   const {
     data: decimals,
     isLoading: isDecimalsLoading,
@@ -115,70 +112,53 @@ export const usePriceDataFeed = (): UsePriceDataFeedReturn => {
     }
   })
 
-  // Combined loading states
   const isLoadingAddresses =
-    isPriceDataFeedAddressLoading || 
-    isCollateralTokenAddressLoading || 
-    isOriginationFeeTokenAddressLoading
+    isPriceDataFeedAddressLoading || isOriginationFeeTokenAddressLoading
   const isLoadingPrices =
-    isSpotPriceLoading || 
-    isMonthlyAverageLoading || 
-    isDecimalsLoading || 
-    isLmlnPriceLoading
+    isSpotPriceLoading ||
+    isMonthlyAverageLoading ||
+    isDecimalsLoading ||
+    isFeeTokenPriceLoading
   const isLoading = isLoadingAddresses || isLoadingPrices
 
-  // Combined error state
   const error =
     priceDataFeedAddressError ||
-    collateralTokenAddressError ||
     originationFeeTokenAddressError ||
     spotPriceError ||
     monthlyAverageError ||
     decimalsError ||
-    lmlnPriceError
+    feeTokenPriceError
 
-  // Refetch all data
   const refetch = useCallback(async () => {
     await Promise.all([
       refetchPriceDataFeedAddress(),
-      refetchCollateralTokenAddress(),
       refetchOriginationFeeTokenAddress(),
       refetchSpotPrice(),
       refetchMonthlyAverage(),
-      refetchLmlnPrice(),
+      refetchFeeTokenPrice(),
       refetchDecimals()
     ])
   }, [
     refetchPriceDataFeedAddress,
-    refetchCollateralTokenAddress,
     refetchOriginationFeeTokenAddress,
     refetchSpotPrice,
     refetchMonthlyAverage,
-    refetchLmlnPrice,
+    refetchFeeTokenPrice,
     refetchDecimals
   ])
 
   return {
-    // Contract addresses
     priceDataFeedAddress,
     collateralTokenAddress,
     originationFeeTokenAddress,
-
-    // Price data
     spotPrice,
     monthlyAverage,
     originationFeeTokenPrice,
     decimals,
-
-    // Loading states
     isLoading,
     isLoadingAddresses,
     isLoadingPrices,
-
-    // Error state
     error,
-
-    // Utility functions
     refetch
   }
 }
