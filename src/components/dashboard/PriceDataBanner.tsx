@@ -70,10 +70,13 @@ export function PriceDataBanner() {
 
   return (
     <Card>
-      <CardContent className='flex items-center justify-between p-4 pr-8'>
+      {/* On mobile: title row stacks above a 3-column price grid so the
+          values get equal share of the width and don't get cut off. On
+          sm+ the original side-by-side layout returns. */}
+      <CardContent className='flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:pr-8'>
         <div className='flex items-center gap-3'>
-          <BarChart className='h-5 w-5 text-blue-600 dark:text-blue-400' />
-          <div>
+          <BarChart className='h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400' />
+          <div className='min-w-0'>
             <h3 className='text-sm font-semibold text-gray-900 dark:text-gray-100'>
               Token Price Data
             </h3>
@@ -83,7 +86,7 @@ export function PriceDataBanner() {
           </div>
         </div>
 
-        <div className='flex items-center gap-8'>
+        <div className='grid grid-cols-3 gap-3 sm:flex sm:items-center sm:gap-8'>
           <div className='text-center'>
             <p className='text-xs text-gray-600 dark:text-gray-400'>
               {collateralSymbol ?? 'Collateral'} Price
