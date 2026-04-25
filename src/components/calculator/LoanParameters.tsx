@@ -46,9 +46,12 @@ export function LoanParameters({
   setSelectedCollateral,
   isDashboard = false
 }: LoanParametersProps) {
-  // Always show the selector — the user must pick, even if only one token is configured.
-  const hasCollateralOptions = supportedCollateralTokens.length > 0
-  const needsCollateralChoice = hasCollateralOptions && !selectedCollateral
+  // Show the selector only when there's more than one collateral token to choose
+  // between. With a single configured token the user is auto-selected into it
+  // (handled by useCollateralManager) and the rest of the form is usable
+  // immediately.
+  const hasMultipleCollateral = supportedCollateralTokens.length > 1
+  const needsCollateralChoice = hasMultipleCollateral && !selectedCollateral
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
@@ -96,8 +99,8 @@ export function LoanParameters({
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-6'>
-        {/* Collateral Token Selector — always required; the user must pick before the rest of the form is usable */}
-        {hasCollateralOptions && (
+        {/* Collateral Token Selector — only shown when more than one is configured */}
+        {hasMultipleCollateral && (
           <div>
             <label
               className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
@@ -169,31 +172,10 @@ export function LoanParameters({
                   setLoanAmount(numValue)
                 }
               }}
-              onBlur={(e) => {
-                const value = e.target.value
-                const minAmount = loanConfig?.minLoanAmount
-                  ? Number(
-                      formatUnits(
-                        loanConfig.minLoanAmount,
-                        tokenConfig?.loanToken.decimals || 18
-                      )
-                    )
-                  : 1000
-                if (value === '' || Number(value) < minAmount) {
-                  setLoanAmount(minAmount)
-                }
-              }}
-              min={
-                loanConfig?.minLoanAmount
-                  ? formatUnits(
-                      loanConfig.minLoanAmount,
-                      tokenConfig?.loanToken.decimals || 18
-                    )
-                  : '1000'
-              }
+              min={minLoanAmount > 0 ? minLoanAmount : undefined}
               max={maxLoanAmount}
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed' : 'disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-              placeholder='10000'
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed' : 'placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+              placeholder={minLoanAmount > 0 ? String(minLoanAmount) : ''}
             />
           </div>
           {hasNoLiquidity ? (

@@ -3,12 +3,9 @@
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
-import { formatTokenAmount } from '../../utils/decimals'
-import { formatUnits } from 'viem'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
-import { loanConfigQueryOptions } from '@/src/hooks/query/loanQueries'
 
 interface LoanSummaryProps {
   calculation: any
@@ -53,7 +50,10 @@ export function LoanSummary({
   isDashboard = false,
   selectedLtvOption
 }: LoanSummaryProps) {
-  const collateral = collateralSymbol || tokenConfig?.nativeToken.symbol
+  // Don't fall back to tokenConfig.nativeToken.symbol — that's the chain's
+  // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
+  // posting. Use a neutral label until selectedCollateral resolves.
+  const collateral = collateralSymbol ?? 'Collateral'
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false)
 
   const handleDisclaimerContinue = () => {
