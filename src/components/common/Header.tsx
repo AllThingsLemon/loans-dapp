@@ -9,22 +9,23 @@ export default function Header() {
 
   return (
     <div className='sticky top-0 z-50 flex items-center justify-center w-full border-b border-border/40 bg-background'>
-      <header className='flex items-center justify-between p-4 min-w-full max-w-screen-xl'>
-        <div className='flex items-center space-x-3'>
-          <Link href='/' className='flex items-center space-x-3'>
+      <header className='flex items-center justify-between gap-3 p-3 sm:p-4 min-w-full max-w-screen-xl'>
+        <div className='flex items-center min-w-0 gap-2 sm:gap-3'>
+          <Link href='/' className='flex items-center gap-2 sm:gap-3 shrink-0'>
             <Image
               src='/images/lemloans-logo.png'
               alt='LemLoans Logo'
               width={40}
               height={40}
-              className='h-auto'
+              className='h-8 w-8 sm:h-10 sm:w-10'
               priority
             />
-            <h1 className='text-2xl font-bold text-gray-900 dark:text-gray-100'>
+            {/* Wordmark hidden on small screens to prevent overlap with nav + wallet button */}
+            <h1 className='hidden sm:block text-2xl font-bold text-gray-900 dark:text-gray-100'>
               LemLoans
             </h1>
           </Link>
-          <nav className='flex items-center space-x-4 ml-6'>
+          <nav className='flex items-center gap-3 sm:gap-4 sm:ml-6 shrink-0'>
             <Link
               href='/'
               className={`text-sm font-medium transition-colors ${
@@ -47,7 +48,21 @@ export default function Header() {
             </Link>
           </nav>
         </div>
-        <ConnectButton />
+        {/* Compact RainbowKit button on small screens — drop balance, use a shorter label
+            and the icon-only chain status so the wallet pill doesn't blow out the header. */}
+        <div className='shrink-0'>
+          <div className='hidden sm:block'>
+            <ConnectButton />
+          </div>
+          <div className='block sm:hidden'>
+            <ConnectButton
+              label='Connect'
+              showBalance={false}
+              accountStatus='avatar'
+              chainStatus='icon'
+            />
+          </div>
+        </div>
       </header>
     </div>
   )
