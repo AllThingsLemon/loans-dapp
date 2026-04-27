@@ -196,10 +196,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
     setIsApprovingPayment(true)
     try {
-      const paymentWei =
-        paymentType === 'balance'
-          ? loan.remainingBalance
-          : parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
+      const paymentWei = parseTokenAmount(
+        currentPaymentAmount,
+        tokenConfig.loanToken.decimals
+      )
 
       await approveTokenAllowance(paymentWei)
 
@@ -337,10 +337,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
     setIsProcessingPayment(true)
     try {
-      const paymentWei =
-        paymentType === 'balance'
-          ? loan.remainingBalance
-          : parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
+      const paymentWei = parseTokenAmount(
+        currentPaymentAmount,
+        tokenConfig.loanToken.decimals
+      )
 
       // Check if user has sufficient token balance
       if (userLoanTokenBalance && paymentWei > userLoanTokenBalance) {
@@ -833,11 +833,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             // Check if approval is needed
                             const currentPaymentAmount = getPaymentAmount(loan)
                             const paymentWei =
-                              paymentType === 'balance'
-                                ? loan.remainingBalance
-                                : currentPaymentAmount && tokenConfig?.loanToken.decimals
-                                  ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
-                                  : 0n
+                              currentPaymentAmount && tokenConfig?.loanToken.decimals
+                                ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
+                                : 0n
                             const needsApproval =
                               !currentAllowance || currentAllowance < paymentWei
                             const hasValidAmount =
