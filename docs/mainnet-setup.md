@@ -42,7 +42,7 @@ Then rebuild so `wagmi generate` picks up the new Loans address(es):
 npm run build
 ```
 
-> Make sure the on-chain wiring in Steps 3 and 9 is correct before deploying — if `Loans.collateralManager()` or `Loans.liquidityPool()` return the zero address the UI will not be able to read anything downstream.
+> Make sure the on-chain wiring in Steps 3 and 11 is correct before deploying — if `Loans.collateralManager()` or `Loans.liquidityPool()` return the zero address the UI cannot read anything downstream.
 
 ---
 
@@ -62,12 +62,22 @@ The pool cannot route non-stable deposits without this.
 
 ---
 
-## Step 3 — Wire the CollateralManager
+## Step 3 — Wire CollateralManager, LiquidityPool, and PriceHelper into Loans
 
-The CollateralManager holds collateral for active loans. Loans and CollateralManager reference each other directly, and CollateralManager uses PriceHelper to value non-stable collateral.
+The Loans contract holds references to the rest of the protocol. Set them all here so the on-chain `Loans.collateralManager()` / `Loans.liquidityPool()` getters return the right addresses (the dapp discovers everything else from those at runtime).
 
 ```solidity
 Loans.setCollateralManager(<CollateralManager address>)
+Loans.setLiquidityPool(<LiquidityPool address>)
+Loans.setPriceHelper(<PriceHelper address>)
+Loans.setPriceFeed(<PriceDataFeed address>)
+Loans.setOriginationFeeToken(<LMLN token address>)   // skip if already set during initialize()
+Loans.setNativeGasToken(<wrapped native token>)      // skip if already set during initialize()
+```
+
+The CollateralManager needs the same wiring so it can mint/release collateral and price it for liquidation:
+
+```solidity
 CollateralManager.setLoans(<Loans address>)
 CollateralManager.setPriceHelper(<PriceHelper address>)
 CollateralManager.setDefaultLiquidator(<DefaultLiquidator address>)
@@ -75,34 +85,49 @@ CollateralManager.setDefaultLiquidator(<DefaultLiquidator address>)
 
 **Verify:**
 ```solidity
-CollateralManager.setLoans     // read via storage or re-read via getter if exposed
-CollateralManager.setPriceHelper
-// Loans → CollateralManager wiring is validated implicitly when initiateLoan succeeds in step 11.
+Loans.collateralManager()   // → CollateralManager address
+Loans.liquidityPool()       // → LiquidityPool address
+Loans.priceHelper()         // → PriceHelper address
+Loans.priceDataFeed()       // → PriceDataFeed address
+// CollateralManager's references are not exposed via public getters — they
+// are validated implicitly when initiateLoan succeeds in the final smoke test.
 ```
 
-Without this, `initiateLoan` will revert when trying to hand collateral to the CollateralManager.
+Without this wiring, `initiateLoan` reverts when handing collateral to the CollateralManager or pricing it.
 
 ---
 
 ## Step 4 — Grant contract roles
 
-The Loans contract must have `MANAGER_ROLE` on the LiquidityPool so it can deposit collateral during loan creation. Without this, `initiateLoan` reverts with no error data.
+Each protocol contract uses OpenZeppelin's `AccessControl` with these role constants:
+
+- **Loans:** `DEFAULT_ADMIN_ROLE`, `MANAGER_ROLE`, `LENDER_ROLE`, `PRICE_SETTER_ROLE`, `UPGRADER_ROLE`
+- **LiquidityPool:** `DEFAULT_ADMIN_ROLE`, `MANAGER_ROLE`, `MINIMUM_BYPASS_ROLE`, `UPGRADER_ROLE`
+- **CollateralManager:** `DEFAULT_ADMIN_ROLE`, `MANAGER_ROLE`, `UPGRADER_ROLE`
+
+The minimum cross-contract grants needed for a working deployment:
 
 ```solidity
+// Loans must be able to deposit collateral / pull liquidity from the pool
 LiquidityPool.grantRole(MANAGER_ROLE, <Loans address>)
+
+// Loans must be able to lock/release collateral on the CollateralManager
+CollateralManager.grantRole(MANAGER_ROLE, <Loans address>)
+
+// LiquidityPool must be able to act as the lender on the Loans contract
+Loans.grantRole(LENDER_ROLE, <LiquidityPool address>)
+
+// Off-chain price keeper (the EOA / bot pushing prices to PriceDataFeed)
+Loans.grantRole(PRICE_SETTER_ROLE, <price keeper address>)
 ```
 
-The CollateralManager needs a role on the Loans contract so it can call back during liquidation, and Loans needs a role on the CollateralManager so it can lock/release collateral. Grant whichever roles the contracts' `onlyRole` modifiers require (check the source).
-
-```solidity
-CollateralManager.grantRole(LOANS_ROLE, <Loans address>)
-// plus any other roles the deployed contracts require between Loans ↔ CollateralManager
-```
+Read the deployed source for any project-specific roles (e.g. liquidator roles) before considering this step done.
 
 **Verify:**
 ```solidity
-LiquidityPool.hasRole(MANAGER_ROLE, <Loans address>)
-CollateralManager.hasRole(LOANS_ROLE, <Loans address>)
+LiquidityPool.hasRole(MANAGER_ROLE, <Loans>)
+CollateralManager.hasRole(MANAGER_ROLE, <Loans>)
+Loans.hasRole(LENDER_ROLE, <LiquidityPool>)
 // Expected: true for each
 ```
 
@@ -122,7 +147,53 @@ The price feed is configured independently of the LiquidityPool and CollateralMa
 
 ---
 
-## Step 6 — Configure collateral assets (CollateralManager)
+## Step 6 — Configure global Loans parameters
+
+These globals apply to every loan regardless of collateral and back the constants the dapp reads at app load (the loan calculator's min/max amount, slider bounds, and grace period).
+
+```solidity
+Loans.setLoanConfiguration(
+  <minLoanAmount>,                // raw stable-token wei
+  <minLoanDuration>,              // seconds
+  <maxLoanDuration>,              // seconds
+  <balloonPaymentGraceDuration>,  // seconds — grace after loan end before default
+  <loanCycleDuration>,            // seconds per cycle (drives interest cadence)
+  <aprYearDuration>               // seconds in a year (e.g. 31536000); APR scales by this
+)
+
+Loans.setMaxLoanAmount(<absolute ceiling, raw stable-token wei>)
+Loans.setWithdrawalReserve(<reserve amount, raw stable-token wei>)   // optional
+```
+
+**Verify:**
+```solidity
+Loans.loanConfig()        // → tuple matching the values you just set
+Loans.maxLoanAmount()     // → ceiling
+Loans.withdrawalReserve() // → reserve
+```
+
+If `loanConfig()` returns zeros, the dapp's calculator is unusable — `minLoanAmount` and `loanCycleDuration` drive the form defaults and the on-screen countdown.
+
+---
+
+## Step 7 — Configure origination-fee distribution
+
+```solidity
+Loans.setOriginationFeeReceiver(<receiver address>)        // required: where origination fees go
+Loans.setOriginationFeeSplit(<burnBps>, <donationBps>)     // optional: portions burnt / donated
+```
+
+`burnBps + donationBps` must be ≤ `10_000` (= 100%). Any remainder stays with the receiver.
+
+**Verify:**
+```solidity
+Loans.originationFeeReceiver()
+Loans.originationFeeSplit()
+```
+
+---
+
+## Step 8 — Configure collateral assets (CollateralManager)
 
 Each token that users can post as collateral must be registered on the CollateralManager. The config tuple is `(allowed, usesPriceFeed, stablePrice, decimals)`.
 
@@ -158,7 +229,7 @@ The UI reads `getSupportedAssets()` and auto-selects when exactly one collateral
 
 ---
 
-## Step 7 — Configure interest APR tiers per asset (Loans)
+## Step 9 — Configure interest APR tiers per asset (Loans)
 
 Each collateral asset must have at least one APR tier defined, keyed by duration range. The UI reads these to offer APR by loan duration.
 
@@ -188,7 +259,7 @@ Loans.removeInterestAprConfig(<collateral token address>, <index>)
 
 ---
 
-## Step 8 — Configure LTV / origination fee options per asset (Loans)
+## Step 10 — Configure LTV / origination fee options per asset (Loans)
 
 Each collateral asset must have at least one LTV option with its corresponding origination fee. The UI surfaces these as the LTV slider's discrete steps.
 
@@ -210,7 +281,7 @@ Loans.getAllOriginationFees(<collateral token address>)
 
 ---
 
-## Step 9 — Configure supported deposit assets (LiquidityPool)
+## Step 11 — Configure supported deposit assets (LiquidityPool)
 
 The `AssetStatus` enum:
 - `0` — Disabled
@@ -248,7 +319,7 @@ LiquidityPool.getAssetConfig(<token address>)
 
 ---
 
-## Step 10 — Add lock tiers
+## Step 12 — Add lock tiers
 
 Each user-depositable asset must have at least one lock tier before the deposit UI will show it.
 
@@ -270,7 +341,7 @@ LiquidityPool.getAssetLockTiers(<token address>)
 
 ---
 
-## Step 11 — Set the minimum deposit
+## Step 13 — Set the minimum deposit
 
 ```solidity
 LiquidityPool.setMinimumDeposit(<amount in raw stable token units>)
@@ -291,7 +362,7 @@ LiquidityPool.minimumDepositValue()
 
 ---
 
-## Step 12 — Configure native fees
+## Step 14 — Configure native fees
 
 The pool charges a small native token fee on `claimEarnings`, `compoundEarnings`, and `claimWithdrawal`. Set the amounts and the receiver address:
 
@@ -324,7 +395,7 @@ LiquidityPool.nativeFeeReceiver()
 
 ---
 
-## Step 13 — Set earnings frequency
+## Step 15 — Set earnings frequency
 
 Controls how often the pool allows earnings to be pulled from the Loans contract:
 
@@ -347,20 +418,22 @@ Run through this before opening to users. Repeat the asset-specific rows for eve
 
 | # | Check | How to verify | Expected result |
 |---|---|---|---|
-| 1 | Environment variables set | `.env` / Cloudflare secrets | `NEXT_PUBLIC_*_LOANS_ADDRESS` populated; all other contract addresses come from on-chain reads |
+| 1 | Environment variables set | `.env` / Cloudflare secrets | `NEXT_PUBLIC_*_LOANS_ADDRESS` populated for every chain id in `NEXT_PUBLIC_SUPPORTED_CHAINS`; nothing else needed (other addresses are read from chain) |
 | 2 | Build passes | `npm run build` | No errors |
 | 3 | SwapManager wired | `LiquidityPool.swapManager()` | SwapManager address |
-| 4 | CollateralManager wired | Loans/CollateralManager reference each other, PriceHelper set | Successful `initiateLoan` |
-| 5 | Loans has MANAGER_ROLE | `LiquidityPool.hasRole(MANAGER_ROLE, Loans)` | `true` |
-| 6 | Loans ↔ CollateralManager roles granted | `CollateralManager.hasRole(LOANS_ROLE, Loans)` | `true` |
-| 7 | Price feed live | `PriceDataFeed.getSpotPrice(token)` | Non-zero (non-stable assets only) |
-| 8 | Collateral asset configured | `CollateralManager.getAssetConfig(token)` | `allowed=true`, correct decimals |
-| 9 | APR tiers set | `Loans.getAllInterestAprConfigs(token)` | ≥ 1 tier |
-| 10 | LTV / fee options set | `Loans.getAllOriginationFees(token)` | Matching `(ltvs[], fees[])` arrays |
-| 11 | Deposit asset configured | `LiquidityPool.getAssetConfig(token).status` | `1` (Active) |
-| 12 | Lock tiers exist | `LiquidityPool.getAssetLockTiers(token)` | ≥ 1 enabled tier |
-| 13 | Minimum deposit set | `LiquidityPool.minimumDepositValue()` | Intended value in raw units |
-| 14 | Fee receiver set (pool + loans) | `LiquidityPool.nativeFeeReceiver()`, `Loans.nativeFeeReceiver()` | Correct address on both |
-| 15 | Earnings frequency set | `LiquidityPool.earningsFrequency()` | Intended interval (seconds) |
-| 16 | Token transfer fee | Check token contract | 0, or protocol contracts fee-exempt |
-| 17 | SwapManager swap ID | `SwapManager.assetSwapIds(token)` | Non-zero bytes32 (check after first deposit) |
+| 4 | Loans wired (CM, LP, PriceHelper, PriceFeed) | `Loans.collateralManager()`, `Loans.liquidityPool()`, `Loans.priceHelper()`, `Loans.priceDataFeed()` | All four return non-zero addresses |
+| 5 | Loans has `MANAGER_ROLE` on LP and CM | `LiquidityPool.hasRole(MANAGER_ROLE, Loans)`, `CollateralManager.hasRole(MANAGER_ROLE, Loans)` | `true` for both |
+| 6 | LiquidityPool has `LENDER_ROLE` on Loans | `Loans.hasRole(LENDER_ROLE, LiquidityPool)` | `true` |
+| 7 | Price feed live | `PriceDataFeed.getSpotPrice(token)` | Non-zero, recent timestamp (non-stable assets only) |
+| 8 | Loan globals set | `Loans.loanConfig()`, `Loans.maxLoanAmount()` | Matching the values you configured |
+| 9 | Origination-fee receiver set | `Loans.originationFeeReceiver()` | Non-zero address |
+| 10 | Collateral asset configured | `CollateralManager.getAssetConfig(token)` | `allowed=true`, correct decimals |
+| 11 | APR tiers set | `Loans.getAllInterestAprConfigs(token)` | ≥ 1 tier |
+| 12 | LTV / fee options set | `Loans.getAllOriginationFees(token)` | Matching `(ltvs[], fees[])` arrays |
+| 13 | Deposit asset configured | `LiquidityPool.getAssetConfig(token).status` | `1` (Active) — or `2` for collateral-only assets like LMLN |
+| 14 | Lock tiers exist | `LiquidityPool.getAssetLockTiers(token)` | ≥ 1 enabled tier |
+| 15 | Minimum deposit set | `LiquidityPool.minimumDepositValue()` | Intended value in raw units |
+| 16 | Native fees set (pool + loans) | `LiquidityPool.nativeFeeReceiver()`, `Loans.nativeFeeReceiver()` | Correct address on both |
+| 17 | Earnings frequency set | `LiquidityPool.earningsFrequency()` | Intended interval (seconds) |
+| 18 | Token transfer fee | Check token contract | 0, or protocol contracts fee-exempt |
+| 19 | SwapManager swap ID | `SwapManager.assetSwapIds(token)` (via explorer — proxy) | Non-zero bytes32 (check after first deposit) |
