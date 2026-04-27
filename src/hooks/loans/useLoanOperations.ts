@@ -569,6 +569,22 @@ export const useLoanOperations = (
         }
       }
 
+      // Pre-simulate via eth_call so contract reverts (e.g. LoanNotActive when a
+      // time-based default has occurred but loanStatus() hasn't been written yet)
+      // surface as decoded custom errors instead of the wallet's gas-estimation
+      // fallback, which on chains MetaMask doesn't natively know about gets
+      // surfaced as the cryptic "tx fee exceeds the configured cap" error.
+      if (publicClient && loansContractAddress) {
+        await publicClient.simulateContract({
+          address: loansContractAddress,
+          abi: loansAbi,
+          functionName: 'makeLoanPayment',
+          args: [loanId, amount],
+          value: paymentNativeFee ?? 0n,
+          account: address,
+        })
+      }
+
       const txHash = await makeLoanPayment({
         args: [loanId, amount],
         value: paymentNativeFee ?? 0n,
@@ -618,6 +634,7 @@ export const useLoanOperations = (
       userLoanTokenBalance,
       currentAllowance,
       approveTokenAllowance,
+      paymentNativeFee,
       publicClient,
       queryClient
     ]
