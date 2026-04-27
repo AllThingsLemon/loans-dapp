@@ -30,10 +30,15 @@ import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityP
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 
+// Lock-tier durations are configured in 360-day years (e.g. 10 yr =
+// 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
+// 10-year tier to "9yr".
+const SECONDS_PER_YEAR = 360 * 24 * 3600
+
 function formatLockDuration(duration: bigint): string {
   const s = Number(duration)
   if (s === 0) return '0'
-  const years = Math.floor(s / (365.25 * 24 * 3600))
+  const years = Math.floor(s / SECONDS_PER_YEAR)
   if (years > 0) return `${years}yr`
   const days = Math.floor(s / 86400)
   if (days > 0) return `${days}d`
@@ -46,7 +51,7 @@ function formatLockDuration(duration: bigint): string {
 function formatLockDurationLong(duration: bigint): string {
   const s = Number(duration)
   if (s === 0) return 'the lock period'
-  const years = Math.floor(s / (365.25 * 24 * 3600))
+  const years = Math.floor(s / SECONDS_PER_YEAR)
   if (years > 0) return `${years} year${years > 1 ? 's' : ''}`
   const days = Math.floor(s / 86400)
   if (days > 0) return `${days} day${days > 1 ? 's' : ''}`

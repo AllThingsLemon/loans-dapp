@@ -98,10 +98,14 @@ function formatDate(timestamp: bigint): string {
   })
 }
 
+// Lock-tier durations are configured in 360-day years; matching that here
+// keeps a 10 yr tier (311_040_000 s) from rendering as "9-year".
+const SECONDS_PER_YEAR = 360 * 24 * 3600
+
 function formatDuration(seconds: bigint): string {
   const s = Number(seconds)
   if (s === 0) return '0 seconds'
-  const years = Math.floor(s / (365.25 * 24 * 3600))
+  const years = Math.floor(s / SECONDS_PER_YEAR)
   if (years > 0) return years === 1 ? '1 year' : `${years}-year`
   const days = Math.floor(s / 86400)
   if (days > 0) return days === 1 ? '1 day' : `${days}-day`
