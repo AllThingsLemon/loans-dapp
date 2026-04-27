@@ -52,8 +52,10 @@ export function LoanSummary({
 }: LoanSummaryProps) {
   // Don't fall back to tokenConfig.nativeToken.symbol — that's the chain's
   // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
-  // posting. Use a neutral label until selectedCollateral resolves.
-  const collateral = collateralSymbol ?? 'Collateral'
+  // posting. Use a neutral label until selectedCollateral resolves, and avoid
+  // duplicating the word ("Collateral Collateral") when no symbol is known.
+  const collateralLabel = collateralSymbol ? `${collateralSymbol} Collateral` : 'Collateral'
+  const collateralUnit = collateralSymbol ?? ''
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false)
 
   const handleDisclaimerContinue = () => {
@@ -96,13 +98,13 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                {collateral} Collateral
+                {collateralLabel}
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
                 {calculation.lemonRequired > 0
-                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${collateral}`
+                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${collateralUnit ? ` ${collateralUnit}` : ''}`
                   : calculation.priceError || 'Calculating...'}
               </span>
             </div>
@@ -122,9 +124,9 @@ export function LoanSummary({
                     '$0.00 USD'}
                 </span>
                 <div
-                  className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
+                  className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} ${hasInsufficientLmln ? 'text-red-500' : ''} mt-0.5`}
                 >
-                  {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
+                  {Number(calculation.originationFeeLmln ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                   {tokenConfig?.feeToken.symbol || 'LMLN'}
                 </div>
               </div>
@@ -166,7 +168,7 @@ export function LoanSummary({
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
-                ${calculation.monthlyPayment.toFixed(2)}
+                ${calculation.monthlyPayment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
 
@@ -222,6 +224,11 @@ export function LoanSummary({
             {hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
                 Insufficient pool liquidity for this loan amount. Please try a smaller amount.
+              </p>
+            )}
+            {hasInsufficientLmln && !hasInsufficientLiquidity && (
+              <p className='text-sm text-destructive mb-3'>
+                Insufficient {tokenConfig?.feeToken.symbol || 'LMLN'} balance to cover the origination fee.
               </p>
             )}
             <Button

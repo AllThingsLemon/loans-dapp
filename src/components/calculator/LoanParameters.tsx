@@ -183,25 +183,34 @@ export function LoanParameters({
               No liquidity available — loans are currently unavailable.
             </p>
           ) : (
-            <div
-              className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
-            >
-              <span>
-                {tokenConfig?.loanToken.symbol || 'Token'} — $
-                {loanConfig?.minLoanAmount
-                  ? formatUnits(
-                      loanConfig.minLoanAmount,
-                      tokenConfig?.loanToken.decimals || 18
-                    )
-                  : '1000'}{' '}
-                min
-              </span>
-              <span>
-                {availableLiquidity !== undefined
-                  ? `$${Math.floor(Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18))).toLocaleString()} available`
-                  : 'Loading liquidity...'}
-              </span>
-            </div>
+            <>
+              <div
+                className={`flex justify-between text-sm ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-1`}
+              >
+                <span>
+                  {tokenConfig?.loanToken.symbol || 'Token'} — $
+                  {loanConfig?.minLoanAmount
+                    ? Number(
+                        formatUnits(
+                          loanConfig.minLoanAmount,
+                          tokenConfig?.loanToken.decimals || 18
+                        )
+                      ).toLocaleString()
+                    : '1,000'}{' '}
+                  min
+                </span>
+                <span>
+                  {availableLiquidity !== undefined
+                    ? `$${Math.floor(Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18))).toLocaleString()} available`
+                    : 'Loading liquidity...'}
+                </span>
+              </div>
+              {isBelowMinimum && (
+                <p className='text-sm text-red-500 mt-1'>
+                  Minimum loan is ${minLoanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}.
+                </p>
+              )}
+            </>
           )}
         </div>
 
