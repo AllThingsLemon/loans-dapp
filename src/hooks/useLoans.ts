@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useUserLoans } from './loans/useUserLoans'
 import { useLoanOperations } from './loans/useLoanOperations'
 import { useLoanConfig } from './loans/useLoanConfig'
+import { LOAN_STATUS } from '@/src/constants'
 import type { UseLoansOptions, UseLoansReturn } from './types'
 export type { LoanRequest } from './loans/useLoanOperations'
 
@@ -42,12 +43,56 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   const config = useLoanConfig(options?.loanRequest?.collateralToken)
   const operations = useLoanOperations(options)
 
+  // The contract's loanStatus() returns the *stored* status, which only
+  // changes when a state-writing function runs. A loan whose grace window
+  // has elapsed will keep returning ACTIVE until someone touches it, even
+  // though makeLoanPayment will revert with LoanNotActive. Compute an
+  // effective status here so the UI reflects reality: badge as Defaulted,
+  // drop from active list, and prevent the doomed payment flow.
+  const grace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
+  const effectiveLoans = useMemo(() => {
+    const nowSec = BigInt(Math.floor(Date.now() / 1000))
+    return userData.loans.flatMap((loan) => {
+      if (!loan) return []
+      if (loan.status !== LOAN_STATUS.ACTIVE) return [loan]
+      const defaultAt = loan.createdAt + loan.duration + grace
+      if (nowSec >= defaultAt) {
+        return [{ ...loan, status: LOAN_STATUS.DEFAULT }]
+      }
+      return [loan]
+    })
+  }, [userData.loans, grace])
+
+  const activeLoans = useMemo(
+    () =>
+      effectiveLoans.filter(
+        (loan) =>
+          loan.status === LOAN_STATUS.ACTIVE ||
+          loan.status === LOAN_STATUS.UNLOCKED
+      ),
+    [effectiveLoans]
+  )
+  const loanHistory = useMemo(
+    () =>
+      effectiveLoans.filter(
+        (loan) =>
+          loan.status === LOAN_STATUS.COMPLETED ||
+          loan.status === LOAN_STATUS.DEFAULT ||
+          loan.status === LOAN_STATUS.LIQUIDATED
+      ),
+    [effectiveLoans]
+  )
+  const getLoanById = useCallback(
+    (id: `0x${string}`) => effectiveLoans.find((loan) => loan.id === id),
+    [effectiveLoans]
+  )
+
   return {
-    // Data from useUserLoans
-    loans: userData.loans,
-    activeLoans: userData.activeLoans,
-    loanHistory: userData.loanHistory,
-    getLoanById: userData.getLoanById,
+    // Data from useUserLoans (with effective-status overrides applied)
+    loans: effectiveLoans,
+    activeLoans,
+    loanHistory,
+    getLoanById,
     refetch: userData.refetch,
 
     // Operations from useLoanOperations

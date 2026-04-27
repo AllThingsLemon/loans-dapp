@@ -104,7 +104,11 @@ export const useLoanOperations = (
   const loansContractAddress =
     loansAddress[chainId as keyof typeof loansAddress]
 
-  // Collateral manager address is resolved on-chain from Loans.collateralManager()
+  // Collateral manager + liquidity pool addresses are resolved on-chain.
+  // CollateralManager is the spender for collateral approvals; LiquidityPool
+  // is only used for origination-fee approvals on initiateLoan. Loan-token
+  // approvals for makeLoanPayment target the Loans contract itself, since
+  // makeLoanPayment does `loanToken.safeTransferFrom(msg.sender, address(this), …)`.
   const { collateralManager: cmAddress } = useProtocolAddresses()
 
   // Get contract token and decimal configuration
@@ -144,7 +148,8 @@ export const useLoanOperations = (
       }
     })
 
-  // Get current token allowance for payments
+  // Loan-token allowance for payments — granted to the Loans contract,
+  // which is the spender in makeLoanPayment's transferFrom.
   const { data: currentAllowance, refetch: refetchAllowance } = useReadContract(
     {
       address: loanTokenAddress,
@@ -487,18 +492,24 @@ export const useLoanOperations = (
     ]
   )
 
-  // Function to approve token allowance if needed
+  // Approve loan-token spending for payments. Spender is the Loans contract,
+  // which is what makeLoanPayment's transferFrom pulls through. The contract
+  // pulls amount + protocol fee (FEE_BPS = 25 → 0.25%), so we gross the
+  // approval up by 1% to comfortably cover the fee — a "Pay Balance" with a
+  // bare-amount approval would otherwise revert with insufficient allowance.
   const approveTokenAllowance = useCallback(
     async (amount: bigint) => {
       if (!address || !loanTokenAddress || !loansContractAddress) {
         throw new Error('Missing required data for token approval')
       }
 
+      const grossAmount = amount + amount / 100n
+
       const txHash = await approveToken({
         address: loanTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [loansContractAddress, amount]
+        args: [loansContractAddress, grossAmount]
       })
 
       // Wait for transaction to be mined
@@ -553,13 +564,17 @@ export const useLoanOperations = (
         throw new Error('Loans contract address not found')
       }
 
+      // Contract pulls amount + protocol fee (FEE_BPS = 25 → 0.25%) on
+      // makeLoanPayment, so balance and allowance must cover the gross.
+      const grossAmount = amount + amount / 100n
+
       // Check if user has sufficient loan token balance
-      if (userLoanTokenBalance && userLoanTokenBalance < amount) {
+      if (userLoanTokenBalance && userLoanTokenBalance < grossAmount) {
         throw new Error(`Insufficient loan token balance`)
       }
 
       // Check if we need to approve tokens first
-      if (!currentAllowance || currentAllowance < amount) {
+      if (!currentAllowance || currentAllowance < grossAmount) {
         try {
           // First approve the tokens
           await approveTokenAllowance(amount)
@@ -567,6 +582,22 @@ export const useLoanOperations = (
           // Re-throw the error to be handled by the calling component
           throw error
         }
+      }
+
+      // Pre-simulate via eth_call so contract reverts (e.g. LoanNotActive when a
+      // time-based default has occurred but loanStatus() hasn't been written yet)
+      // surface as decoded custom errors instead of the wallet's gas-estimation
+      // fallback, which on chains MetaMask doesn't natively know about gets
+      // surfaced as the cryptic "tx fee exceeds the configured cap" error.
+      if (publicClient && loansContractAddress) {
+        await publicClient.simulateContract({
+          address: loansContractAddress,
+          abi: loansAbi,
+          functionName: 'makeLoanPayment',
+          args: [loanId, amount],
+          value: paymentNativeFee ?? 0n,
+          account: address,
+        })
       }
 
       const txHash = await makeLoanPayment({
@@ -618,6 +649,7 @@ export const useLoanOperations = (
       userLoanTokenBalance,
       currentAllowance,
       approveTokenAllowance,
+      paymentNativeFee,
       publicClient,
       queryClient
     ]

@@ -241,16 +241,15 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
     // Check if we have calculation data from contract
     if (!loanOperations.calculationData) {
-      // No calculation yet just because the user hasn't typed a loan amount
-      // — show a neutral "—" instead of an alarming error string.
-      const noInput = !loanAmount
+      // No data because the simulation can't run yet (no input or invalid input
+      // like below-minimum). Either way, show a neutral "—" instead of an
+      // alarming error string — the form surfaces actionable validation
+      // (red border + min-amount hint) elsewhere.
       return {
         ...base,
         priceError: loanOperations.isSimulating
           ? 'Calculating collateral...'
-          : noInput
-            ? '—'
-            : 'Contract calculation not available'
+          : '—'
       }
     }
 

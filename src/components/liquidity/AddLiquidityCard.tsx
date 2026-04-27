@@ -374,7 +374,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
             <label className='text-xs font-medium text-muted-foreground'>Lock Duration · Interest Multiplier</label>
             <div className='flex gap-2 flex-wrap'>
               {enabledTiers.map((tier, idx) => {
-                const mult = Number(tier.interestMultiplier) / 10000
+                const mult = Number(tier.interestMultiplier) / 100
                 return (
                   <Button
                     key={idx}
@@ -463,7 +463,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
             <p className='text-sm text-muted-foreground'>
               Your deposit will be locked for <span className='font-semibold text-foreground'>{formatLockDurationLong(selectedLockDuration)}</span>.
               {selectedTier && !isNonEarning && (
-                <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 10000}x</span>.</>
+                <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
               )}
             </p>
             {requiresSwap && (

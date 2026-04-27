@@ -95,7 +95,7 @@ export function LoanConfirmationModal({
             <div className='flex justify-between'>
               <span className='font-medium'>Origination Fee:</span>
               <span>
-                {calculation.originationFeeLmln?.toFixed(2) || '0'}{' '}
+                {Number(calculation.originationFeeLmln ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
                 {tokenConfig?.feeToken.symbol || 'Token'}
               </span>
             </div>
