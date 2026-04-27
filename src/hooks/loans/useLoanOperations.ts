@@ -104,8 +104,11 @@ export const useLoanOperations = (
   const loansContractAddress =
     loansAddress[chainId as keyof typeof loansAddress]
 
-  // Collateral manager address is resolved on-chain from Loans.collateralManager()
-  const { collateralManager: cmAddress } = useProtocolAddresses()
+  // Collateral manager + liquidity pool addresses are resolved on-chain.
+  // makeLoanPayment routes the loan-token transferFrom through the pool, so
+  // payment allowances must target liquidityPool (not the Loans contract).
+  const { collateralManager: cmAddress, liquidityPool: poolAddress } =
+    useProtocolAddresses()
 
   // Get contract token and decimal configuration
   const {
@@ -144,18 +147,19 @@ export const useLoanOperations = (
       }
     })
 
-  // Get current token allowance for payments
+  // Loan-token allowance for payments — granted to the LiquidityPool, since
+  // makeLoanPayment internally pulls funds through the pool's transferFrom.
   const { data: currentAllowance, refetch: refetchAllowance } = useReadContract(
     {
       address: loanTokenAddress,
       abi: erc20Abi,
       functionName: 'allowance',
       args:
-        address && loansContractAddress
-          ? [address, loansContractAddress]
+        address && poolAddress
+          ? [address, poolAddress]
           : undefined,
       query: {
-        enabled: !!loanTokenAddress && !!address && !!loansContractAddress
+        enabled: !!loanTokenAddress && !!address && !!poolAddress
       }
     }
   )
@@ -487,10 +491,11 @@ export const useLoanOperations = (
     ]
   )
 
-  // Function to approve token allowance if needed
+  // Approve loan-token spending for payments — target is LiquidityPool, since
+  // that's the spender makeLoanPayment ultimately routes through.
   const approveTokenAllowance = useCallback(
     async (amount: bigint) => {
-      if (!address || !loanTokenAddress || !loansContractAddress) {
+      if (!address || !loanTokenAddress || !poolAddress) {
         throw new Error('Missing required data for token approval')
       }
 
@@ -498,7 +503,7 @@ export const useLoanOperations = (
         address: loanTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [loansContractAddress, amount]
+        args: [poolAddress, amount]
       })
 
       // Wait for transaction to be mined
@@ -514,7 +519,7 @@ export const useLoanOperations = (
     [
       address,
       loanTokenAddress,
-      loansContractAddress,
+      poolAddress,
       approveToken,
       refetchAllowance,
       publicClient
