@@ -52,13 +52,14 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   const grace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
   const effectiveLoans = useMemo(() => {
     const nowSec = BigInt(Math.floor(Date.now() / 1000))
-    return userData.loans.map((loan) => {
-      if (loan.status !== LOAN_STATUS.ACTIVE) return loan
+    return userData.loans.flatMap((loan) => {
+      if (!loan) return []
+      if (loan.status !== LOAN_STATUS.ACTIVE) return [loan]
       const defaultAt = loan.createdAt + loan.duration + grace
       if (nowSec >= defaultAt) {
-        return { ...loan, status: LOAN_STATUS.DEFAULT }
+        return [{ ...loan, status: LOAN_STATUS.DEFAULT }]
       }
-      return loan
+      return [loan]
     })
   }, [userData.loans, grace])
 
