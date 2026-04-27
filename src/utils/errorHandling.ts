@@ -67,7 +67,7 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   LoanAlreadyWithdrawn: 'Collateral for this loan has already been withdrawn.',
   LoanAmountExceedsMax: 'Loan amount exceeds the maximum allowed.',
   LoanLocked: 'This loan is currently locked and cannot be modified.',
-  LoanNotActive: 'This loan is not active.',
+  LoanNotActive: 'This loan is no longer active — it may have defaulted or already been paid off.',
   LoanNotDefaulted: 'This loan has not defaulted.',
   LoanNotFound: 'Loan not found.',
   NoFeePrice: 'No fee price is configured.',
