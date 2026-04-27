@@ -830,14 +830,19 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         </div>
                         <div className='flex gap-2'>
                           {(() => {
-                            // Check if approval is needed
+                            // Check if approval is needed. The contract pulls
+                            // amount + protocol fee on makeLoanPayment, so the
+                            // allowance must cover the gross — otherwise this
+                            // button silently shows "Confirm Payment" and the
+                            // tx reverts with insufficient allowance.
                             const currentPaymentAmount = getPaymentAmount(loan)
                             const paymentWei =
                               currentPaymentAmount && tokenConfig?.loanToken.decimals
                                 ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
                                 : 0n
+                            const grossPaymentWei = paymentWei + paymentWei / 100n
                             const needsApproval =
-                              !currentAllowance || currentAllowance < paymentWei
+                              !currentAllowance || currentAllowance < grossPaymentWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0

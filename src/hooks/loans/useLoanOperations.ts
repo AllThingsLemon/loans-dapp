@@ -105,10 +105,11 @@ export const useLoanOperations = (
     loansAddress[chainId as keyof typeof loansAddress]
 
   // Collateral manager + liquidity pool addresses are resolved on-chain.
-  // makeLoanPayment routes the loan-token transferFrom through the pool, so
-  // payment allowances must target liquidityPool (not the Loans contract).
-  const { collateralManager: cmAddress, liquidityPool: poolAddress } =
-    useProtocolAddresses()
+  // CollateralManager is the spender for collateral approvals; LiquidityPool
+  // is only used for origination-fee approvals on initiateLoan. Loan-token
+  // approvals for makeLoanPayment target the Loans contract itself, since
+  // makeLoanPayment does `loanToken.safeTransferFrom(msg.sender, address(this), …)`.
+  const { collateralManager: cmAddress } = useProtocolAddresses()
 
   // Get contract token and decimal configuration
   const {
@@ -147,19 +148,19 @@ export const useLoanOperations = (
       }
     })
 
-  // Loan-token allowance for payments — granted to the LiquidityPool, since
-  // makeLoanPayment internally pulls funds through the pool's transferFrom.
+  // Loan-token allowance for payments — granted to the Loans contract,
+  // which is the spender in makeLoanPayment's transferFrom.
   const { data: currentAllowance, refetch: refetchAllowance } = useReadContract(
     {
       address: loanTokenAddress,
       abi: erc20Abi,
       functionName: 'allowance',
       args:
-        address && poolAddress
-          ? [address, poolAddress]
+        address && loansContractAddress
+          ? [address, loansContractAddress]
           : undefined,
       query: {
-        enabled: !!loanTokenAddress && !!address && !!poolAddress
+        enabled: !!loanTokenAddress && !!address && !!loansContractAddress
       }
     }
   )
@@ -491,19 +492,24 @@ export const useLoanOperations = (
     ]
   )
 
-  // Approve loan-token spending for payments — target is LiquidityPool, since
-  // that's the spender makeLoanPayment ultimately routes through.
+  // Approve loan-token spending for payments. Spender is the Loans contract,
+  // which is what makeLoanPayment's transferFrom pulls through. The contract
+  // pulls amount + protocol fee (FEE_BPS = 25 → 0.25%), so we gross the
+  // approval up by 1% to comfortably cover the fee — a "Pay Balance" with a
+  // bare-amount approval would otherwise revert with insufficient allowance.
   const approveTokenAllowance = useCallback(
     async (amount: bigint) => {
-      if (!address || !loanTokenAddress || !poolAddress) {
+      if (!address || !loanTokenAddress || !loansContractAddress) {
         throw new Error('Missing required data for token approval')
       }
+
+      const grossAmount = amount + amount / 100n
 
       const txHash = await approveToken({
         address: loanTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [poolAddress, amount]
+        args: [loansContractAddress, grossAmount]
       })
 
       // Wait for transaction to be mined
@@ -519,7 +525,7 @@ export const useLoanOperations = (
     [
       address,
       loanTokenAddress,
-      poolAddress,
+      loansContractAddress,
       approveToken,
       refetchAllowance,
       publicClient
@@ -558,13 +564,17 @@ export const useLoanOperations = (
         throw new Error('Loans contract address not found')
       }
 
+      // Contract pulls amount + protocol fee (FEE_BPS = 25 → 0.25%) on
+      // makeLoanPayment, so balance and allowance must cover the gross.
+      const grossAmount = amount + amount / 100n
+
       // Check if user has sufficient loan token balance
-      if (userLoanTokenBalance && userLoanTokenBalance < amount) {
+      if (userLoanTokenBalance && userLoanTokenBalance < grossAmount) {
         throw new Error(`Insufficient loan token balance`)
       }
 
       // Check if we need to approve tokens first
-      if (!currentAllowance || currentAllowance < amount) {
+      if (!currentAllowance || currentAllowance < grossAmount) {
         try {
           // First approve the tokens
           await approveTokenAllowance(amount)
