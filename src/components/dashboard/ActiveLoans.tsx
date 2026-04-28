@@ -57,7 +57,6 @@ import {
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/src/components/ui/tooltip'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -115,6 +114,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     useState<`0x${string}` | null>(null)
   const [isWithdrawingCollateral, setIsWithdrawingCollateral] = useState(false)
   const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
+  const [openInfoLoanId, setOpenInfoLoanId] = useState<string | null>(null)
 
   const handleCopyLoanId = (id: string) => {
     navigator.clipboard.writeText(id)
@@ -591,16 +591,29 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     <Clock className='h-3 w-3' />
                     {countdownLabel}
                     {showCountdownTooltip && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Info className='h-3 w-3 cursor-pointer' />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Time includes a safety buffer to account for blockchain timing.</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <span className='relative inline-flex'>
+                        <button
+                          type='button'
+                          aria-label='Countdown info'
+                          aria-expanded={openInfoLoanId === loan.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setOpenInfoLoanId(openInfoLoanId === loan.id ? null : loan.id)
+                          }}
+                          onBlur={() => setOpenInfoLoanId(null)}
+                          className='inline-flex items-center'
+                        >
+                          <Info className='h-3 w-3 cursor-pointer' />
+                        </button>
+                        {openInfoLoanId === loan.id && (
+                          <span
+                            role='tooltip'
+                            className='absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-muted text-foreground text-xs rounded-md px-3 py-1.5 shadow-md max-w-xs w-max'
+                          >
+                            Time includes a safety buffer to account for blockchain timing.
+                          </span>
+                        )}
+                      </span>
                     )}
                   </p>
                   <div className='font-medium'>
