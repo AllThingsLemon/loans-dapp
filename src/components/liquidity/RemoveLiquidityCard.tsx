@@ -13,6 +13,7 @@ import { Badge } from '@/src/components/ui/badge'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -34,6 +35,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
   const [fundQueueModal, setFundQueueModal] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const { toast } = useToast()
 
   const {
@@ -79,8 +81,14 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     setAmount(formattedWithdrawable)
   }
 
-  const handleRequestWithdrawal = async () => {
+  const handleRequestClick = () => {
+    if (!parsedAmount || insufficientBalance) return
+    setShowConfirmDialog(true)
+  }
+
+  const handleConfirmWithdrawal = async () => {
     if (!parsedAmount) return
+    setShowConfirmDialog(false)
     setIsProcessing('request')
     try {
       await requestWithdrawal(parsedAmount)
@@ -96,6 +104,14 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
       setIsProcessing(null)
     }
   }
+
+  const netReceiveDisplay = useMemo(() => {
+    if (!withdrawalFeePct || !parsedAmount || !feeConfig) return undefined
+    const net = parsedAmount - (parsedAmount * feeConfig.feeBps) / 10000n
+    return parseFloat(formatTokenAmount(net, decimals)).toLocaleString('en-US', {
+      maximumFractionDigits: 2,
+    })
+  }, [withdrawalFeePct, parsedAmount, feeConfig, decimals])
 
   const handleClaimWithdrawal = async (requestId: bigint) => {
     setIsProcessing(`claim-${requestId}`)
@@ -166,8 +182,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
               </span>
             </div>
           </div>
-          <div className='flex justify-between text-xs text-muted-foreground'>
-            <span>{withdrawalFeePct ? `${withdrawalFeePct}% withdrawal fee` : '\u00A0'}</span>
+          <div className='flex justify-end text-xs text-muted-foreground'>
             <button
               onClick={handleMax}
               className='hover:text-foreground transition-colors'
@@ -187,14 +202,8 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
           </p>
         )}
 
-        {withdrawalFeePct && parsedAmount && !insufficientBalance && (
-          <p className='text-xs text-muted-foreground'>
-            A {withdrawalFeePct}% fee applies on claim. You will receive ~{parseFloat(formatTokenAmount(parsedAmount - (parsedAmount * feeConfig!.feeBps) / 10000n, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol}.
-          </p>
-        )}
-
         <Button
-          onClick={handleRequestWithdrawal}
+          onClick={handleRequestClick}
           disabled={isProcessing !== null || !parsedAmount || insufficientBalance}
           className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
         >
@@ -288,6 +297,43 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
           </div>
         )}
       </CardContent>
+
+      {/* Confirm Withdrawal Modal */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Withdrawal Request</DialogTitle>
+            <DialogDescription>
+              You are about to request a withdrawal of {amount} {symbol} from the liquidity pool.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-3 py-2'>
+            {withdrawalFeePct ? (
+              <p className='text-sm text-muted-foreground'>
+                A <span className='font-semibold text-foreground'>{withdrawalFeePct}%</span> fee applies on claim. You will receive ~<span className='font-semibold text-foreground'>{netReceiveDisplay} {symbol}</span> after the fee.
+              </p>
+            ) : (
+              <p className='text-sm text-muted-foreground'>
+                No withdrawal fee applies. You will receive the full {amount} {symbol} on claim.
+              </p>
+            )}
+            <p className='text-sm text-muted-foreground'>
+              Your shares will be burned now and the request will join the withdrawal queue. You can claim once the queue funds your request.
+            </p>
+          </div>
+          <DialogFooter className='gap-2 sm:gap-0'>
+            <Button variant='outline' onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmWithdrawal}
+              className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+            >
+              Confirm Withdrawal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Fund Queue Modal */}
       <Dialog

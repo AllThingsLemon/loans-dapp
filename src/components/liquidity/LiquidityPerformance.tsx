@@ -244,47 +244,57 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     }
   }
 
-  // Pool Overview section (always shown)
-  const PoolOverview = () => (
-    <div className='space-y-3'>
-      <h3 className='text-sm font-semibold flex items-center gap-2'>
-        <BarChart3 className='h-4 w-4' /> Pool Overview
-      </h3>
-      <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
-        <StatItem
-          label='Total Pool Value'
-          value={poolStatus ? formatCurrency(poolStatus.totalPoolValue, decimals, symbol) : 'Loading...'}
-        />
-        <StatItem
-          label='Principal in Active Loans'
-          value={liquidityStatus ? formatCurrency(liquidityStatus.principalInLoans, decimals, symbol) : 'Loading...'}
-        />
-        <StatItem
-          label='Pool Utilization'
-          value={formatPct(poolUtilization)}
-        />
-        <StatItem
-          label='Total Interest Generated'
-          value={liquidityStatus ? formatCurrency(liquidityStatus.interestEarned, decimals, symbol) : 'Loading...'}
-        />
-        <StatItem
-          label='Total Loans Issued'
-          value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
-        />
-        <StatItem
-          label='Total Interest Shares'
-          value={poolStatus ? formatShares(poolStatus.totalInterestShares, decimals) : 'Loading...'}
-        />
-        {liquidityStatus && liquidityStatus.principalDeficitAmount > 0n && (
+  // Pool Overview section (always shown). The grid widens to 4 cols when a
+  // defaulted-principal stat needs to share row 1 with the three primary
+  // pool metrics; row 2 (3 share/loan stats) keeps the same column widths.
+  const PoolOverview = () => {
+    const deficitAmount =
+      liquidityStatus && liquidityStatus.principalDeficitAmount > 0n
+        ? liquidityStatus.principalDeficitAmount
+        : undefined
+    return (
+      <div className='space-y-3'>
+        <h3 className='text-sm font-semibold flex items-center gap-2'>
+          <BarChart3 className='h-4 w-4' /> Pool Overview
+        </h3>
+        <div
+          className={`grid grid-cols-2 ${deficitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}
+        >
           <StatItem
-            label='Defaulted Principal'
-            value={formatCurrency(liquidityStatus.principalDeficitAmount, decimals, symbol)}
-            warning
+            label='Total Liquidity Available'
+            value={liquidityStatus ? formatCurrency(liquidityStatus.principalAvailable, decimals, symbol) : 'Loading...'}
           />
-        )}
+          <StatItem
+            label='Principal in Active Loans'
+            value={liquidityStatus ? formatCurrency(liquidityStatus.principalInLoans, decimals, symbol) : 'Loading...'}
+          />
+          <StatItem
+            label='Pool Utilization'
+            value={formatPct(poolUtilization)}
+          />
+          {deficitAmount !== undefined && (
+            <StatItem
+              label='Defaulted Principal'
+              value={formatCurrency(deficitAmount, decimals, symbol)}
+              warning
+            />
+          )}
+          <StatItem
+            label='Total Pool Shares'
+            value={poolStatus ? formatShares(poolStatus.totalLiquidityShares, decimals) : 'Loading...'}
+          />
+          <StatItem
+            label='Total Interest Shares'
+            value={poolStatus ? formatShares(poolStatus.totalInterestShares, decimals) : 'Loading...'}
+          />
+          <StatItem
+            label='Total Loans Issued'
+            value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
+          />
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // Earnings Distribution section (always shown)
   const EarningsDistribution = () => (
@@ -292,7 +302,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
       <h3 className='text-sm font-semibold flex items-center gap-2'>
         <RefreshCw className='h-4 w-4' /> Earnings Distribution
       </h3>
-      <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
+      <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
+        <StatItem
+          label='Total Interest Generated'
+          value={liquidityStatus ? formatCurrency(liquidityStatus.interestEarned, decimals, symbol) : 'Loading...'}
+        />
         <StatItem
           label='Uncollected Pool Earnings'
           value={poolStatus ? formatCurrency(poolStatus.availableEarningsInLoans, decimals, symbol) : 'Loading...'}
