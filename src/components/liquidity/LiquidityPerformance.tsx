@@ -248,16 +248,17 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
   // defaulted-principal stat needs to share row 1 with the three primary
   // pool metrics; row 2 (3 share/loan stats) keeps the same column widths.
   const PoolOverview = () => {
-    const hasDeficit = !!(
+    const deficitAmount =
       liquidityStatus && liquidityStatus.principalDeficitAmount > 0n
-    )
+        ? liquidityStatus.principalDeficitAmount
+        : undefined
     return (
       <div className='space-y-3'>
         <h3 className='text-sm font-semibold flex items-center gap-2'>
           <BarChart3 className='h-4 w-4' /> Pool Overview
         </h3>
         <div
-          className={`grid grid-cols-2 ${hasDeficit ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}
+          className={`grid grid-cols-2 ${deficitAmount ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}
         >
           <StatItem
             label='Total Liquidity Available'
@@ -271,10 +272,10 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             label='Pool Utilization'
             value={formatPct(poolUtilization)}
           />
-          {hasDeficit && (
+          {deficitAmount !== undefined && (
             <StatItem
               label='Defaulted Principal'
-              value={formatCurrency(liquidityStatus!.principalDeficitAmount, decimals, symbol)}
+              value={formatCurrency(deficitAmount, decimals, symbol)}
               warning
             />
           )}
