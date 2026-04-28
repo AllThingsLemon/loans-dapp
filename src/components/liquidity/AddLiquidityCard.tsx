@@ -255,10 +255,14 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     })
   }, [depositFeeApplies, tokenAmount, feeConfig, decimals])
 
+  // Floor the wallet balance to 2 decimals (don't round) so the displayed
+  // value never exceeds what the user actually has — typing the shown value
+  // back into the deposit field shouldn't trip an insufficient-balance check.
   const balanceInUsd = useMemo(() => {
     if (balanceCreditRaw === undefined) return undefined
-    return parseFloat(formatTokenAmount(balanceCreditRaw as unknown as bigint, stableDecimals))
-      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const raw = parseFloat(formatTokenAmount(balanceCreditRaw as unknown as bigint, stableDecimals))
+    const floored = Math.floor(raw * 100) / 100
+    return floored.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }, [balanceCreditRaw, stableDecimals])
 
   const isBelowMinimum = useMemo(() => {
