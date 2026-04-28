@@ -221,6 +221,19 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       ? loanOperations.error
       : null
 
+  // Pick the APR tier whose duration band covers the current slider position.
+  // Decouples the displayed APR from the amount input — sliding LTV / Duration
+  // updates the APR live even before the user has typed an amount.
+  const aprFromDuration = useMemo(() => {
+    if (!tokenConfig || perAssetConfig.interestAprConfigs.length === 0) return 0
+    const tier = perAssetConfig.interestAprConfigs.find(
+      (c) =>
+        selectedDuration >= c.minDuration && selectedDuration <= c.maxDuration
+    )
+    if (!tier) return 0
+    return Number(formatPercentage(tier.interestApr, tokenConfig.aprDecimals))
+  }, [perAssetConfig.interestAprConfigs, selectedDuration, tokenConfig])
+
   // Calculate loan details using contract calculation data
   const calculation = useMemo(() => {
     // Create base structure
@@ -231,10 +244,15 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       ltv
     )
 
+    // APR + LTV are derived from the slider positions and contract config, so
+    // they should render even when the simulation hasn't run yet (no amount
+    // typed, below-min, etc.).
+    const baseWithDials = { ...base, apr: aprFromDuration }
+
     // Check if we're still loading contract configuration
     if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
       return {
-        ...base,
+        ...baseWithDials,
         priceError: 'Loading contract data...'
       }
     }
@@ -246,7 +264,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       // alarming error string — the form surfaces actionable validation
       // (red border + min-amount hint) elsewhere.
       return {
-        ...base,
+        ...baseWithDials,
         priceError: loanOperations.isSimulating
           ? 'Calculating collateral...'
           : '—'
@@ -262,7 +280,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
     if (!formatted) {
       return {
-        ...base,
+        ...baseWithDials,
         priceError: 'Error formatting calculation data'
       }
     }
@@ -290,7 +308,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       : undefined)
 
     return {
-      ...base,
+      ...baseWithDials,
       ...formatted,
       loanCycles,
       balloonPayment: loanAmount,
@@ -302,6 +320,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     selectedDuration,
     duration,
     ltv,
+    aprFromDuration,
     loanOperations.calculationData,
     loanOperations.isSimulating,
     tokenConfig,

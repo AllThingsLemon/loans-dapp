@@ -80,7 +80,7 @@ export function LoanConfirmationModal({
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>APR:</span>
-              <span>{calculation.apr.toFixed(1)}%</span>
+              <span>{Math.round(calculation.apr)}%</span>
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>Collateral Required:</span>
