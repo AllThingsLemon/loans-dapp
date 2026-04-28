@@ -151,6 +151,12 @@ The price feed is configured independently of the LiquidityPool and CollateralMa
 
 These globals apply to every loan regardless of collateral and back the constants the dapp reads at app load (the loan calculator's min/max amount, slider bounds, and grace period).
 
+> **Time convention:** the project uses a **360-day year** and **30-day month** across both APR scaling and lock-tier durations. The dapp's duration formatters render years in 360-day units, so contract config should match — anything else makes "10 years" mean two different lengths in two different places.
+>
+> Quick reference:
+> - 1 month = `30 * 86400` = `2_592_000` s
+> - 1 year  = `360 * 86400` = `31_104_000` s
+
 ```solidity
 Loans.setLoanConfiguration(
   <minLoanAmount>,                // raw stable-token wei
@@ -158,7 +164,7 @@ Loans.setLoanConfiguration(
   <maxLoanDuration>,              // seconds
   <balloonPaymentGraceDuration>,  // seconds — grace after loan end before default
   <loanCycleDuration>,            // seconds per cycle (drives interest cadence)
-  <aprYearDuration>               // seconds in a year (e.g. 31536000); APR scales by this
+  <aprYearDuration>               // seconds in a year — use 31_104_000 (360 days)
 )
 
 Loans.setMaxLoanAmount(<absolute ceiling, raw stable-token wei>)
@@ -326,7 +332,7 @@ Each user-depositable asset must have at least one lock tier before the deposit 
 ```solidity
 LiquidityPool.addAssetLockTier(
   <token address>,
-  <durationSeconds>,       // e.g. 1800 = 30 min, 2592000 = 30 days
+  <durationSeconds>,       // 360-day years / 30-day months — e.g. 2_592_000 = 1 month, 31_104_000 = 1 year
   <interestMultiplierBps>  // e.g. 10000 = 1× base rate, 15000 = 1.5×
 )
 ```

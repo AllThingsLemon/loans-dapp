@@ -174,7 +174,7 @@ export function LoanParameters({
               }}
               min={minLoanAmount > 0 ? minLoanAmount : undefined}
               max={maxLoanAmount}
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed' : 'placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400/40 disabled:opacity-50 disabled:cursor-not-allowed' : 'placeholder:text-muted-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
               placeholder={minLoanAmount > 0 ? String(minLoanAmount) : ''}
             />
           </div>

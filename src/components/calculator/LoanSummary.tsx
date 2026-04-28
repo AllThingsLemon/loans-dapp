@@ -155,7 +155,7 @@ export function LoanSummary({
               <span
                 className={`font-medium ${!isDashboard ? 'text-yellow-400' : 'text-yellow-600'}`}
               >
-                {calculation.apr.toFixed(1)}%
+                {Math.round(calculation.apr)}%
               </span>
             </div>
 

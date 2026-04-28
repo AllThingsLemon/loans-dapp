@@ -193,7 +193,7 @@ export function Dashboard() {
             Loan Calculator
           </CardTitle>
           <CardDescription>
-            Calculate loan terms and create new loans
+            Calculate loan terms and create new loans. Note: 1 year = 360 days throughout the protocol.
           </CardDescription>
         </CardHeader>
         <CardContent>
