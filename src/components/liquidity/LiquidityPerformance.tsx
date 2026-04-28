@@ -272,8 +272,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
         />
         <StatItem
-          label='Total Liquidity Shares'
-          value={poolStatus ? formatShares(poolStatus.totalLiquidityShares, decimals) : 'Loading...'}
+          label='Total Interest Shares'
+          value={poolStatus ? formatShares(poolStatus.totalInterestShares, decimals) : 'Loading...'}
         />
         {liquidityStatus && liquidityStatus.principalDeficitAmount > 0n && (
           <StatItem
