@@ -79,6 +79,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     stableTokenAddress,
     stableTokenDecimals,
     liquidityPoolContractAddress,
+    feeConfig,
     approveToken,
     deposit,
     refetch,
@@ -235,6 +236,24 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     const formatted = parseFloat(formatTokenAmount(tokenAmount, decimals))
     return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }, [tokenAmount, decimals])
+
+  // Pool deposit fee — same FEE_BPS the contract takes via _takeIncomingFee
+  // for earning deposits. Skipped for non-earning deposits (contract path
+  // pulls only `amount`, no fee). feeReceiver === address(0) disables it.
+  const depositFeePct = useMemo(() => {
+    if (!feeConfig || feeConfig.feeBps === 0n) return null
+    return Number(feeConfig.feeBps) / 100
+  }, [feeConfig])
+  const depositFeeApplies = !!depositFeePct && !isNonEarning
+
+  const depositFeeTokens = useMemo(() => {
+    if (!depositFeeApplies || !tokenAmount || !feeConfig) return undefined
+    const fee = (tokenAmount * feeConfig.feeBps) / 10000n
+    return parseFloat(formatTokenAmount(fee, decimals)).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }, [depositFeeApplies, tokenAmount, feeConfig, decimals])
 
   const balanceInUsd = useMemo(() => {
     if (balanceCreditRaw === undefined) return undefined
@@ -471,6 +490,15 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
                 <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
               )}
             </p>
+            {depositFeeApplies && (
+              <p className='text-sm text-muted-foreground'>
+                A <span className='font-semibold text-foreground'>{depositFeePct}%</span> deposit fee applies
+                {depositFeeTokens && (
+                  <> — ~<span className='font-semibold text-foreground'>{depositFeeTokens} {symbol}</span> will be taken on top of the deposit amount</>
+                )}
+                .
+              </p>
+            )}
             {requiresSwap && (
               <p className='text-sm text-muted-foreground'>
                 Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
