@@ -252,8 +252,8 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
       </h3>
       <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
         <StatItem
-          label='Total Pool Value'
-          value={poolStatus ? formatCurrency(poolStatus.totalPoolValue, decimals, symbol) : 'Loading...'}
+          label='Total Liquidity Available'
+          value={liquidityStatus ? formatCurrency(liquidityStatus.principalAvailable, decimals, symbol) : 'Loading...'}
         />
         <StatItem
           label='Principal in Active Loans'
@@ -264,16 +264,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           value={formatPct(poolUtilization)}
         />
         <StatItem
-          label='Total Interest Generated'
-          value={liquidityStatus ? formatCurrency(liquidityStatus.interestEarned, decimals, symbol) : 'Loading...'}
-        />
-        <StatItem
-          label='Total Loans Issued'
-          value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
+          label='Total Pool Shares'
+          value={poolStatus ? formatShares(poolStatus.totalLiquidityShares, decimals) : 'Loading...'}
         />
         <StatItem
           label='Total Interest Shares'
           value={poolStatus ? formatShares(poolStatus.totalInterestShares, decimals) : 'Loading...'}
+        />
+        <StatItem
+          label='Total Loans Issued'
+          value={totalLoansIssued !== undefined ? Number(totalLoansIssued).toLocaleString() : 'Loading...'}
         />
         {liquidityStatus && liquidityStatus.principalDeficitAmount > 0n && (
           <StatItem
@@ -293,6 +293,10 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
         <RefreshCw className='h-4 w-4' /> Earnings Distribution
       </h3>
       <div className='grid grid-cols-2 md:grid-cols-3 gap-4'>
+        <StatItem
+          label='Total Interest Generated'
+          value={liquidityStatus ? formatCurrency(liquidityStatus.interestEarned, decimals, symbol) : 'Loading...'}
+        />
         <StatItem
           label='Uncollected Pool Earnings'
           value={poolStatus ? formatCurrency(poolStatus.availableEarningsInLoans, decimals, symbol) : 'Loading...'}
