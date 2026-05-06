@@ -34,6 +34,11 @@ export interface LoanRequest {
 export interface UseLoanOperationsOptions {
   loanRequest?: LoanRequest
   selectedLtvOption?: { ltv: bigint; fee: bigint }
+  /** Address that will be charged the LMLN origination fee. Defaults to the
+   *  connected wallet (borrower self-pays). Pass a delegate address to route
+   *  LMLN balance/allowance reads to that wallet and to forward it as the
+   *  `originationPayer` arg on initiateLoan/extendLoan. */
+  originationPayer?: `0x${string}`
 }
 
 export interface UseLoanOperationsReturn {
@@ -59,6 +64,7 @@ export interface UseLoanOperationsReturn {
   // Loan creation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
+  hasInsufficientCollateral: boolean
   grossOriginationFee: bigint | undefined
   calculationData:
     | {
@@ -77,6 +83,7 @@ export interface UseLoanOperationsReturn {
   // User balances
   userLmlnBalance: bigint | undefined
   userLoanTokenBalance: bigint | undefined
+  userCollateralBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
   currentCollateralAllowance: bigint | undefined
@@ -94,8 +101,14 @@ export interface UseLoanOperationsReturn {
 export const useLoanOperations = (
   options?: UseLoanOperationsOptions
 ): UseLoanOperationsReturn => {
-  const { loanRequest, selectedLtvOption } = options || {}
+  const { loanRequest, selectedLtvOption, originationPayer } = options || {}
   const { address } = useAccount()
+  // The wallet that will pay the LMLN origination fee. Defaults to the
+  // connected wallet (borrower self-pays). When the borrower picks a
+  // delegate, balance/allowance reads and contract calls re-target this
+  // address — keeping `hasInsufficientLmln` and the allowance check honest
+  // regardless of who is paying.
+  const effectivePayer = originationPayer ?? address
   const chainId = useChainId()
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
@@ -121,14 +134,15 @@ export const useLoanOperations = (
   // Get the fee token address from contract
   const { data: feeTokenAddress } = useReadLoansOriginationFeeToken()
 
-  // Get user's LMLN balance
+  // LMLN balance for the fee payer (borrower self-pays by default; delegate
+  // when the borrower has unlocked the field and picked someone else).
   const { data: userLmlnBalance } = useReadContract({
     address: feeTokenAddress,
     abi: erc20Abi,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: effectivePayer ? [effectivePayer] : undefined,
     query: {
-      enabled: !!feeTokenAddress && !!address
+      enabled: !!feeTokenAddress && !!effectivePayer
     }
   })
 
@@ -165,18 +179,18 @@ export const useLoanOperations = (
     }
   )
 
-  // Get current LMLN token allowance for origination fees
+  // LMLN allowance from the fee payer to the Loans contract.
   const { data: currentLmlnAllowance, refetch: refetchLmlnAllowance } =
     useReadContract({
       address: feeTokenAddress,
       abi: erc20Abi,
       functionName: 'allowance',
       args:
-        address && loansContractAddress
-          ? [address, loansContractAddress]
+        effectivePayer && loansContractAddress
+          ? [effectivePayer, loansContractAddress]
           : undefined,
       query: {
-        enabled: !!feeTokenAddress && !!address && !!loansContractAddress
+        enabled: !!feeTokenAddress && !!effectivePayer && !!loansContractAddress
       }
     })
 
@@ -199,6 +213,18 @@ export const useLoanOperations = (
         enabled: !!loanRequest?.collateralToken && !!address && !!cmAddress
       }
     })
+
+  // Borrower's collateral-token balance. Always the connected wallet — the
+  // borrower posts collateral regardless of who pays the origination fee.
+  const { data: userCollateralBalance } = useReadContract({
+    address: loanRequest?.collateralToken,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!loanRequest?.collateralToken && !!address
+    }
+  })
 
   // Get available liquidity from the Loans contract
   const { data: liquidityStatusRaw } = useReadLoansGetLiquidityStatus()
@@ -300,6 +326,14 @@ export const useLoanOperations = (
       ? userLmlnBalance < grossOriginationFee
       : selectedLtvOption && userLmlnBalance !== undefined
       ? userLmlnBalance < selectedLtvOption.fee
+      : false
+
+  // Check if borrower has enough collateral-token to back the loan. Without
+  // this guard, initiateLoan reaches the on-chain transferFrom and reverts
+  // with the (poorly-worded) WLEMX "amount < balance" message.
+  const hasInsufficientCollateral =
+    collateralAmount !== undefined && userCollateralBalance !== undefined
+      ? userCollateralBalance < collateralAmount
       : false
 
   // Function to approve LMLN tokens for loan creation or extension
@@ -422,7 +456,8 @@ export const useLoanOperations = (
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
       if (!address) throw new Error('Wallet not connected')
-      
+      const payer = originationPayer ?? address
+
       if (!collateralAmount || collateralAmount === 0n) {
         throw new Error('Unable to calculate collateral amount. Please try again.')
       }
@@ -462,7 +497,7 @@ export const useLoanOperations = (
           address: loansContractAddress,
           abi: loansAbi,
           functionName: 'initiateLoan',
-          args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+          args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv, payer],
           value: nativeFee,
           account: address,
         })
@@ -470,7 +505,7 @@ export const useLoanOperations = (
 
       // Execute the transaction — collateral is pre-approved to CollateralManager via ERC20
       const txHash = await initiateLoan({
-        args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+        args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv, payer],
         value: nativeFee,
       })
 
@@ -480,6 +515,7 @@ export const useLoanOperations = (
     },
     [
       address,
+      originationPayer,
       initiateLoan,
       collateralAmount,
       originationFee,
@@ -708,11 +744,12 @@ export const useLoanOperations = (
   const extendLoan = useCallback(
     async (loanId: `0x${string}`, extendTime: bigint) => {
       if (!address) throw new Error('Wallet not connected')
-      const txHash = await extendLoanContract({ args: [loanId, extendTime] })
+      const payer = originationPayer ?? address
+      const txHash = await extendLoanContract({ args: [loanId, extendTime, payer] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, extendLoanContract, waitAndInvalidate]
+    [address, originationPayer, extendLoanContract, waitAndInvalidate]
   )
 
   return {
@@ -737,6 +774,7 @@ export const useLoanOperations = (
     // Loan creation data
     requiredCollateral: collateralAmount,
     hasInsufficientLmln,
+    hasInsufficientCollateral,
     grossOriginationFee,
     calculationData: calculationData
       ? {
@@ -755,6 +793,7 @@ export const useLoanOperations = (
     // User balances
     userLmlnBalance,
     userLoanTokenBalance,
+    userCollateralBalance,
     currentAllowance,
     currentLmlnAllowance,
     currentCollateralAllowance,

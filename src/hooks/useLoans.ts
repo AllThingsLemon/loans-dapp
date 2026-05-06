@@ -111,12 +111,14 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     // Loan creation & simulation data
     requiredCollateral: operations.requiredCollateral,
     hasInsufficientLmln: operations.hasInsufficientLmln,
+    hasInsufficientCollateral: operations.hasInsufficientCollateral,
     grossOriginationFee: operations.grossOriginationFee,
     calculationData: operations.calculationData,
 
     // User balance info
     userLmlnBalance: operations.userLmlnBalance,
     userLoanTokenBalance: operations.userLoanTokenBalance,
+    userCollateralBalance: operations.userCollateralBalance,
     currentAllowance: operations.currentAllowance,
     currentLmlnAllowance: operations.currentLmlnAllowance,
     currentCollateralAllowance: operations.currentCollateralAllowance,

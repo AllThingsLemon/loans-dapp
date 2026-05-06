@@ -7,6 +7,9 @@ import type {
 export interface UseLoansOptions {
   loanRequest?: LoanRequest
   selectedLtvOption?: { ltv: bigint; fee: bigint }
+  /** Address that will be charged the LMLN origination fee. Defaults to the
+   *  connected wallet (borrower self-pays). */
+  originationPayer?: `0x${string}`
 }
 
 export interface UseLoansReturn {
@@ -39,6 +42,7 @@ export interface UseLoansReturn {
   // Loan creation & simulation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
+  hasInsufficientCollateral: boolean
   grossOriginationFee: bigint | undefined
   calculationData:
     | {
@@ -54,6 +58,7 @@ export interface UseLoansReturn {
   // User balance info
   userLmlnBalance: bigint | undefined
   userLoanTokenBalance: bigint | undefined
+  userCollateralBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
   currentCollateralAllowance: bigint | undefined

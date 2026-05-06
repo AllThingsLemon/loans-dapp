@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAccount } from 'wagmi'
 import {
   Card,
   CardContent,
@@ -25,6 +26,8 @@ import { RadioGroup, RadioGroupItem } from '@/src/components/ui/radio-group'
 import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
 import { CountdownTimer } from '@/src/components/ui/countdown-timer'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
+import { useDelegateValidation } from '@/src/hooks/loans/useDelegateValidation'
+import { OriginationPayerField } from '@/src/components/common/OriginationPayerField'
 import {
   formatAmountWithSymbol,
   formatDuration,
@@ -63,6 +66,27 @@ interface ActiveLoansProps {
 }
 
 export function ActiveLoans({ compact = false }: ActiveLoansProps) {
+  const { address } = useAccount()
+
+  // Extension origination-payer field — re-targets LMLN balance/allowance
+  // reads in useLoans below when the borrower has unlocked it and supplied a
+  // verified delegate. Default = connected wallet, locked.
+  const [extensionPayerInput, setExtensionPayerInput] = useState('')
+  const [isExtensionPayerLocked, setIsExtensionPayerLocked] = useState(true)
+  useEffect(() => {
+    if (isExtensionPayerLocked) {
+      setExtensionPayerInput(address ?? '')
+    }
+  }, [address, isExtensionPayerLocked])
+
+  const extensionPayerValidation = useDelegateValidation(extensionPayerInput)
+  const effectiveExtensionPayer =
+    !isExtensionPayerLocked &&
+    extensionPayerValidation.normalizedAddress &&
+    !extensionPayerValidation.isSelf
+      ? extensionPayerValidation.normalizedAddress
+      : undefined
+
   const {
     activeLoans,
     payLoan,
@@ -79,7 +103,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLmlnBalance,
     loanConfig,
     interestAprConfigs,
-  } = useLoans()
+  } = useLoans({ originationPayer: effectiveExtensionPayer })
   const { tokenConfig } = useContractTokenConfiguration()
   const { getCollateralByAddress } = useCollateralManager()
   const {
@@ -844,21 +868,42 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         <div className='flex gap-2'>
                           {(() => {
                             // Check if approval is needed. The contract pulls
-                            // amount + protocol fee on makeLoanPayment, so the
-                            // allowance must cover the gross — otherwise this
-                            // button silently shows "Confirm Payment" and the
-                            // tx reverts with insufficient allowance.
+                            // amount + protocol fee (FEE_BPS = 25 → 0.25%) on
+                            // makeLoanPayment, so the allowance must cover the
+                            // gross — otherwise this button silently shows
+                            // "Confirm Payment" and the tx reverts with
+                            // insufficient allowance.
                             const currentPaymentAmount = getPaymentAmount(loan)
                             const paymentWei =
                               currentPaymentAmount && tokenConfig?.loanToken.decimals
                                 ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
                                 : 0n
+                            // approval target adds a 1% buffer; balance check
+                            // uses the exact contract pull (0.25% protocol fee).
                             const grossPaymentWei = paymentWei + paymentWei / 100n
+                            const contractPullWei = paymentWei + (paymentWei * 25n) / 10000n
                             const needsApproval =
                               !currentAllowance || currentAllowance < grossPaymentWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0
+                            const hasInsufficientPaymentBalance =
+                              userLoanTokenBalance !== undefined &&
+                              hasValidAmount &&
+                              paymentWei > 0n &&
+                              userLoanTokenBalance < contractPullWei
+
+                            if (hasInsufficientPaymentBalance) {
+                              return (
+                                <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4' />
+                                  <span>
+                                    You don&apos;t have enough{' '}
+                                    {tokenConfig?.loanToken.symbol || 'tokens'} for this payment.
+                                  </span>
+                                </div>
+                              )
+                            }
 
                             if (
                               needsApproval &&
@@ -876,7 +921,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   className='flex-1'
                                 >
                                   {isApprovingPayment
-                                    ? 'Approving...'
+                                    ? 'Approving…'
                                     : 'Approve Tokens'}
                                 </Button>
                               )
@@ -893,7 +938,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   className='flex-1'
                                 >
                                   {isProcessingPayment
-                                    ? 'Processing...'
+                                    ? 'Processing…'
                                     : 'Confirm Payment'}
                                 </Button>
                               )
@@ -971,8 +1016,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         const ltvPct = tokenConfig
                           ? formatPercentage(loan.ltv, tokenConfig.ltvDecimals) + '%'
                           : '—'
+                        // currentLmlnAllowance + userLmlnBalance are auto-redirected to the
+                        // delegate's wallet when one is unlocked + valid (see useLoans options
+                        // wired up at top of this component). Same comparisons work either way.
                         const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
                         const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < loan.originationFee
+                        // Block the CTA if the borrower has unlocked the field but
+                        // hasn't supplied a verified delegate yet (red text in the
+                        // OriginationPayerField surfaces the reason).
+                        const payerBlocks =
+                          !isExtensionPayerLocked && !extensionPayerValidation.isValid
 
                         return (
                           <div className='space-y-5'>
@@ -1032,28 +1085,73 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               )}
                             </div>
 
-                            {/* Actions */}
+                            {/* Origination-fee payer (default = self; unlock to delegate). */}
+                            <OriginationPayerField
+                              value={extensionPayerInput}
+                              onChange={setExtensionPayerInput}
+                              validation={extensionPayerValidation}
+                              isLocked={isExtensionPayerLocked}
+                              onToggleLock={() => {
+                                setIsExtensionPayerLocked((wasLocked) => {
+                                  if (!wasLocked) {
+                                    setExtensionPayerInput(address ?? '')
+                                  }
+                                  return !wasLocked
+                                })
+                              }}
+                              feeTokenSymbol={tokenConfig?.feeToken.symbol || 'LMLN'}
+                              feeTokenDecimals={tokenConfig?.feeToken.decimals ?? 18}
+                              id={`extend-payer-${loan.id}`}
+                            />
+
+                            {/* Actions. hasInsufficientBalance / needsApproval reflect the
+                             *  *fee payer's* wallet — borrower when locked or self, delegate
+                             *  otherwise. The Approve LMLN button only shows when the user
+                             *  is paying their own fee; a delegate is expected to have
+                             *  pre-approved max LMLN when authorizing themselves.
+                             *
+                             *  We suppress the balance warning while a delegate is unlocked
+                             *  but unauthorized — the field's "not authorized" message is
+                             *  the actionable error to show first. */}
                             <div className='flex gap-2'>
-                              {hasInsufficientBalance ? (
+                              {hasInsufficientBalance &&
+                              (isExtensionPayerLocked ||
+                                extensionPayerValidation.isValid) ? (
                                 <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
                                   <AlertCircle className='h-4 w-4' />
-                                  <span>Insufficient LMLN balance for extension fee</span>
+                                  <span>
+                                    {!isExtensionPayerLocked && !extensionPayerValidation.isSelf
+                                      ? `The chosen delegate doesn't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`
+                                      : `You don't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`}
+                                  </span>
                                 </div>
-                              ) : needsApproval && loan.originationFee > 0n ? (
+                              ) : needsApproval &&
+                                loan.originationFee > 0n &&
+                                (isExtensionPayerLocked || extensionPayerValidation.isSelf) ? (
                                 <Button
                                   onClick={() => handleExtensionApproval(loan)}
                                   disabled={isApprovingExtension || isProcessingExtension}
                                   className='flex-1'
                                 >
-                                  {isApprovingExtension ? 'Approving...' : 'Approve LMLN'}
+                                  {isApprovingExtension ? 'Approving…' : 'Approve LMLN'}
                                 </Button>
                               ) : (
                                 <Button
                                   onClick={() => handleExtension(loan)}
-                                  disabled={isProcessingExtension || extensionDuration === 0}
+                                  disabled={
+                                    isProcessingExtension ||
+                                    extensionDuration === 0 ||
+                                    payerBlocks ||
+                                    // Delegate must have sufficient allowance too —
+                                    // currentLmlnAllowance is auto-targeted to them.
+                                    (!isExtensionPayerLocked &&
+                                      !extensionPayerValidation.isSelf &&
+                                      needsApproval &&
+                                      loan.originationFee > 0n)
+                                  }
                                   className='flex-1'
                                 >
-                                  {isProcessingExtension ? 'Processing...' : 'Confirm Extension'}
+                                  {isProcessingExtension ? 'Processing…' : 'Confirm Extension'}
                                 </Button>
                               )}
                               <Button

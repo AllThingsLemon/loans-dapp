@@ -6,12 +6,15 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
+import { OriginationPayerField } from '../common/OriginationPayerField'
+import type { DelegateValidationResult } from '../../hooks/loans/useDelegateValidation'
 
 interface LoanSummaryProps {
   calculation: any
   tokenConfig: any
   collateralSymbol?: string
   hasInsufficientLmln: boolean
+  hasInsufficientCollateral: boolean
   hasInsufficientLiquidity: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
@@ -27,6 +30,14 @@ interface LoanSummaryProps {
   needsApproval: boolean
   isDashboard?: boolean
   selectedLtvOption?: { ltv: bigint; fee: bigint }
+  // Origination-fee payer field (shown only in dashboard mode where the CTA exists).
+  originationPayerInput: string
+  onOriginationPayerChange: (value: string) => void
+  isPayerLocked: boolean
+  onTogglePayerLock: () => void
+  payerValidation: DelegateValidationResult
+  /** True when the LMLN reads/CTA target a delegate, not the connected wallet. */
+  delegateInUse: boolean
 }
 
 export function LoanSummary({
@@ -34,6 +45,7 @@ export function LoanSummary({
   tokenConfig,
   collateralSymbol,
   hasInsufficientLmln,
+  hasInsufficientCollateral,
   hasInsufficientLiquidity,
   userLmlnBalance,
   operationError,
@@ -48,7 +60,13 @@ export function LoanSummary({
   needsCollateralApproval,
   needsApproval,
   isDashboard = false,
-  selectedLtvOption
+  selectedLtvOption,
+  originationPayerInput,
+  onOriginationPayerChange,
+  isPayerLocked,
+  onTogglePayerLock,
+  payerValidation,
+  delegateInUse
 }: LoanSummaryProps) {
   // Don't fall back to tokenConfig.nativeToken.symbol — that's the chain's
   // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
@@ -220,17 +238,45 @@ export function LoanSummary({
         </div>
 
         {isDashboard && (
+          <div className='mt-6'>
+            <OriginationPayerField
+              value={originationPayerInput}
+              onChange={onOriginationPayerChange}
+              validation={payerValidation}
+              isLocked={isPayerLocked}
+              onToggleLock={onTogglePayerLock}
+              feeTokenSymbol={tokenConfig?.feeToken.symbol || 'LMLN'}
+              feeTokenDecimals={tokenConfig?.feeToken.decimals ?? 18}
+            />
+          </div>
+        )}
+
+        {isDashboard && (
           <div className='text-center mt-6'>
             {hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                Insufficient pool liquidity for this loan amount. Please try a smaller amount.
+                Not enough liquidity in the pool for this loan amount. Try a smaller amount.
               </p>
             )}
-            {hasInsufficientLmln && !hasInsufficientLiquidity && (
+            {hasInsufficientCollateral && !hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                Insufficient {tokenConfig?.feeToken.symbol || 'LMLN'} balance to cover the origination fee.
+                You don&apos;t have enough {collateralSymbol || 'collateral'} in your wallet to back this loan.
               </p>
             )}
+            {/* userLmlnBalance is the fee payer's balance (delegate or borrower).
+             *  When a delegate is in use but not yet authorized, the field's
+             *  own "not authorized" message is the actionable one — suppress
+             *  the balance warning until the auth check passes so the user
+             *  isn't shown two errors at once. */}
+            {hasInsufficientLmln &&
+              !hasInsufficientLiquidity &&
+              (!delegateInUse || payerValidation.isValid) && (
+                <p className='text-sm text-destructive mb-3'>
+                  {delegateInUse
+                    ? `The chosen delegate doesn't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} to cover the fee.`
+                    : `You don't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} to cover the fee.`}
+                </p>
+              )}
             <Button
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold py-3 px-8 text-lg'
               disabled={!calculation.isValid}

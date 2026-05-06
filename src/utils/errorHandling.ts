@@ -72,6 +72,7 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   LoanNotFound: 'Loan not found.',
   NoFeePrice: 'No fee price is configured.',
   NotDivisible: 'Amount must be evenly divisible by the payment cycle.',
+  OriginationDelegateNotAuthorized: "That wallet hasn't authorized you to pay its fees.",
   PaymentTooLow: 'Payment amount is too low.',
   RangeOverlap: 'Configuration ranges must not overlap.',
   SameAddress: 'Source and destination addresses must be different.',
@@ -133,6 +134,7 @@ const ERROR_SELECTOR_MAP: Record<string, string> = {
   '0x0e7e621d': 'LoanNotFound',
   '0xa710449c': 'NoFeePrice',
   '0x5ed1c7e5': 'NotDivisible',
+  '0x2ec0d7b3': 'OriginationDelegateNotAuthorized',
   '0xee1aff09': 'RangeOverlap',
   '0x367558c3': 'SameAddress',
   '0x218e0a07': 'TooLarge',
@@ -249,12 +251,53 @@ function findErrorNameInText(text: string): string | null {
 }
 
 /**
+ * Translate awkward token-contract revert strings into plain English.
+ * Catches both standard OpenZeppelin patterns and the WLEMX-style "amount <
+ * balance" wording. Returns null when nothing matches.
+ */
+function translateTokenRevert(reason: string): string | null {
+  // Most ERC20 reverts prefix the symbol (e.g. "WLEMX: ...", "ERC20: ...").
+  const prefixMatch = reason.match(/^([A-Za-z0-9]+):\s*(.+)$/)
+  const symbol = prefixMatch ? prefixMatch[1] : null
+  const rest = prefixMatch ? prefixMatch[2] : reason
+  const tokenLabel = symbol && symbol !== 'ERC20' ? symbol : 'tokens'
+
+  // Insufficient balance — covers "amount < balance" (LMLN/WLEMX phrasing),
+  // "exceeds balance" (OpenZeppelin), and similar variants.
+  if (
+    /amount\s*<\s*balance|exceeds\s+balance|insufficient\s+balance|transfer\s+amount\s+exceeds\s+balance/i.test(
+      rest
+    )
+  ) {
+    return `Not enough ${tokenLabel} in your wallet for this transaction.`
+  }
+  // Insufficient allowance — covers OpenZeppelin's "insufficient allowance"
+  // and custom variants like "amount > allowance".
+  if (/insufficient\s+allowance|amount\s*>\s*allowance|exceeds\s+allowance/i.test(rest)) {
+    return `Your ${tokenLabel} approval isn't large enough for this transaction.`
+  }
+  return null
+}
+
+/**
  * Extract meaningful error message from contract error
  */
 export const extractErrorMessage = (error: ContractError): string => {
-  // 1. Walk the viem cause chain for a decoded custom error (cleanest path)
+  // 1. Walk the viem cause chain for a decoded revert (cleanest path)
   const revertError = findRevertedError(error)
   if (revertError) {
+    // Standard Solidity `Error(string)` revert — the human-readable reason
+    // lives in args[0]. Without this branch we'd render "Contract error: Error".
+    if (revertError.errorName === 'Error') {
+      const reason = revertError.args?.[0]
+      if (typeof reason === 'string' && reason.length > 0) {
+        return translateTokenRevert(reason) ?? reason
+      }
+    }
+    // Standard Solidity `Panic(uint256)` — internal compiler-emitted reverts.
+    if (revertError.errorName === 'Panic') {
+      return 'The contract hit an internal error (Solidity panic).'
+    }
     const friendly = CONTRACT_ERROR_MESSAGES[revertError.errorName]
     return friendly ?? `Contract error: ${revertError.errorName}`
   }
@@ -328,6 +371,14 @@ export const handleContractError = (
   // Don't show error toast for user rejections - user knows they cancelled
   if (isUserRejection(error)) {
     return
+  }
+
+  // Surface the full error shape in dev so we can see exactly what the RPC
+  // returned (selector, decoded errorName, cause chain). Production builds
+  // strip this out via NODE_ENV checks bundled by Next.
+  if (process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.error('[contract error]', error)
   }
 
   const errorMessage = extractErrorMessage(error)

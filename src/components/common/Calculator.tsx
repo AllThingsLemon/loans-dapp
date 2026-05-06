@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useAccount } from 'wagmi'
 import { Button } from '../../components/ui/button'
 import { useLoans } from '../../hooks/useLoans'
 import type { UseLoansReturn } from '../../hooks/types'
@@ -19,6 +20,8 @@ import {
 } from '../../utils/errorHandling'
 import { useCollateralManager } from '../../hooks/useCollateralManager'
 import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
+import { useDelegateValidation } from '../../hooks/loans/useDelegateValidation'
+import { DelegationManager } from './DelegationManager'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -117,6 +120,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
+  const { address } = useAccount()
 
   // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
   // even when only one token is configured. No auto-selection.
@@ -140,6 +144,19 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const [loanAmount, setLoanAmount] = useState(0)
   const [duration, setDuration] = useState<number>(0)
   const [ltv, setLtv] = useState(0)
+
+  // Origination-fee payer field — defaults to the connected wallet (locked).
+  // The user can unlock to delegate the fee to another wallet, which must
+  // have authorized them via setOriginationDelegate(borrower, true).
+  const [originationPayerInput, setOriginationPayerInput] = useState('')
+  const [isPayerLocked, setIsPayerLocked] = useState(true)
+  // Sync the input to the connected wallet whenever the wallet changes and
+  // the field is still locked. Don't clobber a user-typed delegate.
+  useEffect(() => {
+    if (isPayerLocked) {
+      setOriginationPayerInput(address ?? '')
+    }
+  }, [address, isPayerLocked])
 
   // Get initial loan config and options - moved up to avoid initialization error
   const initialHookData: UseLoansReturn = useLoans()
@@ -209,10 +226,24 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
   }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
 
-  // Get the loan operations with the calculated request
+  // Validate the typed payer address (format + on-chain delegation). Balance
+  // and allowance shortfalls are surfaced by LoanSummary's existing
+  // hasInsufficientLmln warning, which auto-targets whoever pays.
+  const payerValidation = useDelegateValidation(originationPayerInput)
+
+  // Re-target LMLN reads + initiateLoan args to the delegate as soon as the
+  // user has unlocked the field and typed a non-self address that parses —
+  // even before the delegation check completes — so balance/allowance reads
+  // start firing against the right wallet immediately.
+  const effectiveOriginationPayer =
+    !isPayerLocked && payerValidation.normalizedAddress && !payerValidation.isSelf
+      ? payerValidation.normalizedAddress
+      : undefined
+
   const loanOperations = useLoans({
     loanRequest,
-    selectedLtvOption
+    selectedLtvOption,
+    originationPayer: effectiveOriginationPayer
   })
 
   // Filter out user rejections from operation errors - don't show them in UI
@@ -295,7 +326,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       !loanOperations.isSimulating &&
       !!loanOperations.calculationData &&
       !loanOperations.hasInsufficientLmln &&
-      !loanOperations.hasInsufficientLiquidity
+      !loanOperations.hasInsufficientCollateral &&
+      !loanOperations.hasInsufficientLiquidity &&
+      payerValidation.isValid
 
     const priceError = buildPriceError(
       loanOperations.isSimulating,
@@ -328,7 +361,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.hasInsufficientLmln,
     loanOperations.hasInsufficientLiquidity,
     perAssetConfig.interestAprConfigs,
-    loanOperations.userLmlnBalance
+    loanOperations.userLmlnBalance,
+    loanOperations.hasInsufficientCollateral,
+    payerValidation.isValid
   ])
 
   // Check if collateral ERC20 approval is needed (WLEMX → CollateralManager)
@@ -495,6 +530,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         tokenConfig={tokenConfig}
         collateralSymbol={selectedCollateral?.symbol}
         hasInsufficientLmln={loanOperations.hasInsufficientLmln}
+        hasInsufficientCollateral={loanOperations.hasInsufficientCollateral}
         hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
@@ -510,12 +546,31 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         needsApproval={needsApproval}
         isDashboard={isDashboard}
         selectedLtvOption={selectedLtvOption}
+        originationPayerInput={originationPayerInput}
+        onOriginationPayerChange={setOriginationPayerInput}
+        isPayerLocked={isPayerLocked}
+        onTogglePayerLock={() => {
+          // Re-locking always snaps back to the connected wallet.
+          setIsPayerLocked((wasLocked) => {
+            if (!wasLocked) {
+              setOriginationPayerInput(address ?? '')
+            }
+            return !wasLocked
+          })
+        }}
+        payerValidation={payerValidation}
+        delegateInUse={!!effectiveOriginationPayer}
       />
     </div>
   )
 
   if (isDashboard) {
-    return calculatorContent
+    return (
+      <div>
+        {calculatorContent}
+        <DelegationManager />
+      </div>
+    )
   }
 
   return (
