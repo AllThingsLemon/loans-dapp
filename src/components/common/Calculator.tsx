@@ -280,11 +280,14 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     // typed, below-min, etc.).
     const baseWithDials = { ...base, apr: aprFromDuration }
 
-    // Check if we're still loading contract configuration
+    // Pre-conditions for collateral calculation aren't met yet — either the
+    // contract config is still loading or the user hasn't picked a collateral.
+    // Either way, render a neutral em-dash to match the "no calc yet" branch
+    // below; the form surfaces actionable validation elsewhere.
     if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
       return {
         ...baseWithDials,
-        priceError: 'Loading contract data...'
+        priceError: '—'
       }
     }
 
