@@ -421,7 +421,7 @@ export const handleContractError = (
     description: string
     variant?: 'destructive'
   }) => void,
-  successTitle: string = 'Operation Failed'
+  errorTitle: string = 'Operation Failed'
 ): void => {
   // Don't show error toast for user rejections - user knows they cancelled
   if (isUserRejection(error)) {
@@ -439,7 +439,7 @@ export const handleContractError = (
   const errorMessage = extractErrorMessage(error)
 
   showToast({
-    title: successTitle,
+    title: errorTitle,
     description: errorMessage,
     variant: 'destructive'
   })

@@ -242,7 +242,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     setIsProcessing(actionName)
     try {
       await action()
-      toast({ title: '\u2705 Success', description: successMsg })
+      // Title the toast with the actual action ("\u2705 Claim Earnings Successful")
+      // instead of a generic "\u2705 Success" shared by five different operations.
+      // Split camelCase names ("TransferAccount" \u2192 "Transfer Account").
+      const title = actionName.replace(/([a-z])([A-Z])/g, '$1 $2')
+      toast({ title: `\u2705 ${title} Successful`, description: successMsg })
       await refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, `${actionName} Failed`)

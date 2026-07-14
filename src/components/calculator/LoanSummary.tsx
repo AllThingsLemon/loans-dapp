@@ -3,6 +3,7 @@
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
+import { formatDuration } from '../../utils/format'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
@@ -192,7 +193,9 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                Monthly Payment
+                {/* Labeled by the actual cycle, not "Monthly" — a 14-day
+                    cycle config would understate the real monthly cost 2×. */}
+                Payment per Cycle
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
@@ -230,13 +233,15 @@ export function LoanSummary({
                 >
                   {calculation.loanCycles} {calculation.loanCycles === 1 ? 'cycle' : 'cycles'}
                 </span>
-                {calculation.loanCycleDuration && (
+                {calculation.loanCycleDuration ? (
                   <div
                     className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
                   >
-                    {Math.round(Number(calculation.loanCycleDuration) / (24 * 60 * 60))} day loan cycles
+                    {/* formatDuration handles sub-day (testnet) cycles that
+                        used to render as "0 day loan cycles". */}
+                    {formatDuration(calculation.loanCycleDuration)} loan cycles
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>

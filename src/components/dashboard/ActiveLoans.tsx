@@ -161,6 +161,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       tokenConfig.loanToken.decimals
     )
     const rounded = Math.ceil(parseFloat(minPayment) * 10) / 10
+    // Rounding a cost up is the safe direction, but near payoff the rounded
+    // minimum can exceed the remaining balance — and the payment guard then
+    // rejects the app's own default suggestion with "Payment Too Large".
+    // Clamp to the exact remaining balance in that case.
+    const remaining = formatTokenAmount(
+      loan.remainingBalance,
+      tokenConfig.loanToken.decimals
+    )
+    if (rounded > parseFloat(remaining)) {
+      return remaining
+    }
     return rounded.toFixed(1)
   }
 
@@ -723,8 +734,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </span>
                   <span>
                     {isInGracePeriod ? 'Principal' : 'Remaining'}:{' '}
+                    {/* remainingBalance in both phases — showing the original
+                        loanAmount here overstated the debt for borrowers who
+                        prepaid part of the principal before the grace window. */}
                     {formatAmountWithSymbol(
-                      isInGracePeriod ? loan.loanAmount : loan.remainingBalance,
+                      loan.remainingBalance,
                       tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </span>
@@ -796,6 +810,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <Dialog
                     open={isPaymentDialogOpen && selectedLoan === loan.id}
                     onOpenChange={(open) => {
+                      // Don't let ESC / outside-click dismiss mid-transaction —
+                      // the user would lose the pending-payment context.
+                      if (!open && (isApprovingPayment || isProcessingPayment)) {
+                        return
+                      }
                       setIsPaymentDialogOpen(open)
                       if (!open) {
                         setSelectedLoan(null)
@@ -1071,6 +1090,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       selectedLoanForExtension === loan.id
                     }
                     onOpenChange={(open) => {
+                      // Don't dismiss mid-transaction (see payment dialog).
+                      if (
+                        !open &&
+                        (isApprovingExtension || isProcessingExtension)
+                      ) {
+                        return
+                      }
                       setIsExtensionDialogOpen(open)
                       if (!open) {
                         setSelectedLoanForExtension(null)
@@ -1212,6 +1238,26 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                              *  We suppress the balance warning while a delegate is unlocked
                              *  but unauthorized — the field's "not authorized" message is
                              *  the actionable error to show first. */}
+                            {/* A verified delegate with insufficient allowance used to
+                                leave "Confirm Extension" inexplicably dead while the
+                                field showed green — say why and what to do. */}
+                            {!isExtensionPayerLocked &&
+                              !extensionPayerValidation.isSelf &&
+                              extensionPayerValidation.isValid &&
+                              needsApproval &&
+                              loan.originationFee > 0n &&
+                              !hasInsufficientBalance && (
+                                <p className='text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4 shrink-0' />
+                                  <span>
+                                    The delegate hasn&apos;t approved enough{' '}
+                                    {tokenConfig?.feeToken.symbol || 'LMLN'} to the
+                                    Loans contract. They need to grant approval (the
+                                    Delegation Manager does this when authorizing)
+                                    before you can extend.
+                                  </span>
+                                </p>
+                              )}
                             <div className='flex gap-2'>
                               {hasInsufficientBalance &&
                               (isExtensionPayerLocked ||

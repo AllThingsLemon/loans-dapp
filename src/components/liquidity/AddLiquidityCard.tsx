@@ -450,6 +450,30 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
               Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
             </p>
           )}
+          {/* The Deposit button used to sit inexplicably disabled when a
+              required choice was missing (or no tiers are enabled, in which
+              case the tier section doesn't render at all) — say why. */}
+          {amount && selectedAsset === undefined && (
+            <p className='text-sm text-muted-foreground'>
+              Select a token above to continue.
+            </p>
+          )}
+          {selectedAsset !== undefined && enabledTiers.length === 0 && (
+            <p className='text-sm text-destructive'>
+              No lock durations are currently enabled for this token — deposits
+              are unavailable.
+            </p>
+          )}
+          {amount &&
+            selectedAsset !== undefined &&
+            enabledTiers.length > 0 &&
+            selectedTier === undefined &&
+            !isBelowMinimum &&
+            !insufficientBalance && (
+              <p className='text-sm text-muted-foreground'>
+                Select a lock duration to continue.
+              </p>
+            )}
         </div>
 
         <div>

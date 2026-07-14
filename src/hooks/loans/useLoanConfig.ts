@@ -64,12 +64,12 @@ export const useLoanConfig = (asset?: `0x${string}`) => {
   const ltvOptions = useMemo(() => {
     if (!originationFeesRaw) return []
     const [ltvs = [], fees = []] = originationFeesRaw || []
-    return ltvs
-      .map((ltv, index) => ({
-        ltv,
-        fee: fees[index] ?? 0n
-      }))
-      .filter((option) => option.fee && option.fee > 0n)
+    // Every configured tier is selectable — a zero fee is a legitimate
+    // configuration (free origination at that LTV), not a missing entry.
+    return ltvs.map((ltv, index) => ({
+      ltv,
+      fee: fees[index] ?? 0n
+    }))
   }, [originationFeesRaw])
 
   const isLoading =

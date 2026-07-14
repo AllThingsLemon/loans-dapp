@@ -526,7 +526,9 @@ export const useLoanOperations = (
         throw new Error('Unable to calculate collateral amount. Please try again.')
       }
       
-      if (!originationFee || originationFee === 0n) {
+      // undefined means the calculation hasn't resolved; 0n is a legitimate
+      // zero-fee LTV tier and must not block creation.
+      if (originationFee === undefined) {
         throw new Error('Unable to calculate origination fee. Please try again.')
       }
 
@@ -676,13 +678,7 @@ export const useLoanOperations = (
 
       // Check if we need to approve tokens first
       if (!currentAllowance || currentAllowance < grossAmount) {
-        try {
-          // First approve the tokens
-          await approveTokenAllowance(amount)
-        } catch (error) {
-          // Re-throw the error to be handled by the calling component
-          throw error
-        }
+        await approveTokenAllowance(amount)
       }
 
       const nativeFee = paymentNativeFee ?? 0n

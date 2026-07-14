@@ -173,9 +173,14 @@ export function LoanParameters({
                 }
 
                 const numValue = Number(value)
-                if (numValue <= maxLoanAmount) {
-                  setLoanAmount(numValue)
+                // Reject garbage and negatives (a negative passed the old
+                // <= max check and flowed into parseUnits), and clamp
+                // above-max input to the max instead of silently swallowing
+                // the keystroke — a frozen input reads as a broken app.
+                if (!Number.isFinite(numValue) || numValue < 0) {
+                  return
                 }
+                setLoanAmount(Math.min(numValue, maxLoanAmount))
               }}
               min={minLoanAmount > 0 ? minLoanAmount : undefined}
               max={maxLoanAmount}
