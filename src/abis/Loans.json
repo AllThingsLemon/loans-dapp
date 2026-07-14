@@ -1,7 +1,17 @@
 [
   {
     "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [],
     "name": "AddressZero",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "AlreadySet",
     "type": "error"
   },
   {
@@ -1129,37 +1139,6 @@
         "type": "address"
       },
       {
-        "indexed": true,
-        "internalType": "address",
-        "name": "oldToken",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newToken",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "OriginationFeeTokenSet",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "updater",
-        "type": "address"
-      },
-      {
         "indexed": false,
         "internalType": "uint256[]",
         "name": "ltvs",
@@ -2114,6 +2093,11 @@
         "internalType": "address",
         "name": "originationFeeReceiverAddress",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "aprYearDuration",
+        "type": "uint256"
       }
     ],
     "name": "initialize",
@@ -2395,6 +2379,11 @@
       {
         "internalType": "uint256",
         "name": "loanCycleDuration",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "balloonGraceSnapshot",
         "type": "uint256"
       }
     ],
@@ -2841,11 +2830,6 @@
         "internalType": "uint256",
         "name": "loanCycleDuration",
         "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "aprYearDuration",
-        "type": "uint256"
       }
     ],
     "name": "setLoanConfiguration",
@@ -2947,19 +2931,6 @@
       }
     ],
     "name": "setOriginationFeeSplit",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newToken",
-        "type": "address"
-      }
-    ],
-    "name": "setOriginationFeeToken",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
