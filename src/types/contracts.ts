@@ -14,6 +14,7 @@ export interface LoanStructResponse {
   readonly [10]: bigint // originationFee
   readonly [11]: bigint // collateralAmount
   readonly [12]: bigint // loanCycleDuration
+  readonly [13]: bigint // balloonGraceSnapshot
 }
 
 export interface LoanConfigResponse {
@@ -46,7 +47,11 @@ export function parseLoanStruct(data: LoanStructResponse) {
     ltv: data[9],
     originationFee: data[10],
     collateralAmount: data[11],
-    loanCycleDuration: data[12]
+    loanCycleDuration: data[12],
+    // Grace window captured at loan creation. Loans created before the
+    // contract upgrade that added this field read 0 — callers must fall
+    // back to the global loanConfig.balloonPaymentGraceDuration for those.
+    balloonGraceSnapshot: data[13] ?? 0n
   }
 }
 

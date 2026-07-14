@@ -20,6 +20,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
+import { floorToDecimals } from '@/src/utils/format'
 import { Minus, Loader2, Clock, CheckCircle2, ArrowDownToLine } from 'lucide-react'
 import {
   handleContractError,
@@ -108,7 +109,8 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
   const netReceiveDisplay = useMemo(() => {
     if (!withdrawalFeePct || !parsedAmount || !feeConfig) return undefined
     const net = parsedAmount - (parsedAmount * feeConfig.feeBps) / 10000n
-    return parseFloat(formatTokenAmount(net, decimals)).toLocaleString('en-US', {
+    // Floor — never overstate what the user will receive.
+    return floorToDecimals(parseFloat(formatTokenAmount(net, decimals)), 2).toLocaleString('en-US', {
       maximumFractionDigits: 2,
     })
   }, [withdrawalFeePct, parsedAmount, feeConfig, decimals])
@@ -188,7 +190,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
               className='hover:text-foreground transition-colors'
             >
               Unlocked:{' '}
-              {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+              {floorToDecimals(parseFloat(formattedWithdrawable), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
               {symbol}
             </button>
           </div>
@@ -197,7 +199,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
         {insufficientBalance && (
           <p className='text-sm text-destructive'>
             Insufficient unlocked balance. You can request up to{' '}
-            {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+            {floorToDecimals(parseFloat(formattedWithdrawable), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
             {symbol}.
           </p>
         )}
@@ -261,7 +263,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
 
                   {isFullyFunded && withdrawalFeePct && (
                     <p className='text-xs text-muted-foreground'>
-                      {withdrawalFeePct}% fee on claim · ~{parseFloat(formatTokenAmount(req.amount - (req.amount * feeConfig!.feeBps) / 10000n, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol} net
+                      {withdrawalFeePct}% fee on claim · ~{floorToDecimals(parseFloat(formatTokenAmount(req.amount - (req.amount * feeConfig!.feeBps) / 10000n, decimals)), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol} net
                     </p>
                   )}
 

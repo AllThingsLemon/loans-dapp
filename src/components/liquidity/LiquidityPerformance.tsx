@@ -22,6 +22,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
+import { floorToDecimals } from '@/src/utils/format'
 import {
   BarChart3,
   TrendingUp,
@@ -55,12 +56,14 @@ function StatItem({ label, value, warning }: { label: string; value: string; war
 }
 
 function formatCurrency(value: bigint, decimals: number, symbol: string): string {
-  const formatted = parseFloat(formatTokenAmount(value, decimals))
+  // Floor, never round up — these are balances/claimable amounts, and a
+  // rounded-up display overstates what the user can actually withdraw.
+  const formatted = floorToDecimals(parseFloat(formatTokenAmount(value, decimals)), 4)
   return `${formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${symbol}`
 }
 
 function formatShares(value: bigint, decimals: number): string {
-  const formatted = parseFloat(formatTokenAmount(value, decimals))
+  const formatted = floorToDecimals(parseFloat(formatTokenAmount(value, decimals)), 4)
   return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 }
 
@@ -140,6 +143,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     poolStatus,
     feeConfig,
     liquidityStatus,
+    currentUtilization,
     depositEntries,
     hasPosition,
     totalLoansIssued,
@@ -198,13 +202,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
 
+  // Use the pool's own utilization getter (returned in basis points) — the
+  // previous local formula divided by deposited−withdrawn, which ignores the
+  // principal deficit and permanently understates utilization once any loan
+  // has defaulted (verified live: contract 33.10% vs local formula 38.02%…
+  // and diverging the other way as deficits grow).
   const poolUtilization = useMemo(() => {
-    if (!liquidityStatus) return 0
-    const totalDeposited = liquidityStatus.principalDeposited - liquidityStatus.principalWithdrawn
-    if (totalDeposited === 0n) return 0
-    const util = (Number(liquidityStatus.principalInLoans) / Number(totalDeposited)) * 100
+    if (currentUtilization === undefined) return 0
+    const util = Number(currentUtilization) / 100
     return Math.min(Math.max(util, 0), 100)
-  }, [liquidityStatus])
+  }, [currentUtilization])
 
   const canDistributeEarnings = useMemo(() => {
     if (!poolStatus) return false

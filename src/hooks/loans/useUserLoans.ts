@@ -85,6 +85,7 @@ const combineLoanData = (
     collateralToken: loan.collateralToken,
     collateralAmount: loan.collateralAmount,
     loanCycleDuration: loan.loanCycleDuration,
+    balloonGraceSnapshot: loan.balloonGraceSnapshot,
 
     // Contract-derived values with defaults
     status: status ?? LOAN_STATUS.ACTIVE,

@@ -34,6 +34,7 @@ export interface Loan {
   // Computed helper properties (derived from contract data)
   originalDuration: bigint // Duration at loan creation (max allowed extension)
   loanCycleDuration: bigint // From loans struct — used for adaptive countdown buffer
+  balloonGraceSnapshot: bigint // Grace window captured at creation (0 for pre-upgrade loans)
   remainingBalance: bigint // Calculated from contract values, not manually
   dueTimestamp: bigint // Calculated from timeToDefault
 }
@@ -49,19 +50,26 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   // though makeLoanPayment will revert with LoanNotActive. Compute an
   // effective status here so the UI reflects reality: badge as Defaulted,
   // drop from active list, and prevent the doomed payment flow.
-  const grace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
+  //
+  // Grace comes from the loan's own snapshot (fixed at creation) so an admin
+  // change to the global config can't retroactively re-badge existing loans.
+  // Loans created before the upgrade that added the snapshot read 0 — fall
+  // back to the global config for those.
+  const globalGrace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
   const effectiveLoans = useMemo(() => {
     const nowSec = BigInt(Math.floor(Date.now() / 1000))
     return userData.loans.flatMap((loan) => {
       if (!loan) return []
       if (loan.status !== LOAN_STATUS.ACTIVE) return [loan]
+      const grace =
+        loan.balloonGraceSnapshot > 0n ? loan.balloonGraceSnapshot : globalGrace
       const defaultAt = loan.createdAt + loan.duration + grace
       if (nowSec >= defaultAt) {
         return [{ ...loan, status: LOAN_STATUS.DEFAULT }]
       }
       return [loan]
     })
-  }, [userData.loans, grace])
+  }, [userData.loans, globalGrace])
 
   const activeLoans = useMemo(
     () =>

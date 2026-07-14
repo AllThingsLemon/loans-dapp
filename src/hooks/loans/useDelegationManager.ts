@@ -64,28 +64,17 @@ export function useDelegationManager(
 
   const enable = !!normalizedBorrower && !!address && !isSelf
 
-  // The ABI doesn't name the `originationDelegations` mapping args, so we
-  // read both directions and accept whichever returns true. Raw
-  // useReadContract avoids a TS2589 deep-instantiation error that occurs
-  // when both the typed read and the typed write are imported in this file.
+  // originationDelegations[payer][borrower] — the connected wallet is the
+  // payer here (it calls setOriginationDelegate), candidate is the borrower.
+  // Reading both arg orders and OR-ing (as this hook once did) made the UI
+  // claim "delegated" when only the reverse direction existed, hiding the
+  // delegate CTA the user actually needed. Raw useReadContract avoids a
+  // TS2589 deep-instantiation error that occurs when both the typed read and
+  // the typed write are imported in this file.
   const {
-    data: readA,
-    isLoading: isLoadingA,
-    refetch: refetchA
-  } = useReadContract({
-    address: loansContractAddress,
-    abi: loansAbi,
-    functionName: 'originationDelegations',
-    args:
-      enable && normalizedBorrower && address
-        ? [normalizedBorrower, address]
-        : undefined,
-    query: { enabled: enable && !!loansContractAddress }
-  })
-  const {
-    data: readB,
-    isLoading: isLoadingB,
-    refetch: refetchB
+    data: delegationRead,
+    isLoading: isCheckingDelegation,
+    refetch: refetchDelegation
   } = useReadContract({
     address: loansContractAddress,
     abi: loansAbi,
@@ -96,11 +85,8 @@ export function useDelegationManager(
         : undefined,
     query: { enabled: enable && !!loansContractAddress }
   })
-  const isCheckingDelegation = isLoadingA || isLoadingB
-  const bothUndefined = readA === undefined && readB === undefined
-  const isAlreadyDelegated = bothUndefined
-    ? undefined
-    : Boolean(readA) || Boolean(readB)
+  const isAlreadyDelegated =
+    delegationRead === undefined ? undefined : Boolean(delegationRead)
 
   // Connected wallet's LMLN allowance to the Loans contract — drives the
   // "skip approval" path on delegate().
@@ -162,8 +148,8 @@ export function useDelegationManager(
               'originationDelegations'
         )
     })
-    await Promise.all([refetchA(), refetchB()])
-  }, [queryClient, refetchA, refetchB])
+    await refetchDelegation()
+  }, [queryClient, refetchDelegation])
 
   const delegate = useCallback(
     async (borrower: `0x${string}`) => {

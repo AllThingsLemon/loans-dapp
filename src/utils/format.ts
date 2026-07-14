@@ -7,6 +7,17 @@ export const formatAmount = (amount: bigint, decimals = 18): string => {
   return formatTokenAmount(amount, decimals)
 }
 
+/**
+ * Floor a value to N decimal places for display. Balances and receivable
+ * amounts must round DOWN — half-up rounding shows users money they don't
+ * quite have (99.996 renders as "100.00", and typing that back in then fails
+ * the exact-amount balance check).
+ */
+export const floorToDecimals = (value: number, decimals: number): number => {
+  const factor = 10 ** decimals
+  return Math.floor(value * factor) / factor
+}
+
 export const formatAmountWithSymbol = (
   amount: bigint,
   symbol: string,

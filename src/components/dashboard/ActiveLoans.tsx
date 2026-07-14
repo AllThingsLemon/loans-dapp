@@ -528,8 +528,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
         // Countdown target — derived entirely from absolute timestamps on the
-        // loan struct (and loanConfig.balloonPaymentGraceDuration) so the value
-        // does not shift when the component re-renders. Three phases:
+        // loan struct so the value does not shift when the component
+        // re-renders. Three phases:
         //
         //   1. Interest NOT fully paid:
         //      count to the next cycle's payment deadline (capped at the loan
@@ -545,9 +545,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         // expected, since this is sized for mainnet cycle lengths.
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
-        const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
-          ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
-          : 0
+        // Per-loan grace snapshot (fixed at creation) so a config change
+        // can't shift existing loans' default countdowns; pre-upgrade loans
+        // have no snapshot (0) and fall back to the global config.
+        const graceDurationMs =
+          loan.balloonGraceSnapshot > 0n
+            ? Number(loan.balloonGraceSnapshot) * 1000
+            : loanConfig?.balloonPaymentGraceDuration
+              ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
+              : 0
         const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
 
         // End of the next cycle the user must pay, accounting for prepayments.
