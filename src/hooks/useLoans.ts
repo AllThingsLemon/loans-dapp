@@ -3,6 +3,7 @@ import { useUserLoans } from './loans/useUserLoans'
 import { useLoanOperations } from './loans/useLoanOperations'
 import { useLoanConfig } from './loans/useLoanConfig'
 import { LOAN_STATUS } from '@/src/constants'
+import { isPastDefault } from '@/src/utils/loanStatus'
 import type { UseLoansOptions, UseLoansReturn } from './types'
 export type { LoanRequest } from './loans/useLoanOperations'
 
@@ -61,10 +62,15 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     return userData.loans.flatMap((loan) => {
       if (!loan) return []
       if (loan.status !== LOAN_STATUS.ACTIVE) return [loan]
-      const grace =
-        loan.balloonGraceSnapshot > 0n ? loan.balloonGraceSnapshot : globalGrace
-      const defaultAt = loan.createdAt + loan.duration + grace
-      if (nowSec >= defaultAt) {
+      if (
+        isPastDefault(
+          loan.createdAt,
+          loan.duration,
+          loan.balloonGraceSnapshot,
+          globalGrace,
+          nowSec
+        )
+      ) {
         return [{ ...loan, status: LOAN_STATUS.DEFAULT }]
       }
       return [loan]
