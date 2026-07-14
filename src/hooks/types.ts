@@ -67,6 +67,13 @@ export interface UseLoansReturn {
   availableLiquidity: bigint | undefined
   hasInsufficientLiquidity: boolean
 
+  // Protocol fees (read from chain)
+  paymentFeeBps: bigint
+  bpsDenominator: bigint
+  getGrossPaymentAmount: (amount: bigint) => bigint
+  initiateNativeFee: bigint | undefined
+  paymentNativeFee: bigint | undefined
+
   // Contract addresses
   loansContractAddress: `0x${string}` | undefined
 

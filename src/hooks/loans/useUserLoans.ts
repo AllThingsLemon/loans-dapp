@@ -1,8 +1,8 @@
 import { useMemo, useCallback } from 'react'
 import { useAccount } from 'wagmi'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import {
-  useReadLoansGetAccountLoanIds,
+  readLoansGetAccountLoanIds,
   readLoansLoans,
   readLoansLoanStatus,
   readLoansLoanPayment,
@@ -18,7 +18,6 @@ import { queryClient } from '../query/queryClient'
 import type { Loan } from '../useLoans'
 import { LOAN_STATUS, QUERY_CONFIG } from '@/src/constants'
 import { type LoanStructResponse, parseLoanStruct } from '@/src/types/contracts'
-import { usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 
 export interface UseUserLoansReturn {
@@ -103,17 +102,45 @@ const combineLoanData = (
   }
 }
 
+const LOAN_IDS_PAGE_SIZE = 50n
+
 export const useUserLoans = (): UseUserLoansReturn => {
   const { address } = useAccount()
-  // Get user's loan IDs
+  // Get ALL of the user's loan IDs, paging through getAccountLoanIds until a
+  // short page. A single fixed-limit call would silently hide any loan past
+  // the 50th — invisible loans can't be paid and default unnoticed.
   const {
     data: loanIds,
     isLoading: loadingIds,
     error: idsError,
     refetch: refetchLoanIds
-  // @ts-ignore — wagmi codegen: "Type instantiation is excessively deep" with large ABI
-  } = useReadLoansGetAccountLoanIds({
-    args: address ? [address, 0n, 50n] : undefined
+  } = useQuery({
+    queryKey: ['accountLoanIds', address],
+    queryFn: async () => {
+      const all: `0x${string}`[] = []
+      let offset = 0n
+      for (;;) {
+        let page: readonly `0x${string}`[]
+        try {
+          page = await readLoansGetAccountLoanIds(config, {
+            args: [address!, offset, LOAN_IDS_PAGE_SIZE]
+          })
+        } catch (pageError) {
+          // The first page failing is a real error; a later page failing
+          // (e.g. out-of-range offset when the count is an exact multiple
+          // of the page size) means we've read everything.
+          if (offset === 0n) throw pageError
+          break
+        }
+        all.push(...page)
+        if (BigInt(page.length) < LOAN_IDS_PAGE_SIZE) break
+        offset += LOAN_IDS_PAGE_SIZE
+      }
+      return all
+    },
+    enabled: !!address && !!config,
+    staleTime: QUERY_CONFIG.STALE_TIME,
+    gcTime: QUERY_CONFIG.GC_TIME
   })
 
   // Create queries for each loan's data
@@ -123,7 +150,10 @@ export const useUserLoans = (): UseUserLoansReturn => {
       queryFn: async () => {
         if (!config) throw new Error('Wagmi config not available')
 
-        try {
+        // No try/catch here: a fetch failure must reach React Query so it
+        // retries and surfaces `error` — swallowing it made the loan silently
+        // vanish from the dashboard on any RPC hiccup.
+        {
           // First, get basic loan info and status (these should work for all loans)
           const [loanInfo, status] = await Promise.all([
             readLoansLoans(config, { args: [loanId] }),
@@ -180,21 +210,21 @@ export const useUserLoans = (): UseUserLoansReturn => {
             timeToDefault,
             elapsedTimeInCycle
           )
-        } catch (error) {
-          return null
         }
       },
       enabled: !!config && !!loanId,
+      retry: 2,
       staleTime: QUERY_CONFIG.STALE_TIME,
       cacheTime: QUERY_CONFIG.GC_TIME
     }))
   })
 
-  // Extract loans data
+  // Extract loans data — filter both null (loan struct missing) and
+  // undefined (query errored / still loading).
   const loans = useMemo(() => {
     return loanQueries
       .map((query) => query.data)
-      .filter((loan): loan is Loan => loan !== null)
+      .filter((loan): loan is Loan => loan != null)
   }, [loanQueries])
 
   // Aggregate loading and error states

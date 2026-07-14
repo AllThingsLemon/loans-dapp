@@ -130,6 +130,21 @@ export function useDelegationManager(
   const [isApprovingLmln, setIsApprovingLmln] = useState(false)
   const [isWritingDelegation, setIsWritingDelegation] = useState(false)
 
+  // Wait for a tx to land and throw if it reverted — a reverted approval or
+  // delegation write must never surface as a success toast.
+  const waitForSuccess = useCallback(
+    async (hash: `0x${string}`, label: string) => {
+      if (!publicClient) return
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      if (receipt.status === 'reverted') {
+        throw new Error(
+          `${label} transaction was reverted on-chain. No changes were made — please try again.`
+        )
+      }
+    },
+    [publicClient]
+  )
+
   const refreshAfterTx = useCallback(async () => {
     // Drop all originationDelegations cache entries so any other consumer
     // (e.g. the borrower-side OriginationPayerField) refetches on next read,
@@ -165,9 +180,7 @@ export function useDelegationManager(
             functionName: 'approve',
             args: [loansContractAddress, maxUint256]
           })
-          if (publicClient) {
-            await publicClient.waitForTransactionReceipt({ hash: approvalHash })
-          }
+          await waitForSuccess(approvalHash, 'LMLN approval')
           await refetchAllowance()
         } finally {
           setIsApprovingLmln(false)
@@ -177,9 +190,7 @@ export function useDelegationManager(
       setIsWritingDelegation(true)
       try {
         const hash = await setDelegate({ args: [borrower, true] })
-        if (publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash })
-        }
+        await waitForSuccess(hash, 'Delegation')
         await refreshAfterTx()
       } finally {
         setIsWritingDelegation(false)
@@ -191,7 +202,7 @@ export function useDelegationManager(
       feeTokenAddress,
       hasMaxLmlnAllowance,
       approveLmln,
-      publicClient,
+      waitForSuccess,
       refetchAllowance,
       setDelegate,
       refreshAfterTx
@@ -204,15 +215,13 @@ export function useDelegationManager(
       setIsWritingDelegation(true)
       try {
         const hash = await setDelegate({ args: [borrower, false] })
-        if (publicClient) {
-          await publicClient.waitForTransactionReceipt({ hash })
-        }
+        await waitForSuccess(hash, 'Revocation')
         await refreshAfterTx()
       } finally {
         setIsWritingDelegation(false)
       }
     },
-    [address, setDelegate, publicClient, refreshAfterTx]
+    [address, setDelegate, waitForSuccess, refreshAfterTx]
   )
 
   const state: DelegationFormState =

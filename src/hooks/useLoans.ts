@@ -127,6 +127,13 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     availableLiquidity: operations.availableLiquidity,
     hasInsufficientLiquidity: operations.hasInsufficientLiquidity,
 
+    // Protocol fees
+    paymentFeeBps: operations.paymentFeeBps,
+    bpsDenominator: operations.bpsDenominator,
+    getGrossPaymentAmount: operations.getGrossPaymentAmount,
+    initiateNativeFee: operations.initiateNativeFee,
+    paymentNativeFee: operations.paymentNativeFee,
+
     // Contract addresses
     loansContractAddress: operations.loansContractAddress,
 
