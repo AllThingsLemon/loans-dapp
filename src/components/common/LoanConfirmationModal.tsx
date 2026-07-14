@@ -10,6 +10,8 @@ import {
 } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { AlertTriangle } from 'lucide-react'
+import { formatEther } from 'viem'
+import { extractErrorMessage } from '../../utils/errorHandling'
 
 interface LoanConfirmationModalProps {
   isOpen: boolean
@@ -26,6 +28,10 @@ interface LoanConfirmationModalProps {
   handleApproveLoanFee: () => Promise<void>
   needsCollateralApproval: boolean
   needsApproval: boolean
+  /** Native (gas-token) fee attached to initiateLoan, in wei */
+  nativeFee?: bigint
+  /** Native currency symbol for the connected chain (e.g. TLEMX) */
+  nativeSymbol?: string
 }
 
 export function LoanConfirmationModal({
@@ -42,13 +48,22 @@ export function LoanConfirmationModal({
   handleApproveCollateral,
   handleApproveLoanFee,
   needsCollateralApproval,
-  needsApproval
+  needsApproval,
+  nativeFee,
+  nativeSymbol
 }: LoanConfirmationModalProps) {
   const collateral = collateralSymbol || 'Collateral'
   const isBusy = isApprovingCollateral || isApprovingLoanFee || isCreatingLoan
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Don't let ESC / outside-click dismiss the modal mid-transaction —
+        // the user would lose all progress context while the tx is pending.
+        if (!open && !isBusy) onClose()
+      }}
+    >
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
@@ -99,6 +114,17 @@ export function LoanConfirmationModal({
                 {tokenConfig?.feeToken.symbol || 'Token'}
               </span>
             </div>
+            {nativeFee !== undefined && nativeFee > 0n && (
+              <div className='flex justify-between'>
+                <span className='font-medium'>Network Fee:</span>
+                <span>
+                  {Number(formatEther(nativeFee)).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })}{' '}
+                  {nativeSymbol || 'native token'}
+                </span>
+              </div>
+            )}
           </div>
 
           {(needsCollateralApproval || needsApproval) && (
@@ -116,7 +142,7 @@ export function LoanConfirmationModal({
 
           {operationError && (
             <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
-              {operationError.message}
+              {extractErrorMessage(operationError)}
             </div>
           )}
         </div>

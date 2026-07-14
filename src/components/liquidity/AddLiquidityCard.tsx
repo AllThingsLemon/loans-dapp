@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import { useAccount, useReadContract, useReadContracts } from 'wagmi'
-import { erc20Abi } from 'viem'
+import { erc20Abi, formatEther } from 'viem'
 import {
   Card,
   CardContent,
@@ -73,7 +73,8 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const [selectedAssetIndex, setSelectedAssetIndex] = useState<number | null>(null)
   const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
   const { toast } = useToast()
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
+  const nativeCurrencySymbol = chain?.nativeCurrency.symbol ?? 'native token'
 
   const {
     stableTokenAddress,
@@ -82,6 +83,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     feeConfig,
     approveToken,
     deposit,
+    depositNativeFee,
     refetch,
   } = liquidityPool
 
@@ -501,6 +503,17 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
                   <> — ~<span className='font-semibold text-foreground'>{depositFeeTokens} {symbol}</span> will be taken on top of the deposit amount</>
                 )}
                 .
+              </p>
+            )}
+            {depositNativeFee !== undefined && depositNativeFee > 0n && (
+              <p className='text-sm text-muted-foreground'>
+                A network fee of ~<span className='font-semibold text-foreground'>
+                  {Number(formatEther(depositNativeFee)).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })}{' '}
+                  {nativeCurrencySymbol}
+                </span>{' '}
+                is charged on deposit.
               </p>
             )}
             {requiresSwap && (

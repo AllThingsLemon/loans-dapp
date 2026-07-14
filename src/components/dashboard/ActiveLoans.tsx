@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAccount } from 'wagmi'
+import { formatEther } from 'viem'
 import {
   Card,
   CardContent,
@@ -66,7 +67,8 @@ interface ActiveLoansProps {
 }
 
 export function ActiveLoans({ compact = false }: ActiveLoansProps) {
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
+  const nativeSymbol = chain?.nativeCurrency.symbol ?? 'native token'
 
   // Extension origination-payer field — re-targets LMLN balance/allowance
   // reads in useLoans below when the borrower has unlocked it and supplied a
@@ -94,6 +96,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     extendLoan,
     approveLoanFee,
     isLoading,
+    error: loansError,
     refetch,
     currentAllowance,
     currentLmlnAllowance,
@@ -103,6 +106,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLmlnBalance,
     loanConfig,
     interestAprConfigs,
+    paymentFeeBps,
+    bpsDenominator,
+    getGrossPaymentAmount,
+    paymentNativeFee,
   } = useLoans({ originationPayer: effectiveExtensionPayer })
   const { tokenConfig } = useContractTokenConfiguration()
   const { getCollateralByAddress } = useCollateralManager()
@@ -366,11 +373,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         tokenConfig.loanToken.decimals
       )
 
-      // Check if user has sufficient token balance
-      if (userLoanTokenBalance && paymentWei > userLoanTokenBalance) {
+      // Check if user has sufficient token balance for the gross debit
+      // (payment + protocol fee) the contract will pull.
+      if (
+        userLoanTokenBalance !== undefined &&
+        getGrossPaymentAmount(paymentWei) > userLoanTokenBalance
+      ) {
         toast({
           title: 'Insufficient Balance',
-          description: `You need ${currentPaymentAmount} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
+          description: `Including the protocol fee you need ${formatTokenAmount(getGrossPaymentAmount(paymentWei), tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
           variant: 'destructive'
         })
         setIsProcessingPayment(false)
@@ -415,6 +426,36 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     } finally {
       setIsProcessingPayment(false)
     }
+  }
+
+  // Loading takes 2+ sequential RPC rounds (loan IDs, then per-loan data) —
+  // without this gate every page load flashes "No Active Loans" at borrowers
+  // who do have loans, including overdue ones.
+  if (activeLoans.length === 0 && isLoading) {
+    return (
+      <div className='text-center py-8'>
+        <CreditCard className='h-12 w-12 mx-auto mb-4 text-muted-foreground animate-pulse' />
+        <p className='text-sm text-muted-foreground'>Loading your loans…</p>
+      </div>
+    )
+  }
+
+  // A load failure must never masquerade as "no loans" — a borrower could
+  // believe an overdue loan is gone.
+  if (activeLoans.length === 0 && loansError) {
+    return (
+      <div className='text-center py-8'>
+        <AlertCircle className='h-12 w-12 mx-auto mb-4 text-destructive' />
+        <h3 className='text-lg font-medium mb-2'>Couldn&apos;t load your loans</h3>
+        <p className='text-sm text-muted-foreground mb-4'>
+          Something went wrong while fetching your loan data. Your loans are
+          unaffected — please retry.
+        </p>
+        <Button variant='outline' onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   if (activeLoans.length === 0) {
@@ -864,13 +905,68 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               />
                             </div>
                           )}
+
+                          {/* Fee disclosure — the contract debits payment +
+                              protocol fee, and payable ops charge a native
+                              network fee. Both must be visible pre-sign. */}
+                          {(() => {
+                            const currentPaymentAmount = getPaymentAmount(loan)
+                            const paymentWei =
+                              currentPaymentAmount && tokenConfig?.loanToken.decimals
+                                ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
+                                : 0n
+                            if (paymentWei <= 0n) return null
+                            const grossWei = getGrossPaymentAmount(paymentWei)
+                            const feePercent =
+                              Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
+                            return (
+                              <div className='rounded-md bg-muted p-3 text-sm space-y-1'>
+                                <div className='flex justify-between'>
+                                  <span className='text-muted-foreground'>
+                                    Protocol fee ({feePercent}%)
+                                  </span>
+                                  <span>
+                                    {formatAmountWithSymbol(
+                                      grossWei - paymentWei,
+                                      tokenConfig?.loanToken.symbol || 'Token'
+                                    )}
+                                  </span>
+                                </div>
+                                <div className='flex justify-between font-medium'>
+                                  <span>Total debit</span>
+                                  <span>
+                                    {formatAmountWithSymbol(
+                                      grossWei,
+                                      tokenConfig?.loanToken.symbol || 'Token'
+                                    )}
+                                  </span>
+                                </div>
+                                {paymentNativeFee !== undefined &&
+                                  paymentNativeFee > 0n && (
+                                    <div className='flex justify-between'>
+                                      <span className='text-muted-foreground'>
+                                        Network fee
+                                      </span>
+                                      <span>
+                                        {Number(
+                                          formatEther(paymentNativeFee)
+                                        ).toLocaleString('en-US', {
+                                          maximumFractionDigits: 4
+                                        })}{' '}
+                                        {nativeSymbol}
+                                      </span>
+                                    </div>
+                                  )}
+                              </div>
+                            )
+                          })()}
                         </div>
                         <div className='flex gap-2'>
                           {(() => {
                             // Check if approval is needed. The contract pulls
-                            // amount + protocol fee (FEE_BPS = 25 → 0.25%) on
-                            // makeLoanPayment, so the allowance must cover the
-                            // gross — otherwise this button silently shows
+                            // amount + protocol fee (FEE_BPS, read from chain)
+                            // on makeLoanPayment, so the allowance must cover
+                            // the gross — otherwise this button silently shows
                             // "Confirm Payment" and the tx reverts with
                             // insufficient allowance.
                             const currentPaymentAmount = getPaymentAmount(loan)
@@ -878,12 +974,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               currentPaymentAmount && tokenConfig?.loanToken.decimals
                                 ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
                                 : 0n
-                            // approval target adds a 1% buffer; balance check
-                            // uses the exact contract pull (0.25% protocol fee).
-                            const grossPaymentWei = paymentWei + paymentWei / 100n
-                            const contractPullWei = paymentWei + (paymentWei * 25n) / 10000n
+                            const contractPullWei = getGrossPaymentAmount(paymentWei)
                             const needsApproval =
-                              !currentAllowance || currentAllowance < grossPaymentWei
+                              !currentAllowance || currentAllowance < contractPullWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0

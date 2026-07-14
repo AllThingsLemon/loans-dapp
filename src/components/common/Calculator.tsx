@@ -15,6 +15,7 @@ import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
 import {
   handleContractError,
+  extractErrorMessage,
   isUserRejection,
   type ContractError
 } from '../../utils/errorHandling'
@@ -120,7 +121,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
 
   // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
   // even when only one token is configured. No auto-selection.
@@ -251,6 +252,18 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.error && !isUserRejection(loanOperations.error)
       ? loanOperations.error
       : null
+
+  // When calculateLoanDetails itself reverts (stale price feed, invalid
+  // duration/LTV), the calculator would otherwise go inert: em-dash on the
+  // collateral row, permanently disabled button, and the decoded reason
+  // trapped inside a modal that can't open. Surface it inline instead.
+  const calculationErrorMessage =
+    operationError &&
+    loanRequest &&
+    !loanOperations.calculationData &&
+    !loanOperations.isSimulating
+      ? extractErrorMessage(operationError as unknown as ContractError)
+      : undefined
 
   // Pick the APR tier whose duration band covers the current slider position.
   // Decouples the displayed APR from the amount input — sliding LTV / Duration
@@ -537,6 +550,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
+        calculationError={calculationErrorMessage}
         isApprovingCollateral={isApprovingCollateral}
         isApprovingLoanFee={isApprovingLoanFee}
         isCreatingLoan={isCreatingLoan}
@@ -563,6 +577,8 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         }}
         payerValidation={payerValidation}
         delegateInUse={!!effectiveOriginationPayer}
+        initiateNativeFee={loanOperations.initiateNativeFee}
+        nativeSymbol={chain?.nativeCurrency.symbol}
       />
     </div>
   )

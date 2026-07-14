@@ -18,6 +18,10 @@ interface LoanSummaryProps {
   hasInsufficientLiquidity: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
+  /** Decoded message when calculateLoanDetails reverts (e.g. stale price
+   *  feed). Must render inline — the confirmation modal that shows
+   *  operationError can never open while the calculation is failing. */
+  calculationError?: string
   isApprovingCollateral: boolean
   isApprovingLoanFee: boolean
   isCreatingLoan: boolean
@@ -38,6 +42,10 @@ interface LoanSummaryProps {
   payerValidation: DelegateValidationResult
   /** True when the LMLN reads/CTA target a delegate, not the connected wallet. */
   delegateInUse: boolean
+  /** Native (gas-token) fee attached to initiateLoan, in wei */
+  initiateNativeFee?: bigint
+  /** Native currency symbol for the connected chain (e.g. TLEMX) */
+  nativeSymbol?: string
 }
 
 export function LoanSummary({
@@ -49,6 +57,7 @@ export function LoanSummary({
   hasInsufficientLiquidity,
   userLmlnBalance,
   operationError,
+  calculationError,
   isApprovingCollateral,
   isApprovingLoanFee,
   isCreatingLoan,
@@ -66,7 +75,9 @@ export function LoanSummary({
   isPayerLocked,
   onTogglePayerLock,
   payerValidation,
-  delegateInUse
+  delegateInUse,
+  initiateNativeFee,
+  nativeSymbol
 }: LoanSummaryProps) {
   // Don't fall back to tokenConfig.nativeToken.symbol — that's the chain's
   // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
@@ -253,6 +264,11 @@ export function LoanSummary({
 
         {isDashboard && (
           <div className='text-center mt-6'>
+            {calculationError && (
+              <p className='text-sm text-destructive mb-3'>
+                {calculationError}
+              </p>
+            )}
             {hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
                 Not enough liquidity in the pool for this loan amount. Try a smaller amount.
@@ -307,6 +323,8 @@ export function LoanSummary({
               handleApproveLoanFee={handleApproveLoanFee}
               needsCollateralApproval={needsCollateralApproval}
               needsApproval={needsApproval}
+              nativeFee={initiateNativeFee}
+              nativeSymbol={nativeSymbol}
             />
           </div>
         )}
