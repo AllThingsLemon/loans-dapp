@@ -31,9 +31,12 @@ export interface DelegateValidationResult {
  *
  * - 'self' (always valid): the candidate equals the connected wallet. The
  *   contract skips the delegation check when `originationPayer == msg.sender`.
- * - 'valid': the candidate has authorized the borrower as a delegate, in
- *   either storage direction (the ABI doesn't name the mapping args, so we
- *   read both `[a][b]` and `[b][a]` and accept whichever returns true).
+ * - 'valid': the candidate (payer) has authorized the connected wallet
+ *   (borrower). The mapping is `originationDelegations[payer][borrower]` —
+ *   `setOriginationDelegate(borrower, true)` is called BY the payer, storing
+ *   `[msg.sender][borrower]`. Reading the reverse direction too (as this hook
+ *   once did) validated payers who never delegated, and the resulting
+ *   initiateLoan reverted only after the UI said the payer was authorized.
  * - Balance/allowance shortfalls are surfaced separately by LoanSummary's
  *   existing "insufficient LMLN balance" warning, which already reads the
  *   delegate's wallet whenever `originationPayer` is wired through useLoans.
@@ -58,28 +61,20 @@ export function useDelegateValidation(
 
   const enable = !!normalizedAddress && !!connectedAddress && !isSelf
 
-  const { data: readA, isLoading: isLoadingA } = useReadContract({
-    address: loansContractAddress,
-    abi: loansAbi,
-    functionName: 'originationDelegations',
-    args:
-      enable && connectedAddress && normalizedAddress
-        ? [connectedAddress, normalizedAddress]
-        : undefined,
-    query: { enabled: enable && !!loansContractAddress }
-  })
-  const { data: readB, isLoading: isLoadingB } = useReadContract({
-    address: loansContractAddress,
-    abi: loansAbi,
-    functionName: 'originationDelegations',
-    args:
-      enable && connectedAddress && normalizedAddress
-        ? [normalizedAddress, connectedAddress]
-        : undefined,
-    query: { enabled: enable && !!loansContractAddress }
-  })
-  const isCheckingDelegation = isLoadingA || isLoadingB
-  const isAuthorized = Boolean(readA) || Boolean(readB)
+  // originationDelegations[payer][borrower] — candidate is the payer, the
+  // connected wallet is the borrower being paid for.
+  const { data: delegationRead, isLoading: isCheckingDelegation } =
+    useReadContract({
+      address: loansContractAddress,
+      abi: loansAbi,
+      functionName: 'originationDelegations',
+      args:
+        enable && connectedAddress && normalizedAddress
+          ? [normalizedAddress, connectedAddress]
+          : undefined,
+      query: { enabled: enable && !!loansContractAddress }
+    })
+  const isAuthorized = Boolean(delegationRead)
 
   // Delegate's LMLN balance — shown for context once verified. Useful for
   // the borrower to see their delegate has funds before submitting.

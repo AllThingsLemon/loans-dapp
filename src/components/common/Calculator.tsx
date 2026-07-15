@@ -191,14 +191,28 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     return BigInt(Math.floor(duration))
   }, [duration])
 
-  // Create loan request for simulation
+  // Get origination fee for selected LTV. Match by the same formatted value
+  // the slider was populated from — reconstructing the contract bigint via
+  // parseUnits((ltv/100).toString()) breaks for any tier whose percentage
+  // doesn't survive the float round-trip, and a mismatched find() meant the
+  // on-chain call was sent an LTV that doesn't exist in the fee table.
+  const selectedLtvOption = useMemo(() => {
+    if (!tokenConfig) return undefined
+    return perAssetConfig.ltvOptions.find(
+      (option) =>
+        Number(formatPercentage(option.ltv, tokenConfig.ltvDecimals)) === ltv
+    )
+  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
+
+  // Create loan request for simulation — always send the tier's EXACT
+  // contract LTV value, never a value reconstructed from the display number.
   const loanRequest = useMemo(() => {
     if (
       !selectedCollateral ||
       !loanAmount ||
       !selectedDuration ||
       selectedDuration === 0n ||
-      !ltv ||
+      !selectedLtvOption ||
       !tokenConfig
     )
       return undefined
@@ -210,22 +224,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         tokenConfig.loanToken.decimals
       ),
       duration: selectedDuration,
-      ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
+      ltv: selectedLtvOption.ltv
     }
-  }, [selectedCollateral, loanAmount, selectedDuration, ltv, tokenConfig])
-
-  // Get origination fee for selected LTV
-  const selectedLtvOption = useMemo(() => {
-    if (!tokenConfig) return undefined
-
-    // Convert ltv percentage (50) to decimal (0.5) then to contract format
-    const ltvDecimal = (ltv / 100).toString()
-    const ltvInContractFormat = parseUnits(ltvDecimal, tokenConfig.ltvDecimals)
-
-    return perAssetConfig.ltvOptions.find(
-      (option) => option.ltv === ltvInContractFormat
-    )
-  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
+  }, [selectedCollateral, loanAmount, selectedDuration, selectedLtvOption, tokenConfig])
 
   // Validate the typed payer address (format + on-chain delegation). Balance
   // and allowance shortfalls are surfaced by LoanSummary's existing

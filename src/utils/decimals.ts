@@ -39,10 +39,12 @@ export function formatPercentage(value: bigint, decimals: number): string {
   if (value < 0n) {
     throw new DecimalError('Percentage value cannot be negative')
   }
-  // Convert to decimal then multiply by 100 to get percentage
+  // Convert to decimal then multiply by 100 to get percentage. Keep up to
+  // two decimal places — rounding to a whole percent would display a 12.5%
+  // APR as 13% and break matching against non-integer LTV tiers.
   const decimal = formatUnits(value, decimals)
-  const percentage = Math.round(Number(decimal) * 100).toString()
-  return percentage
+  const percentage = Math.round(Number(decimal) * 10000) / 100
+  return percentage.toString()
 }
 
 /**

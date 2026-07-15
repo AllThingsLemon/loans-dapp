@@ -24,6 +24,7 @@ import { ActiveLoans } from '@/src/components/dashboard/ActiveLoans'
 import { LoanHistory } from '@/src/components/dashboard/LoanHistory'
 import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
 import { PriceDataBanner } from '@/src/components/dashboard/PriceDataBanner'
+import { ProtocolStatusBanner } from '@/src/components/common/ProtocolStatusBanner'
 import { Plus, History, CreditCard, Calculator, DollarSign } from 'lucide-react'
 
 export function Dashboard() {
@@ -56,6 +57,11 @@ export function Dashboard() {
 
   return (
     <div className='space-y-6'>
+      {/* Protocol health — paused contracts / stale price feed */}
+      <Web3ErrorBoundary>
+        <ProtocolStatusBanner />
+      </Web3ErrorBoundary>
+
       {/* Header */}
       <div className='flex items-center justify-between'>
         <div>

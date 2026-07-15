@@ -4,6 +4,7 @@ import { Lock, Unlock } from 'lucide-react'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { formatTokenAmount } from '../../utils/decimals'
+import { floorToDecimals } from '../../utils/format'
 import type { DelegateValidationResult } from '../../hooks/loans/useDelegateValidation'
 
 export interface OriginationPayerFieldProps {
@@ -19,7 +20,8 @@ export interface OriginationPayerFieldProps {
 }
 
 const formatLmln = (amount: bigint, decimals: number) => {
-  const num = Number(formatTokenAmount(amount, decimals))
+  // Floor — this is a balance display; rounding up overstates funds.
+  const num = floorToDecimals(Number(formatTokenAmount(amount, decimals)), 4)
   return num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4
