@@ -9,7 +9,7 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { Button } from '../ui/button'
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { formatEther } from 'viem'
 import { extractErrorMessage } from '../../utils/errorHandling'
 
@@ -127,18 +127,43 @@ export function LoanConfirmationModal({
             )}
           </div>
 
-          {(needsCollateralApproval || needsApproval) && (
-            <div className='text-xs text-muted-foreground bg-muted rounded p-3 space-y-1'>
-              <p className='font-medium'>Approval steps required:</p>
-              <p className={needsCollateralApproval ? 'text-foreground' : 'line-through opacity-50'}>
-                1. Approve {collateral} for collateral
-              </p>
-              <p className={needsApproval ? 'text-foreground' : 'line-through opacity-50'}>
-                2. Approve {tokenConfig?.feeToken.symbol || 'LMLN'} origination fee
-              </p>
-              <p className='opacity-50'>3. Create loan</p>
-            </div>
-          )}
+          {/* Always visible so the user keeps their bearings after the
+              approvals land — completed steps get a check mark, the active
+              step is highlighted, upcoming steps are dimmed. */}
+          <div className='text-xs text-muted-foreground bg-muted rounded p-3 space-y-1'>
+            <p className='font-medium'>Loan creation steps:</p>
+            {(() => {
+              const steps = [
+                {
+                  label: `1. Approve ${collateral} for collateral`,
+                  done: !needsCollateralApproval
+                },
+                {
+                  label: `2. Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} origination fee`,
+                  done: !needsApproval
+                },
+                { label: '3. Create loan', done: false }
+              ]
+              const activeIndex = steps.findIndex((s) => !s.done)
+              return steps.map((step, i) => (
+                <p
+                  key={step.label}
+                  className={`flex items-center gap-1.5 ${
+                    step.done
+                      ? ''
+                      : i === activeIndex
+                        ? 'text-foreground font-medium'
+                        : 'opacity-50'
+                  }`}
+                >
+                  {step.done && (
+                    <CheckCircle2 className='h-3.5 w-3.5 text-green-600 shrink-0' />
+                  )}
+                  {step.label}
+                </p>
+              ))
+            })()}
+          </div>
 
           {operationError && (
             <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
