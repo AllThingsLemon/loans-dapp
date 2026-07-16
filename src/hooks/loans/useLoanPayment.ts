@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react'
+import { parseUnits } from 'viem'
 import type { Loan } from '../useLoans'
 import { LOAN_STATUS } from '@/src/constants'
 
@@ -28,12 +29,17 @@ export const useLoanPayment = (
     return loan?.remainingBalance ?? 0n
   }, [loan?.remainingBalance])
 
-  // Convert payment string to BigInt wei
+  // Convert payment string to BigInt wei. Must use parseUnits — float
+  // multiplication exceeds IEEE-754 precision at 18 decimals (1.1 * 1e18 =
+  // 1100000000000000128) and would produce a wrong payment amount.
   const parsePaymentAmount = useCallback(
     (paymentString: string): bigint => {
       if (!paymentString || isNaN(parseFloat(paymentString))) return 0n
-      const multiplier = 10 ** loanTokenDecimals
-      return BigInt(Math.floor(parseFloat(paymentString) * multiplier))
+      try {
+        return parseUnits(paymentString.trim(), loanTokenDecimals)
+      } catch {
+        return 0n
+      }
     },
     [loanTokenDecimals]
   )
