@@ -314,9 +314,10 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     setShowConfirmDialog(true)
   }
 
+  // Standard modal contract: stays open while the tx runs (spinner on the
+  // confirm button, dismissal blocked) and closes only on success.
   const handleConfirmDeposit = async () => {
     if (!tokenAmount || !selectedAsset) return
-    setShowConfirmDialog(false)
     setIsProcessing(true)
     try {
       await deposit(selectedAsset, tokenAmount, selectedLockDuration, isNonEarning)
@@ -325,6 +326,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`,
       })
       setAmount('')
+      setShowConfirmDialog(false)
       await refetchBalance()
       await refetchAllowance()
       await refetch()
@@ -505,7 +507,13 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         </div>
       </CardContent>
 
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+      <Dialog
+        open={showConfirmDialog}
+        onOpenChange={(open) => {
+          if (!open && isProcessing) return
+          setShowConfirmDialog(open)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Deposit</DialogTitle>
@@ -555,14 +563,20 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
             <Button
               variant='outline'
               onClick={() => setShowConfirmDialog(false)}
+              disabled={isProcessing}
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirmDeposit}
+              disabled={isProcessing}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
-              Confirm Deposit
+              {isProcessing ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…</>
+              ) : (
+                'Confirm Deposit'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

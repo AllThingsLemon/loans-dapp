@@ -6,7 +6,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  HandCoins
+  HandCoins,
+  Loader2
 } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Card, CardContent } from '../ui/card'
@@ -287,7 +288,7 @@ export function DelegationManager() {
               disabled={!canSubmit || isProcessing}
               variant={isRevokeFlow ? 'destructive' : 'default'}
             >
-              {stepLabel ?? (isRevokeFlow ? 'Confirm Revoke' : 'Confirm Delegate')}
+              {isProcessing ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> {stepLabel ?? 'Processing…'}</>) : (stepLabel ?? (isRevokeFlow ? 'Confirm Revoke' : 'Confirm Delegate'))}
             </Button>
           </DialogFooter>
         </DialogContent>

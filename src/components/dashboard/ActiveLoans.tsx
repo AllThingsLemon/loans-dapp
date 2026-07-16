@@ -57,7 +57,8 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
@@ -987,6 +988,23 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                           })()}
                         </div>
                         <div className='flex gap-2'>
+                          {/* Standard modal contract: Cancel left (disabled
+                              mid-tx), confirm right with spinner. */}
+                          <Button
+                            variant='outline'
+                            disabled={isApprovingPayment || isProcessingPayment}
+                            onClick={() => {
+                              setPaymentAmount('')
+                              setSelectedLoan(null)
+                              setPaymentType('minimum')
+                              setCustomAmount('')
+                              setIsApprovingPayment(false)
+                              setIsProcessingPayment(false)
+                              setIsPaymentDialogOpen(false)
+                            }}
+                          >
+                            Cancel
+                          </Button>
                           {(() => {
                             // Check if approval is needed. The contract pulls
                             // amount + protocol fee (FEE_BPS, read from chain)
@@ -1038,9 +1056,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isApprovingPayment
-                                    ? 'Approving…'
-                                    : 'Approve Tokens'}
+                                  {isApprovingPayment ? (
+                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>
+                                  ) : (
+                                    'Approve Tokens'
+                                  )}
                                 </Button>
                               )
                             } else {
@@ -1055,27 +1075,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isProcessingPayment
-                                    ? 'Processing…'
-                                    : 'Confirm Payment'}
+                                  {isProcessingPayment ? (
+                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>
+                                  ) : (
+                                    'Confirm Payment'
+                                  )}
                                 </Button>
                               )
                             }
                           })()}
-                          <Button
-                            variant='outline'
-                            onClick={() => {
-                              setPaymentAmount('')
-                              setSelectedLoan(null)
-                              setPaymentType('minimum')
-                              setCustomAmount('')
-                              setIsApprovingPayment(false)
-                              setIsProcessingPayment(false)
-                              setIsPaymentDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
                         </div>
                       </div>
                     </DialogContent>
@@ -1259,6 +1267,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                 </p>
                               )}
                             <div className='flex gap-2'>
+                              <Button
+                                variant='outline'
+                                disabled={isApprovingExtension || isProcessingExtension}
+                                onClick={() => {
+                                  setSelectedLoanForExtension(null)
+                                  setIsApprovingExtension(false)
+                                  setIsProcessingExtension(false)
+                                  setIsExtensionDialogOpen(false)
+                                }}
+                              >
+                                Cancel
+                              </Button>
                               {hasInsufficientBalance &&
                               (isExtensionPayerLocked ||
                                 extensionPayerValidation.isValid) ? (
@@ -1278,7 +1298,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   disabled={isApprovingExtension || isProcessingExtension}
                                   className='flex-1'
                                 >
-                                  {isApprovingExtension ? 'Approving…' : 'Approve LMLN'}
+                                  {isApprovingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : ('Approve LMLN')}
                                 </Button>
                               ) : (
                                 <Button
@@ -1296,20 +1316,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isProcessingExtension ? 'Processing…' : 'Confirm Extension'}
+                                  {isProcessingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>) : ('Confirm Extension')}
                                 </Button>
                               )}
-                              <Button
-                                variant='outline'
-                                onClick={() => {
-                                  setSelectedLoanForExtension(null)
-                                  setIsApprovingExtension(false)
-                                  setIsProcessingExtension(false)
-                                  setIsExtensionDialogOpen(false)
-                                }}
-                              >
-                                Cancel
-                              </Button>
                             </div>
                           </div>
                         )

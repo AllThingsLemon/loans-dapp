@@ -9,7 +9,7 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { Button } from '../ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import { formatEther } from 'viem'
 import { extractErrorMessage } from '../../utils/errorHandling'
 
@@ -161,7 +161,7 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 text-white'
             >
-              {isApprovingCollateral ? 'Approving...' : `Approve ${collateral}`}
+              {isApprovingCollateral ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${collateral}`)}
             </Button>
           ) : needsApproval ? (
             <Button
@@ -169,7 +169,7 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isApprovingLoanFee ? 'Approving...' : `Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`}
+              {isApprovingLoanFee ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`)}
             </Button>
           ) : (
             <Button
@@ -177,7 +177,7 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isCreatingLoan ? 'Creating Loan...' : 'Confirm & Create Loan'}
+              {isCreatingLoan ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Creating Loan…</>) : ('Confirm & Create Loan')}
             </Button>
           )}
         </DialogFooter>

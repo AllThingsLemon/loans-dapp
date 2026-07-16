@@ -233,12 +233,14 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     return [...depositEntries].sort((a, b) => Number(a.lockDuration - b.lockDuration))
   }, [depositEntries])
 
-  // Action handlers
+  // Action handlers. Returns true on success so confirm modals \u2014 which stay
+  // OPEN while the tx runs (standard modal contract: spinner on the confirm
+  // button, dismissal blocked) \u2014 know when to close.
   const handleAction = async (
     actionName: string,
     action: () => Promise<unknown>,
     successMsg: string
-  ) => {
+  ): Promise<boolean> => {
     setIsProcessing(actionName)
     try {
       await action()
@@ -248,8 +250,10 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
       const title = actionName.replace(/([a-z])([A-Z])/g, '$1 $2')
       toast({ title: `\u2705 ${title} Successful`, description: successMsg })
       await refetch()
+      return true
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, `${actionName} Failed`)
+      return false
     } finally {
       setIsProcessing(null)
     }
@@ -578,7 +582,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Compound Earnings Modal */}
     <Dialog
       open={compoundModal.open}
-      onOpenChange={(open) => !open && setCompoundModal({ open: false, selectedTierIndex: null })}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setCompoundModal({ open: false, selectedTierIndex: null }) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -615,23 +619,27 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           )}
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setCompoundModal({ open: false, selectedTierIndex: null })}>
+          <Button
+            variant='outline'
+            onClick={() => setCompoundModal({ open: false, selectedTierIndex: null })}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
             disabled={compoundModal.selectedTierIndex === null || isProcessing !== null}
             onClick={async () => {
               const tier = stableLockTiers[compoundModal.selectedTierIndex!]
-              setCompoundModal({ open: false, selectedTierIndex: null })
-              await handleAction(
+              const ok = await handleAction(
                 'Compound',
                 () => compoundEarnings(tier.duration),
                 'Earnings compounded into new shares.'
               )
+              if (ok) setCompoundModal({ open: false, selectedTierIndex: null })
             }}
           >
             {isProcessing === 'Compound' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding…</>
             ) : (
               'Confirm'
             )}
@@ -643,7 +651,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Transfer Account Modal */}
     <Dialog
       open={transferAccountModal.open}
-      onOpenChange={(open) => !open && setTransferAccountModal(emptyAccountModal)}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setTransferAccountModal(emptyAccountModal) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -685,7 +693,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           </div>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setTransferAccountModal(emptyAccountModal)}>
+          <Button
+            variant='outline'
+            onClick={() => setTransferAccountModal(emptyAccountModal)}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
@@ -697,16 +709,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             }
             onClick={async () => {
               const to = transferAccountModal.address as `0x${string}`
-              setTransferAccountModal(emptyAccountModal)
-              await handleAction(
+              const ok = await handleAction(
                 'TransferAccount',
                 () => transferAccount(to),
                 'Account transferred successfully.'
               )
+              if (ok) setTransferAccountModal(emptyAccountModal)
             }}
           >
             {isProcessing === 'TransferAccount' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring…</>
             ) : (
               'Confirm Transfer'
             )}
@@ -718,7 +730,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Confirmation Modal */}
     <Dialog
       open={confirmModal.open}
-      onOpenChange={(open) => !open && setConfirmModal((m) => ({ ...m, open: false }))}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setConfirmModal((m) => ({ ...m, open: false })) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -728,19 +740,23 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           <p className='text-sm text-muted-foreground'>{confirmModal.description}</p>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}>
+          <Button
+            variant='outline'
+            onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
             disabled={isProcessing !== null}
             onClick={async () => {
               const { actionName, action, successMsg } = confirmModal
-              setConfirmModal((m) => ({ ...m, open: false }))
-              await handleAction(actionName, action, successMsg)
+              const ok = await handleAction(actionName, action, successMsg)
+              if (ok) setConfirmModal((m) => ({ ...m, open: false }))
             }}
           >
             {isProcessing === confirmModal.actionName ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>
             ) : (
               'Confirm'
             )}
