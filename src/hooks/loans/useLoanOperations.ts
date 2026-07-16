@@ -22,6 +22,7 @@ import {
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 import { erc20Abi, formatEther } from 'viem'
+import { grossPaymentAmount } from '@/src/utils/fees'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { useProtocolAddresses } from '../useProtocolAddresses'
 
@@ -309,8 +310,7 @@ export const useLoanOperations = (
   // Gross amount the contract pulls on makeLoanPayment: amount + fee, with the
   // fee rounded up so approvals/balance checks always cover the on-chain pull.
   const getGrossPaymentAmount = useCallback(
-    (amount: bigint) =>
-      amount + (amount * paymentFeeBps + bpsDenominator - 1n) / bpsDenominator,
+    (amount: bigint) => grossPaymentAmount(amount, paymentFeeBps, bpsDenominator),
     [paymentFeeBps, bpsDenominator]
   )
 
