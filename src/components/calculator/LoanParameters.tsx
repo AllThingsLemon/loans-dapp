@@ -84,10 +84,15 @@ export function LoanParameters({
 
   const hasNoLiquidity = availableLiquidity !== undefined && availableLiquidity === 0n
 
-  // Safe index for the slider — use the actual percentage as value instead of indexOf
-  const ltvStep = ltvPercentages.length >= 2
-    ? ltvPercentages[1] - ltvPercentages[0]
-    : 10
+  // Tiers need not be uniformly spaced (e.g. 20/30/50), so a fixed step can
+  // land the slider on values that have no configured origination fee. Use a
+  // fine step and snap every change to the nearest real tier instead.
+  const snapToTier = (raw: number): number => {
+    if (ltvPercentages.length === 0) return raw
+    return ltvPercentages.reduce((closest, candidate) =>
+      Math.abs(candidate - raw) < Math.abs(closest - raw) ? candidate : closest
+    )
+  }
 
   return (
     <Card
@@ -168,9 +173,14 @@ export function LoanParameters({
                 }
 
                 const numValue = Number(value)
-                if (numValue <= maxLoanAmount) {
-                  setLoanAmount(numValue)
+                // Reject garbage and negatives (a negative passed the old
+                // <= max check and flowed into parseUnits), and clamp
+                // above-max input to the max instead of silently swallowing
+                // the keystroke — a frozen input reads as a broken app.
+                if (!Number.isFinite(numValue) || numValue < 0) {
+                  return
                 }
+                setLoanAmount(Math.min(numValue, maxLoanAmount))
               }}
               min={minLoanAmount > 0 ? minLoanAmount : undefined}
               max={maxLoanAmount}
@@ -279,12 +289,11 @@ export function LoanParameters({
                 type='range'
                 min={minLtvPercentage}
                 max={maxLtvPercentage}
-                step={ltvStep}
+                step={0.5}
                 value={ltv}
                 disabled={ltvOptions.length === 0}
                 onChange={(e) => {
-                  const pct = Number(e.target.value)
-                  setLtv(pct)
+                  setLtv(snapToTier(Number(e.target.value)))
                 }}
                 className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider disabled:opacity-50 disabled:cursor-not-allowed'
               />

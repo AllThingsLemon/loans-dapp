@@ -56,7 +56,7 @@ describe('contract error handling for liquidity operations', () => {
       const err: ContractError = {
         message: 'EstimateGasExecutionError: reverted with the following reason:\nInsufficientBalance\n',
       }
-      expect(extractErrorMessage(err)).toBe('InsufficientBalance')
+      expect(extractErrorMessage(err)).toBe('Insufficient token balance.')
     })
 
     it('returns generic message when gas estimation fails with unknown custom error', () => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useAccount } from 'wagmi'
 import { Button } from '../../components/ui/button'
 import { useLoans } from '../../hooks/useLoans'
 import type { UseLoansReturn } from '../../hooks/types'
@@ -14,11 +15,14 @@ import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
 import {
   handleContractError,
+  extractErrorMessage,
   isUserRejection,
   type ContractError
 } from '../../utils/errorHandling'
 import { useCollateralManager } from '../../hooks/useCollateralManager'
 import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
+import { useDelegateValidation } from '../../hooks/loans/useDelegateValidation'
+import { DelegationManager } from './DelegationManager'
 
 const SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -117,6 +121,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Get contract token configuration
   const { tokenConfig } = useContractTokenConfiguration()
   const { toast } = useToast()
+  const { address, chain } = useAccount()
 
   // Collateral manager — the user always picks explicitly via the selector in LoanParameters,
   // even when only one token is configured. No auto-selection.
@@ -140,6 +145,19 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   const [loanAmount, setLoanAmount] = useState(0)
   const [duration, setDuration] = useState<number>(0)
   const [ltv, setLtv] = useState(0)
+
+  // Origination-fee payer field — defaults to the connected wallet (locked).
+  // The user can unlock to delegate the fee to another wallet, which must
+  // have authorized them via setOriginationDelegate(borrower, true).
+  const [originationPayerInput, setOriginationPayerInput] = useState('')
+  const [isPayerLocked, setIsPayerLocked] = useState(true)
+  // Sync the input to the connected wallet whenever the wallet changes and
+  // the field is still locked. Don't clobber a user-typed delegate.
+  useEffect(() => {
+    if (isPayerLocked) {
+      setOriginationPayerInput(address ?? '')
+    }
+  }, [address, isPayerLocked])
 
   // Get initial loan config and options - moved up to avoid initialization error
   const initialHookData: UseLoansReturn = useLoans()
@@ -173,14 +191,28 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     return BigInt(Math.floor(duration))
   }, [duration])
 
-  // Create loan request for simulation
+  // Get origination fee for selected LTV. Match by the same formatted value
+  // the slider was populated from — reconstructing the contract bigint via
+  // parseUnits((ltv/100).toString()) breaks for any tier whose percentage
+  // doesn't survive the float round-trip, and a mismatched find() meant the
+  // on-chain call was sent an LTV that doesn't exist in the fee table.
+  const selectedLtvOption = useMemo(() => {
+    if (!tokenConfig) return undefined
+    return perAssetConfig.ltvOptions.find(
+      (option) =>
+        Number(formatPercentage(option.ltv, tokenConfig.ltvDecimals)) === ltv
+    )
+  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
+
+  // Create loan request for simulation — always send the tier's EXACT
+  // contract LTV value, never a value reconstructed from the display number.
   const loanRequest = useMemo(() => {
     if (
       !selectedCollateral ||
       !loanAmount ||
       !selectedDuration ||
       selectedDuration === 0n ||
-      !ltv ||
+      !selectedLtvOption ||
       !tokenConfig
     )
       return undefined
@@ -192,27 +224,28 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         tokenConfig.loanToken.decimals
       ),
       duration: selectedDuration,
-      ltv: parseUnits((ltv / 100).toString(), tokenConfig.ltvDecimals)
+      ltv: selectedLtvOption.ltv
     }
-  }, [selectedCollateral, loanAmount, selectedDuration, ltv, tokenConfig])
+  }, [selectedCollateral, loanAmount, selectedDuration, selectedLtvOption, tokenConfig])
 
-  // Get origination fee for selected LTV
-  const selectedLtvOption = useMemo(() => {
-    if (!tokenConfig) return undefined
+  // Validate the typed payer address (format + on-chain delegation). Balance
+  // and allowance shortfalls are surfaced by LoanSummary's existing
+  // hasInsufficientLmln warning, which auto-targets whoever pays.
+  const payerValidation = useDelegateValidation(originationPayerInput)
 
-    // Convert ltv percentage (50) to decimal (0.5) then to contract format
-    const ltvDecimal = (ltv / 100).toString()
-    const ltvInContractFormat = parseUnits(ltvDecimal, tokenConfig.ltvDecimals)
+  // Re-target LMLN reads + initiateLoan args to the delegate as soon as the
+  // user has unlocked the field and typed a non-self address that parses —
+  // even before the delegation check completes — so balance/allowance reads
+  // start firing against the right wallet immediately.
+  const effectiveOriginationPayer =
+    !isPayerLocked && payerValidation.normalizedAddress && !payerValidation.isSelf
+      ? payerValidation.normalizedAddress
+      : undefined
 
-    return perAssetConfig.ltvOptions.find(
-      (option) => option.ltv === ltvInContractFormat
-    )
-  }, [perAssetConfig.ltvOptions, ltv, tokenConfig])
-
-  // Get the loan operations with the calculated request
   const loanOperations = useLoans({
     loanRequest,
-    selectedLtvOption
+    selectedLtvOption,
+    originationPayer: effectiveOriginationPayer
   })
 
   // Filter out user rejections from operation errors - don't show them in UI
@@ -220,6 +253,18 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.error && !isUserRejection(loanOperations.error)
       ? loanOperations.error
       : null
+
+  // When calculateLoanDetails itself reverts (stale price feed, invalid
+  // duration/LTV), the calculator would otherwise go inert: em-dash on the
+  // collateral row, permanently disabled button, and the decoded reason
+  // trapped inside a modal that can't open. Surface it inline instead.
+  const calculationErrorMessage =
+    operationError &&
+    loanRequest &&
+    !loanOperations.calculationData &&
+    !loanOperations.isSimulating
+      ? extractErrorMessage(operationError as unknown as ContractError)
+      : undefined
 
   // Pick the APR tier whose duration band covers the current slider position.
   // Decouples the displayed APR from the amount input — sliding LTV / Duration
@@ -249,11 +294,14 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     // typed, below-min, etc.).
     const baseWithDials = { ...base, apr: aprFromDuration }
 
-    // Check if we're still loading contract configuration
+    // Pre-conditions for collateral calculation aren't met yet — either the
+    // contract config is still loading or the user hasn't picked a collateral.
+    // Either way, render a neutral em-dash to match the "no calc yet" branch
+    // below; the form surfaces actionable validation elsewhere.
     if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
       return {
         ...baseWithDials,
-        priceError: 'Loading contract data...'
+        priceError: '—'
       }
     }
 
@@ -295,7 +343,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       !loanOperations.isSimulating &&
       !!loanOperations.calculationData &&
       !loanOperations.hasInsufficientLmln &&
-      !loanOperations.hasInsufficientLiquidity
+      !loanOperations.hasInsufficientCollateral &&
+      !loanOperations.hasInsufficientLiquidity &&
+      payerValidation.isValid
 
     const priceError = buildPriceError(
       loanOperations.isSimulating,
@@ -328,7 +378,9 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.hasInsufficientLmln,
     loanOperations.hasInsufficientLiquidity,
     perAssetConfig.interestAprConfigs,
-    loanOperations.userLmlnBalance
+    loanOperations.userLmlnBalance,
+    loanOperations.hasInsufficientCollateral,
+    payerValidation.isValid
   ])
 
   // Check if collateral ERC20 approval is needed (WLEMX → CollateralManager)
@@ -346,7 +398,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Compare against raw originationFee — the approval itself adds a buffer for the transfer tax.
   // Using the grossed-up amount as the threshold causes an infinite approval loop when the
   // LMLN price shifts, because the previously approved gross amount no longer meets the new gross threshold.
-  const needsApproval = useMemo(() => {
+  const allowanceShort = useMemo(() => {
     const originationFee = loanOperations.calculationData?.originationFee
     if (!originationFee) return false
     if (loanOperations.currentLmlnAllowance === undefined) return true
@@ -355,6 +407,14 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.calculationData?.originationFee,
     loanOperations.currentLmlnAllowance
   ])
+
+  // The Approve button sends the approval FROM THE CONNECTED WALLET, but with
+  // a delegate set the allowance read targets the delegate — approving would
+  // credit the wrong wallet and loop forever. Only offer self-approval; a
+  // short delegate allowance is surfaced as a blocking message instead
+  // (mirrors the extension flow's handling in ActiveLoans).
+  const needsApproval = allowanceShort && !effectiveOriginationPayer
+  const delegateNeedsAllowance = allowanceShort && !!effectiveOriginationPayer
 
   // Handle collateral ERC20 approval (WLEMX → CollateralManager)
   const handleApproveCollateral = async () => {
@@ -460,7 +520,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
   }
 
-  if (initialHookData.error || !initialHookData.loanConfig) {
+  // Only a CONFIG failure blocks the calculator — a per-loan read error
+  // (surfaced via initialHookData.error) affects the dashboard lists, not
+  // the ability to create a new loan.
+  if (initialHookData.configError || !initialHookData.loanConfig) {
     return (
       <div className='text-center py-8'>
         <p className='text-red-600'>Error loading loan configuration</p>
@@ -495,9 +558,11 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         tokenConfig={tokenConfig}
         collateralSymbol={selectedCollateral?.symbol}
         hasInsufficientLmln={loanOperations.hasInsufficientLmln}
+        hasInsufficientCollateral={loanOperations.hasInsufficientCollateral}
         hasInsufficientLiquidity={loanOperations.hasInsufficientLiquidity}
         userLmlnBalance={loanOperations.userLmlnBalance}
         operationError={operationError}
+        calculationError={calculationErrorMessage}
         isApprovingCollateral={isApprovingCollateral}
         isApprovingLoanFee={isApprovingLoanFee}
         isCreatingLoan={isCreatingLoan}
@@ -508,14 +573,36 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         handleApproveLoanFee={handleApproveLoanFee}
         needsCollateralApproval={needsCollateralApproval}
         needsApproval={needsApproval}
+        delegateNeedsAllowance={delegateNeedsAllowance}
         isDashboard={isDashboard}
         selectedLtvOption={selectedLtvOption}
+        originationPayerInput={originationPayerInput}
+        onOriginationPayerChange={setOriginationPayerInput}
+        isPayerLocked={isPayerLocked}
+        onTogglePayerLock={() => {
+          // Re-locking always snaps back to the connected wallet.
+          setIsPayerLocked((wasLocked) => {
+            if (!wasLocked) {
+              setOriginationPayerInput(address ?? '')
+            }
+            return !wasLocked
+          })
+        }}
+        payerValidation={payerValidation}
+        delegateInUse={!!effectiveOriginationPayer}
+        initiateNativeFee={loanOperations.initiateNativeFee}
+        nativeSymbol={chain?.nativeCurrency.symbol}
       />
     </div>
   )
 
   if (isDashboard) {
-    return calculatorContent
+    return (
+      <div>
+        {calculatorContent}
+        <DelegationManager />
+      </div>
+    )
   }
 
   return (

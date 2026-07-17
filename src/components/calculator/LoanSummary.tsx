@@ -3,18 +3,26 @@
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
+import { formatDuration } from '../../utils/format'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
+import { OriginationPayerField } from '../common/OriginationPayerField'
+import type { DelegateValidationResult } from '../../hooks/loans/useDelegateValidation'
 
 interface LoanSummaryProps {
   calculation: any
   tokenConfig: any
   collateralSymbol?: string
   hasInsufficientLmln: boolean
+  hasInsufficientCollateral: boolean
   hasInsufficientLiquidity: boolean
   userLmlnBalance: bigint | undefined
   operationError: any
+  /** Decoded message when calculateLoanDetails reverts (e.g. stale price
+   *  feed). Must render inline — the confirmation modal that shows
+   *  operationError can never open while the calculation is failing. */
+  calculationError?: string
   isApprovingCollateral: boolean
   isApprovingLoanFee: boolean
   isCreatingLoan: boolean
@@ -25,8 +33,24 @@ interface LoanSummaryProps {
   handleApproveLoanFee: () => Promise<void>
   needsCollateralApproval: boolean
   needsApproval: boolean
+  /** Delegate is paying the fee but their LMLN allowance is short — blocks
+   *  creation with a message instead of offering a self-approval that would
+   *  credit the wrong wallet. */
+  delegateNeedsAllowance?: boolean
   isDashboard?: boolean
   selectedLtvOption?: { ltv: bigint; fee: bigint }
+  // Origination-fee payer field (shown only in dashboard mode where the CTA exists).
+  originationPayerInput: string
+  onOriginationPayerChange: (value: string) => void
+  isPayerLocked: boolean
+  onTogglePayerLock: () => void
+  payerValidation: DelegateValidationResult
+  /** True when the LMLN reads/CTA target a delegate, not the connected wallet. */
+  delegateInUse: boolean
+  /** Native (gas-token) fee attached to initiateLoan, in wei */
+  initiateNativeFee?: bigint
+  /** Native currency symbol for the connected chain (e.g. TLEMX) */
+  nativeSymbol?: string
 }
 
 export function LoanSummary({
@@ -34,9 +58,11 @@ export function LoanSummary({
   tokenConfig,
   collateralSymbol,
   hasInsufficientLmln,
+  hasInsufficientCollateral,
   hasInsufficientLiquidity,
   userLmlnBalance,
   operationError,
+  calculationError,
   isApprovingCollateral,
   isApprovingLoanFee,
   isCreatingLoan,
@@ -47,8 +73,17 @@ export function LoanSummary({
   handleApproveLoanFee,
   needsCollateralApproval,
   needsApproval,
+  delegateNeedsAllowance = false,
   isDashboard = false,
-  selectedLtvOption
+  selectedLtvOption,
+  originationPayerInput,
+  onOriginationPayerChange,
+  isPayerLocked,
+  onTogglePayerLock,
+  payerValidation,
+  delegateInUse,
+  initiateNativeFee,
+  nativeSymbol
 }: LoanSummaryProps) {
   // Don't fall back to tokenConfig.nativeToken.symbol — that's the chain's
   // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
@@ -155,7 +190,7 @@ export function LoanSummary({
               <span
                 className={`font-medium ${!isDashboard ? 'text-yellow-400' : 'text-yellow-600'}`}
               >
-                {Math.round(calculation.apr)}%
+                {calculation.apr}%
               </span>
             </div>
 
@@ -163,7 +198,9 @@ export function LoanSummary({
               <span
                 className={`${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
               >
-                Monthly Payment
+                {/* Labeled by the actual cycle, not "Monthly" — a 14-day
+                    cycle config would understate the real monthly cost 2×. */}
+                Payment per Cycle
               </span>
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
@@ -201,13 +238,15 @@ export function LoanSummary({
                 >
                   {calculation.loanCycles} {calculation.loanCycles === 1 ? 'cycle' : 'cycles'}
                 </span>
-                {calculation.loanCycleDuration && (
+                {calculation.loanCycleDuration ? (
                   <div
                     className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} mt-0.5`}
                   >
-                    {Math.round(Number(calculation.loanCycleDuration) / (24 * 60 * 60))} day loan cycles
+                    {/* formatDuration handles sub-day (testnet) cycles that
+                        used to render as "0 day loan cycles". */}
+                    {formatDuration(calculation.loanCycleDuration)} loan cycles
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -220,17 +259,50 @@ export function LoanSummary({
         </div>
 
         {isDashboard && (
+          <div className='mt-6'>
+            <OriginationPayerField
+              value={originationPayerInput}
+              onChange={onOriginationPayerChange}
+              validation={payerValidation}
+              isLocked={isPayerLocked}
+              onToggleLock={onTogglePayerLock}
+              feeTokenSymbol={tokenConfig?.feeToken.symbol || 'LMLN'}
+              feeTokenDecimals={tokenConfig?.feeToken.decimals ?? 18}
+            />
+          </div>
+        )}
+
+        {isDashboard && (
           <div className='text-center mt-6'>
+            {calculationError && (
+              <p className='text-sm text-destructive mb-3'>
+                {calculationError}
+              </p>
+            )}
             {hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                Insufficient pool liquidity for this loan amount. Please try a smaller amount.
+                Not enough liquidity in the pool for this loan amount. Try a smaller amount.
               </p>
             )}
-            {hasInsufficientLmln && !hasInsufficientLiquidity && (
+            {hasInsufficientCollateral && !hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                Insufficient {tokenConfig?.feeToken.symbol || 'LMLN'} balance to cover the origination fee.
+                You don&apos;t have enough {collateralSymbol || 'collateral'} in your wallet to back this loan.
               </p>
             )}
+            {/* userLmlnBalance is the fee payer's balance (delegate or borrower).
+             *  When a delegate is in use but not yet authorized, the field's
+             *  own "not authorized" message is the actionable one — suppress
+             *  the balance warning until the auth check passes so the user
+             *  isn't shown two errors at once. */}
+            {hasInsufficientLmln &&
+              !hasInsufficientLiquidity &&
+              (!delegateInUse || payerValidation.isValid) && (
+                <p className='text-sm text-destructive mb-3'>
+                  {delegateInUse
+                    ? `The chosen delegate doesn't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} to cover the fee.`
+                    : `You don't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} to cover the fee.`}
+                </p>
+              )}
             <Button
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold py-3 px-8 text-lg'
               disabled={!calculation.isValid}
@@ -261,6 +333,9 @@ export function LoanSummary({
               handleApproveLoanFee={handleApproveLoanFee}
               needsCollateralApproval={needsCollateralApproval}
               needsApproval={needsApproval}
+              delegateNeedsAllowance={delegateNeedsAllowance}
+              nativeFee={initiateNativeFee}
+              nativeSymbol={nativeSymbol}
             />
           </div>
         )}

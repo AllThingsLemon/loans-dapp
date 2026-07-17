@@ -22,6 +22,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
+import { floorToDecimals } from '@/src/utils/format'
 import {
   BarChart3,
   TrendingUp,
@@ -55,12 +56,14 @@ function StatItem({ label, value, warning }: { label: string; value: string; war
 }
 
 function formatCurrency(value: bigint, decimals: number, symbol: string): string {
-  const formatted = parseFloat(formatTokenAmount(value, decimals))
+  // Floor, never round up — these are balances/claimable amounts, and a
+  // rounded-up display overstates what the user can actually withdraw.
+  const formatted = floorToDecimals(parseFloat(formatTokenAmount(value, decimals)), 4)
   return `${formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${symbol}`
 }
 
 function formatShares(value: bigint, decimals: number): string {
-  const formatted = parseFloat(formatTokenAmount(value, decimals))
+  const formatted = floorToDecimals(parseFloat(formatTokenAmount(value, decimals)), 4)
   return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 }
 
@@ -140,6 +143,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     poolStatus,
     feeConfig,
     liquidityStatus,
+    currentUtilization,
     depositEntries,
     hasPosition,
     totalLoansIssued,
@@ -198,13 +202,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
 
+  // Use the pool's own utilization getter (returned in basis points) — the
+  // previous local formula divided by deposited−withdrawn, which ignores the
+  // principal deficit and permanently understates utilization once any loan
+  // has defaulted (verified live: contract 33.10% vs local formula 38.02%…
+  // and diverging the other way as deficits grow).
   const poolUtilization = useMemo(() => {
-    if (!liquidityStatus) return 0
-    const totalDeposited = liquidityStatus.principalDeposited - liquidityStatus.principalWithdrawn
-    if (totalDeposited === 0n) return 0
-    const util = (Number(liquidityStatus.principalInLoans) / Number(totalDeposited)) * 100
+    if (currentUtilization === undefined) return 0
+    const util = Number(currentUtilization) / 100
     return Math.min(Math.max(util, 0), 100)
-  }, [liquidityStatus])
+  }, [currentUtilization])
 
   const canDistributeEarnings = useMemo(() => {
     if (!poolStatus) return false
@@ -226,19 +233,27 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     return [...depositEntries].sort((a, b) => Number(a.lockDuration - b.lockDuration))
   }, [depositEntries])
 
-  // Action handlers
+  // Action handlers. Returns true on success so confirm modals \u2014 which stay
+  // OPEN while the tx runs (standard modal contract: spinner on the confirm
+  // button, dismissal blocked) \u2014 know when to close.
   const handleAction = async (
     actionName: string,
     action: () => Promise<unknown>,
     successMsg: string
-  ) => {
+  ): Promise<boolean> => {
     setIsProcessing(actionName)
     try {
       await action()
-      toast({ title: '\u2705 Success', description: successMsg })
+      // Title the toast with the actual action ("\u2705 Claim Earnings Successful")
+      // instead of a generic "\u2705 Success" shared by five different operations.
+      // Split camelCase names ("TransferAccount" \u2192 "Transfer Account").
+      const title = actionName.replace(/([a-z])([A-Z])/g, '$1 $2')
+      toast({ title: `\u2705 ${title} Successful`, description: successMsg })
       await refetch()
+      return true
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, `${actionName} Failed`)
+      return false
     } finally {
       setIsProcessing(null)
     }
@@ -567,7 +582,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Compound Earnings Modal */}
     <Dialog
       open={compoundModal.open}
-      onOpenChange={(open) => !open && setCompoundModal({ open: false, selectedTierIndex: null })}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setCompoundModal({ open: false, selectedTierIndex: null }) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -604,23 +619,27 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           )}
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setCompoundModal({ open: false, selectedTierIndex: null })}>
+          <Button
+            variant='outline'
+            onClick={() => setCompoundModal({ open: false, selectedTierIndex: null })}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
             disabled={compoundModal.selectedTierIndex === null || isProcessing !== null}
             onClick={async () => {
               const tier = stableLockTiers[compoundModal.selectedTierIndex!]
-              setCompoundModal({ open: false, selectedTierIndex: null })
-              await handleAction(
+              const ok = await handleAction(
                 'Compound',
                 () => compoundEarnings(tier.duration),
                 'Earnings compounded into new shares.'
               )
+              if (ok) setCompoundModal({ open: false, selectedTierIndex: null })
             }}
           >
             {isProcessing === 'Compound' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Compounding…</>
             ) : (
               'Confirm'
             )}
@@ -632,7 +651,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Transfer Account Modal */}
     <Dialog
       open={transferAccountModal.open}
-      onOpenChange={(open) => !open && setTransferAccountModal(emptyAccountModal)}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setTransferAccountModal(emptyAccountModal) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -674,7 +693,11 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           </div>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setTransferAccountModal(emptyAccountModal)}>
+          <Button
+            variant='outline'
+            onClick={() => setTransferAccountModal(emptyAccountModal)}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
@@ -686,16 +709,16 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
             }
             onClick={async () => {
               const to = transferAccountModal.address as `0x${string}`
-              setTransferAccountModal(emptyAccountModal)
-              await handleAction(
+              const ok = await handleAction(
                 'TransferAccount',
                 () => transferAccount(to),
                 'Account transferred successfully.'
               )
+              if (ok) setTransferAccountModal(emptyAccountModal)
             }}
           >
             {isProcessing === 'TransferAccount' ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Transferring…</>
             ) : (
               'Confirm Transfer'
             )}
@@ -707,7 +730,7 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
     {/* Confirmation Modal */}
     <Dialog
       open={confirmModal.open}
-      onOpenChange={(open) => !open && setConfirmModal((m) => ({ ...m, open: false }))}
+      onOpenChange={(open) => { if (!open && isProcessing !== null) return; if (!open) setConfirmModal((m) => ({ ...m, open: false })) }}
     >
       <DialogContent>
         <DialogHeader>
@@ -717,19 +740,23 @@ export function LiquidityPerformance({ liquidityPool }: LiquidityPerformanceProp
           <p className='text-sm text-muted-foreground'>{confirmModal.description}</p>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}>
+          <Button
+            variant='outline'
+            onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}
+            disabled={isProcessing !== null}
+          >
             Cancel
           </Button>
           <Button
             disabled={isProcessing !== null}
             onClick={async () => {
               const { actionName, action, successMsg } = confirmModal
-              setConfirmModal((m) => ({ ...m, open: false }))
-              await handleAction(actionName, action, successMsg)
+              const ok = await handleAction(actionName, action, successMsg)
+              if (ok) setConfirmModal((m) => ({ ...m, open: false }))
             }}
           >
             {isProcessing === confirmModal.actionName ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing...</>
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>
             ) : (
               'Confirm'
             )}

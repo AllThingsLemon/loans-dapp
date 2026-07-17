@@ -273,11 +273,18 @@ Each collateral asset must have at least one LTV option with its corresponding o
 Loans.addOriginationFees(
   <collateral token address>,
   [20000000, 30000000, 40000000, 50000000, 60000000], // LTVs scaled by ltvDecimals (20%, 30%, …)
-  [<fee at 20% LTV>, <fee at 30%>, …]                 // origination fee in LMLN wei per LTV tier
+  [1, 2, 4, 7, 10]                                    // origination fee in WHOLE USD per LTV tier (1 = $1)
 )
 ```
 
-`ltvDecimals` is read via `Loans.ltvDecimals()`. Fees are denominated in the origination-fee token (LMLN) in raw wei.
+`ltvDecimals` is read via `Loans.ltvDecimals()`.
+
+> **⚠️ Fee unit:** each fee is a flat **whole-dollar USD amount** (`25` = $25), NOT
+> an LMLN wei amount. The contract converts USD → LMLN at the current price-feed
+> rate when a loan is created, and the borrower pays that LMLN amount. The fee is
+> flat per loan — it does not scale with the loan amount. (Verified against the
+> deployed testnet contract: tier fees `1, 2, 4, 7, 10` and
+> `calculateLoanDetails` returning the equivalent LMLN at the live price.)
 
 **Verify:**
 ```solidity

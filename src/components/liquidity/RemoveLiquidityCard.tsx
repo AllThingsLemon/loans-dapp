@@ -1,5 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
+import { useAccount } from 'wagmi'
+import { formatEther } from 'viem'
 import {
   Card,
   CardContent,
@@ -20,6 +22,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
+import { floorToDecimals } from '@/src/utils/format'
 import { Minus, Loader2, Clock, CheckCircle2, ArrowDownToLine } from 'lucide-react'
 import {
   handleContractError,
@@ -36,7 +39,14 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
   const [isProcessing, setIsProcessing] = useState<string | null>(null)
   const [fundQueueModal, setFundQueueModal] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [claimModal, setClaimModal] = useState<{
+    open: boolean
+    requestId: bigint | null
+    amount: bigint
+  }>({ open: false, requestId: null, amount: 0n })
   const { toast } = useToast()
+  const { chain } = useAccount()
+  const nativeCurrencySymbol = chain?.nativeCurrency.symbol ?? 'native token'
 
   const {
     stableTokenSymbol,
@@ -46,6 +56,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     requestWithdrawal,
     claimWithdrawal,
     fundWithdrawalQueue,
+    withdrawNativeFee,
     withdrawalRequests,
     refetch,
   } = liquidityPool
@@ -86,9 +97,11 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
     setShowConfirmDialog(true)
   }
 
+  // Standard modal contract (all confirm modals in the app): the modal stays
+  // OPEN while the transaction runs — spinner on the confirm button, cancel
+  // disabled, dismissal blocked — and closes only on success.
   const handleConfirmWithdrawal = async () => {
     if (!parsedAmount) return
-    setShowConfirmDialog(false)
     setIsProcessing('request')
     try {
       await requestWithdrawal(parsedAmount)
@@ -97,6 +110,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
         description: `Requested withdrawal of ${amount} ${symbol}. Your shares have been burned and the request has been queued.`,
       })
       setAmount('')
+      setShowConfirmDialog(false)
       await refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Withdrawal Request Failed')
@@ -108,19 +122,37 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
   const netReceiveDisplay = useMemo(() => {
     if (!withdrawalFeePct || !parsedAmount || !feeConfig) return undefined
     const net = parsedAmount - (parsedAmount * feeConfig.feeBps) / 10000n
-    return parseFloat(formatTokenAmount(net, decimals)).toLocaleString('en-US', {
+    // Floor — never overstate what the user will receive.
+    return floorToDecimals(parseFloat(formatTokenAmount(net, decimals)), 2).toLocaleString('en-US', {
       maximumFractionDigits: 2,
     })
   }, [withdrawalFeePct, parsedAmount, feeConfig, decimals])
 
-  const handleClaimWithdrawal = async (requestId: bigint) => {
-    setIsProcessing(`claim-${requestId}`)
+  // Net amount for the claim confirm modal (requested − protocol fee), floored.
+  const claimNetDisplay = useMemo(() => {
+    if (claimModal.amount === 0n) return '0'
+    const net = feeConfig
+      ? claimModal.amount - (claimModal.amount * feeConfig.feeBps) / 10000n
+      : claimModal.amount
+    return floorToDecimals(parseFloat(formatTokenAmount(net, decimals)), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  }, [claimModal.amount, feeConfig, decimals])
+
+  const claimFeeDisplay = useMemo(() => {
+    if (claimModal.amount === 0n || !feeConfig || feeConfig.feeBps === 0n) return undefined
+    const fee = (claimModal.amount * feeConfig.feeBps) / 10000n
+    return parseFloat(formatTokenAmount(fee, decimals)).toLocaleString('en-US', { maximumFractionDigits: 4 })
+  }, [claimModal.amount, feeConfig, decimals])
+
+  const handleConfirmClaim = async () => {
+    if (claimModal.requestId === null) return
+    setIsProcessing(`claim-${claimModal.requestId}`)
     try {
-      await claimWithdrawal(requestId)
+      await claimWithdrawal(claimModal.requestId)
       toast({
         title: 'Withdrawal Claimed',
-        description: `Successfully claimed your withdrawal.`,
+        description: `${claimNetDisplay} ${symbol} sent to your wallet.`,
       })
+      setClaimModal({ open: false, requestId: null, amount: 0n })
       await refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Claim Failed')
@@ -137,6 +169,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
         title: 'Queue Funded',
         description: `Withdrawal queue has been funded with available principal.`,
       })
+      setFundQueueModal(false)
       await refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Fund Queue Failed')
@@ -188,7 +221,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
               className='hover:text-foreground transition-colors'
             >
               Unlocked:{' '}
-              {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+              {floorToDecimals(parseFloat(formattedWithdrawable), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
               {symbol}
             </button>
           </div>
@@ -197,7 +230,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
         {insufficientBalance && (
           <p className='text-sm text-destructive'>
             Insufficient unlocked balance. You can request up to{' '}
-            {parseFloat(formattedWithdrawable).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
+            {floorToDecimals(parseFloat(formattedWithdrawable), 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}{' '}
             {symbol}.
           </p>
         )}
@@ -225,11 +258,7 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
                 onClick={() => setFundQueueModal(true)}
                 disabled={isProcessing !== null}
               >
-                {isProcessing === 'fund' ? (
-                  <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Funding...</>
-                ) : (
-                  <><ArrowDownToLine className='h-3 w-3 mr-1' /> Fund Queue</>
-                )}
+                <ArrowDownToLine className='h-3 w-3 mr-1' /> Fund Queue
               </Button>
             </div>
             {withdrawalRequests.requests.map((req, idx) => {
@@ -259,12 +288,6 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
                     )}
                   </div>
 
-                  {isFullyFunded && withdrawalFeePct && (
-                    <p className='text-xs text-muted-foreground'>
-                      {withdrawalFeePct}% fee on claim · ~{parseFloat(formatTokenAmount(req.amount - (req.amount * feeConfig!.feeBps) / 10000n, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol} net
-                    </p>
-                  )}
-
                   {/* Funding progress bar */}
                   {!isFullyFunded && (
                     <div className='w-full bg-muted rounded-full h-1.5'>
@@ -279,15 +302,13 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
                     {isFullyFunded && (
                       <Button
                         size='sm'
-                        onClick={() => handleClaimWithdrawal(requestId)}
+                        onClick={() =>
+                          setClaimModal({ open: true, requestId, amount: req.amount })
+                        }
                         disabled={isProcessing !== null}
                         className='flex-1 bg-green-600 hover:bg-green-700 text-white'
                       >
-                        {isProcessing === `claim-${requestId}` ? (
-                          <><Loader2 className='h-3 w-3 mr-1 animate-spin' /> Claiming...</>
-                        ) : (
-                          <><CheckCircle2 className='h-3 w-3 mr-1' /> Claim</>
-                        )}
+                        <CheckCircle2 className='h-3 w-3 mr-1' /> Claim
                       </Button>
                     )}
                   </div>
@@ -299,7 +320,13 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
       </CardContent>
 
       {/* Confirm Withdrawal Modal */}
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+      <Dialog
+        open={showConfirmDialog}
+        onOpenChange={(open) => {
+          if (!open && isProcessing !== null) return
+          setShowConfirmDialog(open)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Withdrawal Request</DialogTitle>
@@ -322,14 +349,23 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
             </p>
           </div>
           <DialogFooter className='gap-2 sm:gap-0'>
-            <Button variant='outline' onClick={() => setShowConfirmDialog(false)}>
+            <Button
+              variant='outline'
+              onClick={() => setShowConfirmDialog(false)}
+              disabled={isProcessing !== null}
+            >
               Cancel
             </Button>
             <Button
               onClick={handleConfirmWithdrawal}
+              disabled={isProcessing !== null}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
-              Confirm Withdrawal
+              {isProcessing === 'request' ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Requesting…</>
+              ) : (
+                'Confirm Withdrawal'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -338,7 +374,10 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
       {/* Fund Queue Modal */}
       <Dialog
         open={fundQueueModal}
-        onOpenChange={(open) => { if (!open) setFundQueueModal(false) }}
+        onOpenChange={(open) => {
+          if (!open && isProcessing !== null) return
+          if (!open) setFundQueueModal(false)
+        }}
       >
         <DialogContent>
           <DialogHeader>
@@ -353,20 +392,90 @@ export function RemoveLiquidityCard({ liquidityPool }: RemoveLiquidityCardProps)
             </p>
           </div>
           <DialogFooter>
-            <Button variant='outline' onClick={() => setFundQueueModal(false)}>
+            <Button
+              variant='outline'
+              onClick={() => setFundQueueModal(false)}
+              disabled={isProcessing !== null}
+            >
+              Cancel
+            </Button>
+            <Button disabled={isProcessing !== null} onClick={handleFundQueue}>
+              {isProcessing === 'fund' ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Funding…</>
+              ) : (
+                'Confirm'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Claim Withdrawal Modal */}
+      <Dialog
+        open={claimModal.open}
+        onOpenChange={(open) => {
+          if (!open && isProcessing !== null) return
+          if (!open) setClaimModal({ open: false, requestId: null, amount: 0n })
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Claim</DialogTitle>
+            <DialogDescription>
+              Your funded withdrawal will be sent to your wallet.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-2 py-2 text-sm'>
+            <div className='flex justify-between'>
+              <span className='text-muted-foreground'>Requested amount</span>
+              <span className='font-medium'>
+                {parseFloat(formatTokenAmount(claimModal.amount, decimals)).toLocaleString('en-US', { maximumFractionDigits: 2 })} {symbol}
+              </span>
+            </div>
+            {withdrawalFeePct && claimFeeDisplay && (
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>
+                  Protocol fee ({withdrawalFeePct}%)
+                </span>
+                <span className='font-medium'>
+                  −{claimFeeDisplay} {symbol}
+                </span>
+              </div>
+            )}
+            <div className='flex justify-between border-t pt-2'>
+              <span className='text-muted-foreground'>You receive</span>
+              <span className='font-semibold'>
+                ~{claimNetDisplay} {symbol}
+              </span>
+            </div>
+            {withdrawNativeFee !== undefined && withdrawNativeFee > 0n && (
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground'>Network fee</span>
+                <span className='font-medium'>
+                  {Number(formatEther(withdrawNativeFee)).toLocaleString('en-US', { maximumFractionDigits: 4 })}{' '}
+                  {nativeCurrencySymbol}
+                </span>
+              </div>
+            )}
+          </div>
+          <DialogFooter className='gap-2 sm:gap-0'>
+            <Button
+              variant='outline'
+              onClick={() => setClaimModal({ open: false, requestId: null, amount: 0n })}
+              disabled={isProcessing !== null}
+            >
               Cancel
             </Button>
             <Button
+              onClick={handleConfirmClaim}
               disabled={isProcessing !== null}
-              onClick={async () => {
-                setFundQueueModal(false)
-                await handleFundQueue()
-              }}
+              className='bg-green-600 hover:bg-green-700 text-white'
             >
-              {isProcessing === 'fund' ? (
-                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Funding...</>
+              {claimModal.requestId !== null &&
+              isProcessing === `claim-${claimModal.requestId}` ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Claiming…</>
               ) : (
-                'Confirm'
+                'Confirm Claim'
               )}
             </Button>
           </DialogFooter>

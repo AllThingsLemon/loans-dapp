@@ -11,6 +11,8 @@ import {
   useReadLoansInitiateLoanFeeUsd,
   useReadLoansLoanPaymentFeeUsd,
   useReadLoansGetNativeFee,
+  useReadLoansFeeBps,
+  useReadLoansBpsDenominator,
   loansAddress,
   loansAbi,
   useWriteLoansWithdrawCollateral,
@@ -19,10 +21,10 @@ import {
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
-import { erc20Abi } from 'viem'
+import { erc20Abi, formatEther } from 'viem'
+import { grossPaymentAmount } from '@/src/utils/fees'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { useProtocolAddresses } from '../useProtocolAddresses'
-import { loanKeys } from '../query/loanQueries'
 
 export interface LoanRequest {
   collateralToken: `0x${string}` // ERC20 collateral token address
@@ -34,6 +36,11 @@ export interface LoanRequest {
 export interface UseLoanOperationsOptions {
   loanRequest?: LoanRequest
   selectedLtvOption?: { ltv: bigint; fee: bigint }
+  /** Address that will be charged the LMLN origination fee. Defaults to the
+   *  connected wallet (borrower self-pays). Pass a delegate address to route
+   *  LMLN balance/allowance reads to that wallet and to forward it as the
+   *  `originationPayer` arg on initiateLoan/extendLoan. */
+  originationPayer?: `0x${string}`
 }
 
 export interface UseLoanOperationsReturn {
@@ -59,6 +66,7 @@ export interface UseLoanOperationsReturn {
   // Loan creation data
   requiredCollateral: bigint | undefined
   hasInsufficientLmln: boolean
+  hasInsufficientCollateral: boolean
   grossOriginationFee: bigint | undefined
   calculationData:
     | {
@@ -77,6 +85,7 @@ export interface UseLoanOperationsReturn {
   // User balances
   userLmlnBalance: bigint | undefined
   userLoanTokenBalance: bigint | undefined
+  userCollateralBalance: bigint | undefined
   currentAllowance: bigint | undefined
   currentLmlnAllowance: bigint | undefined
   currentCollateralAllowance: bigint | undefined
@@ -84,6 +93,18 @@ export interface UseLoanOperationsReturn {
   // Liquidity
   availableLiquidity: bigint | undefined
   hasInsufficientLiquidity: boolean
+
+  // Protocol fees (read from chain)
+  /** makeLoanPayment protocol fee rate in basis points (FEE_BPS) */
+  paymentFeeBps: bigint
+  /** Basis-point denominator (BPS_DENOMINATOR) */
+  bpsDenominator: bigint
+  /** Gross amount the contract pulls for a payment: amount + protocol fee */
+  getGrossPaymentAmount: (amount: bigint) => bigint
+  /** Native (gas-token) fee attached to initiateLoan, in wei. 0n when unset. */
+  initiateNativeFee: bigint | undefined
+  /** Native (gas-token) fee attached to makeLoanPayment, in wei. 0n when unset. */
+  paymentNativeFee: bigint | undefined
 
   // Error state
   error: Error | null
@@ -94,8 +115,14 @@ export interface UseLoanOperationsReturn {
 export const useLoanOperations = (
   options?: UseLoanOperationsOptions
 ): UseLoanOperationsReturn => {
-  const { loanRequest, selectedLtvOption } = options || {}
+  const { loanRequest, originationPayer } = options || {}
   const { address } = useAccount()
+  // The wallet that will pay the LMLN origination fee. Defaults to the
+  // connected wallet (borrower self-pays). When the borrower picks a
+  // delegate, balance/allowance reads and contract calls re-target this
+  // address — keeping `hasInsufficientLmln` and the allowance check honest
+  // regardless of who is paying.
+  const effectivePayer = originationPayer ?? address
   const chainId = useChainId()
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
@@ -121,14 +148,15 @@ export const useLoanOperations = (
   // Get the fee token address from contract
   const { data: feeTokenAddress } = useReadLoansOriginationFeeToken()
 
-  // Get user's LMLN balance
+  // LMLN balance for the fee payer (borrower self-pays by default; delegate
+  // when the borrower has unlocked the field and picked someone else).
   const { data: userLmlnBalance } = useReadContract({
     address: feeTokenAddress,
     abi: erc20Abi,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: effectivePayer ? [effectivePayer] : undefined,
     query: {
-      enabled: !!feeTokenAddress && !!address
+      enabled: !!feeTokenAddress && !!effectivePayer
     }
   })
 
@@ -165,18 +193,18 @@ export const useLoanOperations = (
     }
   )
 
-  // Get current LMLN token allowance for origination fees
+  // LMLN allowance from the fee payer to the Loans contract.
   const { data: currentLmlnAllowance, refetch: refetchLmlnAllowance } =
     useReadContract({
       address: feeTokenAddress,
       abi: erc20Abi,
       functionName: 'allowance',
       args:
-        address && loansContractAddress
-          ? [address, loansContractAddress]
+        effectivePayer && loansContractAddress
+          ? [effectivePayer, loansContractAddress]
           : undefined,
       query: {
-        enabled: !!feeTokenAddress && !!address && !!loansContractAddress
+        enabled: !!feeTokenAddress && !!effectivePayer && !!loansContractAddress
       }
     })
 
@@ -199,6 +227,18 @@ export const useLoanOperations = (
         enabled: !!loanRequest?.collateralToken && !!address && !!cmAddress
       }
     })
+
+  // Borrower's collateral-token balance. Always the connected wallet — the
+  // borrower posts collateral regardless of who pays the origination fee.
+  const { data: userCollateralBalance } = useReadContract({
+    address: loanRequest?.collateralToken,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!loanRequest?.collateralToken && !!address
+    }
+  })
 
   // Get available liquidity from the Loans contract
   const { data: liquidityStatusRaw } = useReadLoansGetLiquidityStatus()
@@ -260,6 +300,25 @@ export const useLoanOperations = (
     query: { enabled: loanPaymentFeeUSD !== undefined && loanPaymentFeeUSD > 0n, refetchInterval: 30000 },
   })
 
+  // Protocol payment fee, read from chain so a governance change to FEE_BPS
+  // can't silently desync the UI's balance/allowance math from the contract.
+  const { data: feeBpsRaw } = useReadLoansFeeBps()
+  const { data: bpsDenominatorRaw } = useReadLoansBpsDenominator()
+  const paymentFeeBps = feeBpsRaw ?? 25n
+  const bpsDenominator = bpsDenominatorRaw ?? 10000n
+
+  // Gross amount the contract pulls on makeLoanPayment: amount + fee, with the
+  // fee rounded up so approvals/balance checks always cover the on-chain pull.
+  const getGrossPaymentAmount = useCallback(
+    (amount: bigint) => grossPaymentAmount(amount, paymentFeeBps, bpsDenominator),
+    [paymentFeeBps, bpsDenominator]
+  )
+
+  // Native currency symbol for user-facing fee messages (TLEMX / LEMX / BNB).
+  const nativeSymbol =
+    config.chains.find((c) => c.id === chainId)?.nativeCurrency.symbol ??
+    'native token'
+
   // Calculate loan details using the view function (no token interactions)
   const {
     data: calculationData,
@@ -294,13 +353,55 @@ export const useLoanOperations = (
     ? originationFee + originationFee * LMLN_FEE_RATE_FALLBACK / LMLN_FEE_DENOMINATOR + originationFee / 10n
     : undefined
 
-  // Check if user has sufficient LMLN for origination fee (gross amount including transfer tax)
+  // Check if user has sufficient LMLN for origination fee (gross amount
+  // including transfer tax). Only meaningful once calculateLoanDetails has
+  // resolved — the raw LTV-tier fee is a USD amount, not LMLN, so comparing
+  // it against an LMLN wei balance would be nonsense.
   const hasInsufficientLmln =
     grossOriginationFee && userLmlnBalance !== undefined
       ? userLmlnBalance < grossOriginationFee
-      : selectedLtvOption && userLmlnBalance !== undefined
-      ? userLmlnBalance < selectedLtvOption.fee
       : false
+
+  // Check if borrower has enough collateral-token to back the loan. Without
+  // this guard, initiateLoan reaches the on-chain transferFrom and reverts
+  // with the (poorly-worded) WLEMX "amount < balance" message.
+  const hasInsufficientCollateral =
+    collateralAmount !== undefined && userCollateralBalance !== undefined
+      ? userCollateralBalance < collateralAmount
+      : false
+
+  // Wait for a tx to land and throw if it reverted on-chain — a reverted
+  // approval must never surface as a success toast.
+  const waitForSuccess = useCallback(
+    async (txHash: `0x${string}`, label: string) => {
+      if (!publicClient) return
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+      if (receipt.status === 'reverted') {
+        throw new Error(
+          `${label} transaction was reverted on-chain. No changes were made — please try again.`
+        )
+      }
+    },
+    [publicClient]
+  )
+
+  // Payable loan operations attach a native fee as msg.value. Nothing else in
+  // the UI checks the native balance, so without this guard a user with token
+  // balances but no gas token hits a raw wallet-level "insufficient funds".
+  const ensureNativeFeeBalance = useCallback(
+    async (nativeFee: bigint, account: `0x${string}`) => {
+      if (nativeFee === 0n || !publicClient) return
+      const nativeBalance = await publicClient.getBalance({ address: account })
+      if (nativeBalance < nativeFee) {
+        throw new Error(
+          `Insufficient ${nativeSymbol} for the network fee. This operation requires ` +
+            `${formatEther(nativeFee)} ${nativeSymbol} plus gas, but your balance is ` +
+            `${formatEther(nativeBalance)} ${nativeSymbol}.`
+        )
+      }
+    },
+    [publicClient, nativeSymbol]
+  )
 
   // Function to approve LMLN tokens for loan creation or extension
   const approveLoanFee = useCallback(
@@ -348,10 +449,8 @@ export const useLoanOperations = (
         args: [loansContractAddress, grossFee]
       })
 
-      // Wait for approval transaction to be confirmed
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: approvalTxHash })
-      }
+      // Wait for approval to be confirmed and verify it didn't revert
+      await waitForSuccess(approvalTxHash, 'LMLN approval')
 
       // Refetch allowance after approval
       await refetchLmlnAllowance()
@@ -365,6 +464,7 @@ export const useLoanOperations = (
       loansContractAddress,
       approveToken,
       publicClient,
+      waitForSuccess,
       refetchLmlnAllowance
     ]
   )
@@ -381,15 +481,13 @@ export const useLoanOperations = (
         args: [cmAddress, amount]
       })
 
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
+      await waitForSuccess(txHash, 'Collateral approval')
 
       await refetchCollateralAllowance()
 
       return txHash
     },
-    [address, cmAddress, approveToken, publicClient, refetchCollateralAllowance]
+    [address, cmAddress, approveToken, waitForSuccess, refetchCollateralAllowance]
   )
 
   const waitAndInvalidate = useCallback(
@@ -422,12 +520,15 @@ export const useLoanOperations = (
   const createLoan = useCallback(
     async (loanRequest: LoanRequest) => {
       if (!address) throw new Error('Wallet not connected')
-      
+      const payer = originationPayer ?? address
+
       if (!collateralAmount || collateralAmount === 0n) {
         throw new Error('Unable to calculate collateral amount. Please try again.')
       }
       
-      if (!originationFee || originationFee === 0n) {
+      // undefined means the calculation hasn't resolved; 0n is a legitimate
+      // zero-fee LTV tier and must not block creation.
+      if (originationFee === undefined) {
         throw new Error('Unable to calculate origination fee. Please try again.')
       }
 
@@ -454,6 +555,7 @@ export const useLoanOperations = (
       }
 
       const nativeFee = initiateNativeFee ?? 0n
+      await ensureNativeFeeBalance(nativeFee, address)
 
       // Pre-simulate using eth_call (not eth_estimateGas) — viem decodes custom errors properly.
       // This surfaces the real revert reason before the wallet prompt appears.
@@ -462,7 +564,7 @@ export const useLoanOperations = (
           address: loansContractAddress,
           abi: loansAbi,
           functionName: 'initiateLoan',
-          args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+          args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv, payer],
           value: nativeFee,
           account: address,
         })
@@ -470,7 +572,7 @@ export const useLoanOperations = (
 
       // Execute the transaction — collateral is pre-approved to CollateralManager via ERC20
       const txHash = await initiateLoan({
-        args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv],
+        args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv, payer],
         value: nativeFee,
       })
 
@@ -480,6 +582,7 @@ export const useLoanOperations = (
     },
     [
       address,
+      originationPayer,
       initiateLoan,
       collateralAmount,
       originationFee,
@@ -488,22 +591,23 @@ export const useLoanOperations = (
       loansContractAddress,
       publicClient,
       initiateNativeFee,
+      ensureNativeFeeBalance,
       waitAndInvalidate,
     ]
   )
 
   // Approve loan-token spending for payments. Spender is the Loans contract,
   // which is what makeLoanPayment's transferFrom pulls through. The contract
-  // pulls amount + protocol fee (FEE_BPS = 25 → 0.25%), so we gross the
-  // approval up by 1% to comfortably cover the fee — a "Pay Balance" with a
-  // bare-amount approval would otherwise revert with insufficient allowance.
+  // pulls amount + protocol fee (FEE_BPS, read from chain), so the approval
+  // must cover the gross — a "Pay Balance" with a bare-amount approval would
+  // otherwise revert with insufficient allowance.
   const approveTokenAllowance = useCallback(
     async (amount: bigint) => {
       if (!address || !loanTokenAddress || !loansContractAddress) {
         throw new Error('Missing required data for token approval')
       }
 
-      const grossAmount = amount + amount / 100n
+      const grossAmount = getGrossPaymentAmount(amount)
 
       const txHash = await approveToken({
         address: loanTokenAddress,
@@ -512,10 +616,8 @@ export const useLoanOperations = (
         args: [loansContractAddress, grossAmount]
       })
 
-      // Wait for transaction to be mined
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
+      // Wait for the approval to be mined and verify it didn't revert
+      await waitForSuccess(txHash, 'Token approval')
 
       // After transaction is confirmed, refetch the allowance
       await refetchAllowance()
@@ -527,8 +629,9 @@ export const useLoanOperations = (
       loanTokenAddress,
       loansContractAddress,
       approveToken,
-      refetchAllowance,
-      publicClient
+      getGrossPaymentAmount,
+      waitForSuccess,
+      refetchAllowance
     ]
   )
 
@@ -564,25 +667,22 @@ export const useLoanOperations = (
         throw new Error('Loans contract address not found')
       }
 
-      // Contract pulls amount + protocol fee (FEE_BPS = 25 → 0.25%) on
+      // Contract pulls amount + protocol fee (FEE_BPS, read from chain) on
       // makeLoanPayment, so balance and allowance must cover the gross.
-      const grossAmount = amount + amount / 100n
+      const grossAmount = getGrossPaymentAmount(amount)
 
       // Check if user has sufficient loan token balance
-      if (userLoanTokenBalance && userLoanTokenBalance < grossAmount) {
+      if (userLoanTokenBalance !== undefined && userLoanTokenBalance < grossAmount) {
         throw new Error(`Insufficient loan token balance`)
       }
 
       // Check if we need to approve tokens first
       if (!currentAllowance || currentAllowance < grossAmount) {
-        try {
-          // First approve the tokens
-          await approveTokenAllowance(amount)
-        } catch (error) {
-          // Re-throw the error to be handled by the calling component
-          throw error
-        }
+        await approveTokenAllowance(amount)
       }
+
+      const nativeFee = paymentNativeFee ?? 0n
+      await ensureNativeFeeBalance(nativeFee, address)
 
       // Pre-simulate via eth_call so contract reverts (e.g. LoanNotActive when a
       // time-based default has occurred but loanStatus() hasn't been written yet)
@@ -595,49 +695,20 @@ export const useLoanOperations = (
           abi: loansAbi,
           functionName: 'makeLoanPayment',
           args: [loanId, amount],
-          value: paymentNativeFee ?? 0n,
+          value: nativeFee,
           account: address,
         })
       }
 
       const txHash = await makeLoanPayment({
         args: [loanId, amount],
-        value: paymentNativeFee ?? 0n,
+        value: nativeFee,
       })
 
-      // Wait for transaction to be confirmed
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
-
-      // If payment was successful, invalidate queries
-      if (txHash && address) {
-        await Promise.all([
-          // Invalidate wagmi-generated queries
-          queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey
-              return (
-                Array.isArray(key) &&
-                key.some(
-                  (part) =>
-                    typeof part === 'object' &&
-                    part !== null &&
-                    'args' in part &&
-                    Array.isArray(part.args) &&
-                    part.args[0] === address
-                )
-              )
-            }
-          }),
-          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) && query.queryKey[0] === 'loan'
-          }),
-          queryClient.invalidateQueries()
-        ])
-      }
+      // Wait for confirmation, throw the decoded revert reason if the tx
+      // failed on-chain, and refresh all queries on success. A reverted
+      // payment must never surface as a success toast.
+      await waitAndInvalidate(txHash)
 
       return txHash
     },
@@ -649,9 +720,11 @@ export const useLoanOperations = (
       userLoanTokenBalance,
       currentAllowance,
       approveTokenAllowance,
+      getGrossPaymentAmount,
       paymentNativeFee,
+      ensureNativeFeeBalance,
       publicClient,
-      queryClient
+      waitAndInvalidate
     ]
   )
 
@@ -665,54 +738,39 @@ export const useLoanOperations = (
         args: [loanId]
       })
 
-      // Wait for transaction to be confirmed
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash: txHash })
-      }
-
-      // If withdrawal was successful, invalidate queries
-      if (txHash && address) {
-        await Promise.all([
-          // Invalidate wagmi-generated queries
-          queryClient.invalidateQueries({
-            predicate: (query) => {
-              const key = query.queryKey
-              return (
-                Array.isArray(key) &&
-                key.some(
-                  (part) =>
-                    typeof part === 'object' &&
-                    part !== null &&
-                    'args' in part &&
-                    Array.isArray(part.args) &&
-                    part.args[0] === address
-                )
-              )
-            }
-          }),
-          queryClient.invalidateQueries({ queryKey: loanKeys.all }),
-          queryClient.invalidateQueries({
-            predicate: (query) =>
-              Array.isArray(query.queryKey) && query.queryKey[0] === 'loan'
-          }),
-          queryClient.invalidateQueries()
-        ])
-      }
+      // Wait for confirmation, throw the decoded revert reason if the tx
+      // failed on-chain, and refresh all queries on success.
+      await waitAndInvalidate(txHash)
 
       return txHash
     },
-    [address, withdrawCollateral, publicClient, queryClient]
+    [address, withdrawCollateral, waitAndInvalidate]
   )
 
   // Function to extend a loan by max allowed extension
   const extendLoan = useCallback(
     async (loanId: `0x${string}`, extendTime: bigint) => {
       if (!address) throw new Error('Wallet not connected')
-      const txHash = await extendLoanContract({ args: [loanId, extendTime] })
+      const payer = originationPayer ?? address
+
+      // Pre-simulate so contract reverts (fee changed, loan state changed,
+      // delegate allowance short) surface as decoded errors before the wallet
+      // prompt — extendLoan was the only write without this.
+      if (publicClient && loansContractAddress) {
+        await publicClient.simulateContract({
+          address: loansContractAddress,
+          abi: loansAbi,
+          functionName: 'extendLoan',
+          args: [loanId, extendTime, payer],
+          account: address,
+        })
+      }
+
+      const txHash = await extendLoanContract({ args: [loanId, extendTime, payer] })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, extendLoanContract, waitAndInvalidate]
+    [address, originationPayer, extendLoanContract, publicClient, loansContractAddress, waitAndInvalidate]
   )
 
   return {
@@ -737,6 +795,7 @@ export const useLoanOperations = (
     // Loan creation data
     requiredCollateral: collateralAmount,
     hasInsufficientLmln,
+    hasInsufficientCollateral,
     grossOriginationFee,
     calculationData: calculationData
       ? {
@@ -755,6 +814,7 @@ export const useLoanOperations = (
     // User balances
     userLmlnBalance,
     userLoanTokenBalance,
+    userCollateralBalance,
     currentAllowance,
     currentLmlnAllowance,
     currentCollateralAllowance,
@@ -762,6 +822,13 @@ export const useLoanOperations = (
     // Liquidity
     availableLiquidity,
     hasInsufficientLiquidity,
+
+    // Protocol fees
+    paymentFeeBps,
+    bpsDenominator,
+    getGrossPaymentAmount,
+    initiateNativeFee,
+    paymentNativeFee,
 
     // Error state
     error: calculationError || decimalsError

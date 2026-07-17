@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo } from 'react'
 import { useAccount, useReadContract, useReadContracts } from 'wagmi'
-import { erc20Abi } from 'viem'
+import { erc20Abi, formatEther } from 'viem'
 import {
   Card,
   CardContent,
@@ -73,7 +73,8 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   const [selectedAssetIndex, setSelectedAssetIndex] = useState<number | null>(null)
   const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
   const { toast } = useToast()
-  const { address } = useAccount()
+  const { address, chain } = useAccount()
+  const nativeCurrencySymbol = chain?.nativeCurrency.symbol ?? 'native token'
 
   const {
     stableTokenAddress,
@@ -82,6 +83,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     feeConfig,
     approveToken,
     deposit,
+    depositNativeFee,
     refetch,
   } = liquidityPool
 
@@ -312,9 +314,10 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     setShowConfirmDialog(true)
   }
 
+  // Standard modal contract: stays open while the tx runs (spinner on the
+  // confirm button, dismissal blocked) and closes only on success.
   const handleConfirmDeposit = async () => {
     if (!tokenAmount || !selectedAsset) return
-    setShowConfirmDialog(false)
     setIsProcessing(true)
     try {
       await deposit(selectedAsset, tokenAmount, selectedLockDuration, isNonEarning)
@@ -323,6 +326,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`,
       })
       setAmount('')
+      setShowConfirmDialog(false)
       await refetchBalance()
       await refetchAllowance()
       await refetch()
@@ -448,6 +452,30 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
               Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
             </p>
           )}
+          {/* The Deposit button used to sit inexplicably disabled when a
+              required choice was missing (or no tiers are enabled, in which
+              case the tier section doesn't render at all) — say why. */}
+          {amount && selectedAsset === undefined && (
+            <p className='text-sm text-muted-foreground'>
+              Select a token above to continue.
+            </p>
+          )}
+          {selectedAsset !== undefined && enabledTiers.length === 0 && (
+            <p className='text-sm text-destructive'>
+              No lock durations are currently enabled for this token — deposits
+              are unavailable.
+            </p>
+          )}
+          {amount &&
+            selectedAsset !== undefined &&
+            enabledTiers.length > 0 &&
+            selectedTier === undefined &&
+            !isBelowMinimum &&
+            !insufficientBalance && (
+              <p className='text-sm text-muted-foreground'>
+                Select a lock duration to continue.
+              </p>
+            )}
         </div>
 
         <div>
@@ -479,7 +507,13 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         </div>
       </CardContent>
 
-      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+      <Dialog
+        open={showConfirmDialog}
+        onOpenChange={(open) => {
+          if (!open && isProcessing) return
+          setShowConfirmDialog(open)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Deposit</DialogTitle>
@@ -503,6 +537,17 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
                 .
               </p>
             )}
+            {depositNativeFee !== undefined && depositNativeFee > 0n && (
+              <p className='text-sm text-muted-foreground'>
+                A network fee of ~<span className='font-semibold text-foreground'>
+                  {Number(formatEther(depositNativeFee)).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })}{' '}
+                  {nativeCurrencySymbol}
+                </span>{' '}
+                is charged on deposit.
+              </p>
+            )}
             {requiresSwap && (
               <p className='text-sm text-muted-foreground'>
                 Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
@@ -518,14 +563,20 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
             <Button
               variant='outline'
               onClick={() => setShowConfirmDialog(false)}
+              disabled={isProcessing}
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirmDeposit}
+              disabled={isProcessing}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
-              Confirm Deposit
+              {isProcessing ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…</>
+              ) : (
+                'Confirm Deposit'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -9,7 +9,9 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { Button } from '../ui/button'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import { formatEther } from 'viem'
+import { extractErrorMessage } from '../../utils/errorHandling'
 
 interface LoanConfirmationModalProps {
   isOpen: boolean
@@ -26,6 +28,15 @@ interface LoanConfirmationModalProps {
   handleApproveLoanFee: () => Promise<void>
   needsCollateralApproval: boolean
   needsApproval: boolean
+  /** Delegate pays the fee but their LMLN allowance to the Loans contract is
+   *  short. The Approve button would approve from the CONNECTED wallet (the
+   *  borrower) and can never clear this, so creation is blocked with a
+   *  message instead. */
+  delegateNeedsAllowance?: boolean
+  /** Native (gas-token) fee attached to initiateLoan, in wei */
+  nativeFee?: bigint
+  /** Native currency symbol for the connected chain (e.g. TLEMX) */
+  nativeSymbol?: string
 }
 
 export function LoanConfirmationModal({
@@ -42,13 +53,23 @@ export function LoanConfirmationModal({
   handleApproveCollateral,
   handleApproveLoanFee,
   needsCollateralApproval,
-  needsApproval
+  needsApproval,
+  delegateNeedsAllowance = false,
+  nativeFee,
+  nativeSymbol
 }: LoanConfirmationModalProps) {
   const collateral = collateralSymbol || 'Collateral'
   const isBusy = isApprovingCollateral || isApprovingLoanFee || isCreatingLoan
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Don't let ESC / outside-click dismiss the modal mid-transaction —
+        // the user would lose all progress context while the tx is pending.
+        if (!open && !isBusy) onClose()
+      }}
+    >
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-2'>
@@ -80,7 +101,7 @@ export function LoanConfirmationModal({
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>APR:</span>
-              <span>{Math.round(calculation.apr)}%</span>
+              <span>{calculation.apr}%</span>
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>Collateral Required:</span>
@@ -99,24 +120,69 @@ export function LoanConfirmationModal({
                 {tokenConfig?.feeToken.symbol || 'Token'}
               </span>
             </div>
+            {nativeFee !== undefined && nativeFee > 0n && (
+              <div className='flex justify-between'>
+                <span className='font-medium'>Network Fee:</span>
+                <span>
+                  {Number(formatEther(nativeFee)).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })}{' '}
+                  {nativeSymbol || 'native token'}
+                </span>
+              </div>
+            )}
           </div>
 
-          {(needsCollateralApproval || needsApproval) && (
-            <div className='text-xs text-muted-foreground bg-muted rounded p-3 space-y-1'>
-              <p className='font-medium'>Approval steps required:</p>
-              <p className={needsCollateralApproval ? 'text-foreground' : 'line-through opacity-50'}>
-                1. Approve {collateral} for collateral
-              </p>
-              <p className={needsApproval ? 'text-foreground' : 'line-through opacity-50'}>
-                2. Approve {tokenConfig?.feeToken.symbol || 'LMLN'} origination fee
-              </p>
-              <p className='opacity-50'>3. Create loan</p>
+          {/* Always visible so the user keeps their bearings after the
+              approvals land — completed steps get a check mark, the active
+              step is highlighted, upcoming steps are dimmed. */}
+          <div className='text-xs text-muted-foreground bg-muted rounded p-3 space-y-1'>
+            <p className='font-medium'>Loan creation steps:</p>
+            {(() => {
+              const steps = [
+                {
+                  label: `1. Approve ${collateral} for collateral`,
+                  done: !needsCollateralApproval
+                },
+                {
+                  label: `2. Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} origination fee`,
+                  done: !needsApproval
+                },
+                { label: '3. Create loan', done: false }
+              ]
+              const activeIndex = steps.findIndex((s) => !s.done)
+              return steps.map((step, i) => (
+                <p
+                  key={step.label}
+                  className={`flex items-center gap-1.5 ${
+                    step.done
+                      ? ''
+                      : i === activeIndex
+                        ? 'text-foreground font-medium'
+                        : 'opacity-50'
+                  }`}
+                >
+                  {step.done && (
+                    <CheckCircle2 className='h-3.5 w-3.5 text-green-600 shrink-0' />
+                  )}
+                  {step.label}
+                </p>
+              ))
+            })()}
+          </div>
+
+          {delegateNeedsAllowance && (
+            <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
+              The delegate hasn&apos;t approved enough {tokenConfig?.feeToken.symbol || 'LMLN'} to
+              the Loans contract. They need to grant approval (the Delegation
+              Manager does this when authorizing) before you can create this
+              loan.
             </div>
           )}
 
           {operationError && (
             <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
-              {operationError.message}
+              {extractErrorMessage(operationError)}
             </div>
           )}
         </div>
@@ -135,7 +201,7 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 text-white'
             >
-              {isApprovingCollateral ? 'Approving...' : `Approve ${collateral}`}
+              {isApprovingCollateral ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${collateral}`)}
             </Button>
           ) : needsApproval ? (
             <Button
@@ -143,15 +209,15 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isApprovingLoanFee ? 'Approving...' : `Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`}
+              {isApprovingLoanFee ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`)}
             </Button>
           ) : (
             <Button
               onClick={handleCreateLoan}
-              disabled={isBusy || !calculation.isValid}
+              disabled={isBusy || !calculation.isValid || delegateNeedsAllowance}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isCreatingLoan ? 'Creating Loan...' : 'Confirm & Create Loan'}
+              {isCreatingLoan ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Creating Loan…</>) : ('Confirm & Create Loan')}
             </Button>
           )}
         </DialogFooter>

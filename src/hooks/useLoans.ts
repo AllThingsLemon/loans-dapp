@@ -3,6 +3,7 @@ import { useUserLoans } from './loans/useUserLoans'
 import { useLoanOperations } from './loans/useLoanOperations'
 import { useLoanConfig } from './loans/useLoanConfig'
 import { LOAN_STATUS } from '@/src/constants'
+import { isPastDefault } from '@/src/utils/loanStatus'
 import type { UseLoansOptions, UseLoansReturn } from './types'
 export type { LoanRequest } from './loans/useLoanOperations'
 
@@ -34,6 +35,7 @@ export interface Loan {
   // Computed helper properties (derived from contract data)
   originalDuration: bigint // Duration at loan creation (max allowed extension)
   loanCycleDuration: bigint // From loans struct — used for adaptive countdown buffer
+  balloonGraceSnapshot: bigint // Grace window captured at creation (0 for pre-upgrade loans)
   remainingBalance: bigint // Calculated from contract values, not manually
   dueTimestamp: bigint // Calculated from timeToDefault
 }
@@ -49,19 +51,31 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
   // though makeLoanPayment will revert with LoanNotActive. Compute an
   // effective status here so the UI reflects reality: badge as Defaulted,
   // drop from active list, and prevent the doomed payment flow.
-  const grace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
+  //
+  // Grace comes from the loan's own snapshot (fixed at creation) so an admin
+  // change to the global config can't retroactively re-badge existing loans.
+  // Loans created before the upgrade that added the snapshot read 0 — fall
+  // back to the global config for those.
+  const globalGrace = config.loanConfig?.balloonPaymentGraceDuration ?? 0n
   const effectiveLoans = useMemo(() => {
     const nowSec = BigInt(Math.floor(Date.now() / 1000))
     return userData.loans.flatMap((loan) => {
       if (!loan) return []
       if (loan.status !== LOAN_STATUS.ACTIVE) return [loan]
-      const defaultAt = loan.createdAt + loan.duration + grace
-      if (nowSec >= defaultAt) {
+      if (
+        isPastDefault(
+          loan.createdAt,
+          loan.duration,
+          loan.balloonGraceSnapshot,
+          globalGrace,
+          nowSec
+        )
+      ) {
         return [{ ...loan, status: LOAN_STATUS.DEFAULT }]
       }
       return [loan]
     })
-  }, [userData.loans, grace])
+  }, [userData.loans, globalGrace])
 
   const activeLoans = useMemo(
     () =>
@@ -111,12 +125,14 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     // Loan creation & simulation data
     requiredCollateral: operations.requiredCollateral,
     hasInsufficientLmln: operations.hasInsufficientLmln,
+    hasInsufficientCollateral: operations.hasInsufficientCollateral,
     grossOriginationFee: operations.grossOriginationFee,
     calculationData: operations.calculationData,
 
     // User balance info
     userLmlnBalance: operations.userLmlnBalance,
     userLoanTokenBalance: operations.userLoanTokenBalance,
+    userCollateralBalance: operations.userCollateralBalance,
     currentAllowance: operations.currentAllowance,
     currentLmlnAllowance: operations.currentLmlnAllowance,
     currentCollateralAllowance: operations.currentCollateralAllowance,
@@ -124,6 +140,13 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
     // Liquidity
     availableLiquidity: operations.availableLiquidity,
     hasInsufficientLiquidity: operations.hasInsufficientLiquidity,
+
+    // Protocol fees
+    paymentFeeBps: operations.paymentFeeBps,
+    bpsDenominator: operations.bpsDenominator,
+    getGrossPaymentAmount: operations.getGrossPaymentAmount,
+    initiateNativeFee: operations.initiateNativeFee,
+    paymentNativeFee: operations.paymentNativeFee,
 
     // Contract addresses
     loansContractAddress: operations.loansContractAddress,
@@ -139,7 +162,10 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
       userData.isLoading || operations.isTransacting || config.isLoading,
 
     // Combined error state
-    error: userData.error || operations.error || config.error
+    error: userData.error || operations.error || config.error,
+    // Config-only error — the calculator must not hard-fail on a per-loan
+    // read error (userData.error), which is unrelated to creating new loans.
+    configError: config.error
   }
 }
 

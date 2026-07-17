@@ -9,7 +9,7 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { Button } from '../ui/button'
-import { CheckCircle, Trophy } from 'lucide-react'
+import { CheckCircle, Trophy, Loader2 } from 'lucide-react'
 import { formatAmountWithSymbol } from '../../utils/format'
 
 interface LoanCompletionModalProps {
@@ -37,7 +37,13 @@ export function LoanCompletionModal({
   if (!loan) return null
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Standard modal contract: no dismissal while the tx is running.
+        if (!open && !isWithdrawing) onClose()
+      }}
+    >
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle className='flex items-center gap-3 text-xl'>
@@ -106,7 +112,7 @@ export function LoanCompletionModal({
             disabled={isWithdrawing}
             className='bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white'
           >
-            {isWithdrawing ? 'Withdrawing...' : 'Confirm & Withdraw Collateral'}
+            {isWithdrawing ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Withdrawing…</>) : ('Confirm & Withdraw Collateral')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -36,7 +36,7 @@ interface LoanHistoryProps {
 }
 
 export function LoanHistory({ compact = false }: LoanHistoryProps) {
-  const { loanHistory } = useLoans()
+  const { loanHistory, isLoading } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
   const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
 
@@ -64,6 +64,16 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
       <Badge variant={getLoanStatusVariant(status)}>
         {getLoanStatusLabel(status)}
       </Badge>
+    )
+  }
+
+  // Don't flash "No Loan History" while the multi-round loan fetch is running.
+  if (loanHistory.length === 0 && isLoading) {
+    return (
+      <div className='text-center py-8'>
+        <History className='h-12 w-12 mx-auto mb-4 text-muted-foreground animate-pulse' />
+        <p className='text-sm text-muted-foreground'>Loading loan history…</p>
+      </div>
     )
   }
 

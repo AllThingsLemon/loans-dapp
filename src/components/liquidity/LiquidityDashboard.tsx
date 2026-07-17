@@ -4,12 +4,18 @@ import { AddLiquidityCard } from './AddLiquidityCard'
 import { RemoveLiquidityCard } from './RemoveLiquidityCard'
 import { LiquidityPerformance } from './LiquidityPerformance'
 import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
+import { ProtocolStatusBanner } from '@/src/components/common/ProtocolStatusBanner'
 
 export function LiquidityDashboard() {
   const liquidityPool = useLiquidityPool()
 
   return (
     <div className='space-y-6'>
+      {/* Protocol health — paused contracts / stale price feed */}
+      <Web3ErrorBoundary>
+        <ProtocolStatusBanner />
+      </Web3ErrorBoundary>
+
       <div>
         <h1 className='text-3xl font-bold text-gray-900'>
           Become a LemLoans Liquidity Provider

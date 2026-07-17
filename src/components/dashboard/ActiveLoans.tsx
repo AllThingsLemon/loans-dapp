@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAccount } from 'wagmi'
+import { formatEther } from 'viem'
 import {
   Card,
   CardContent,
@@ -25,6 +27,8 @@ import { RadioGroup, RadioGroupItem } from '@/src/components/ui/radio-group'
 import { Loan, useLoans, useLoanPayment } from '@/src/hooks/useLoans'
 import { CountdownTimer } from '@/src/components/ui/countdown-timer'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
+import { useDelegateValidation } from '@/src/hooks/loans/useDelegateValidation'
+import { OriginationPayerField } from '@/src/components/common/OriginationPayerField'
 import {
   formatAmountWithSymbol,
   formatDuration,
@@ -40,6 +44,7 @@ import {
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
+import { resolveGraceDuration } from '@/src/utils/loanStatus'
 import {
   handleContractError,
   type ContractError
@@ -53,7 +58,8 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
@@ -63,6 +69,28 @@ interface ActiveLoansProps {
 }
 
 export function ActiveLoans({ compact = false }: ActiveLoansProps) {
+  const { address, chain } = useAccount()
+  const nativeSymbol = chain?.nativeCurrency.symbol ?? 'native token'
+
+  // Extension origination-payer field — re-targets LMLN balance/allowance
+  // reads in useLoans below when the borrower has unlocked it and supplied a
+  // verified delegate. Default = connected wallet, locked.
+  const [extensionPayerInput, setExtensionPayerInput] = useState('')
+  const [isExtensionPayerLocked, setIsExtensionPayerLocked] = useState(true)
+  useEffect(() => {
+    if (isExtensionPayerLocked) {
+      setExtensionPayerInput(address ?? '')
+    }
+  }, [address, isExtensionPayerLocked])
+
+  const extensionPayerValidation = useDelegateValidation(extensionPayerInput)
+  const effectiveExtensionPayer =
+    !isExtensionPayerLocked &&
+    extensionPayerValidation.normalizedAddress &&
+    !extensionPayerValidation.isSelf
+      ? extensionPayerValidation.normalizedAddress
+      : undefined
+
   const {
     activeLoans,
     payLoan,
@@ -70,6 +98,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     extendLoan,
     approveLoanFee,
     isLoading,
+    error: loansError,
     refetch,
     currentAllowance,
     currentLmlnAllowance,
@@ -79,7 +108,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLmlnBalance,
     loanConfig,
     interestAprConfigs,
-  } = useLoans()
+    paymentFeeBps,
+    bpsDenominator,
+    getGrossPaymentAmount,
+    paymentNativeFee,
+  } = useLoans({ originationPayer: effectiveExtensionPayer })
   const { tokenConfig } = useContractTokenConfiguration()
   const { getCollateralByAddress } = useCollateralManager()
   const {
@@ -130,6 +163,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       tokenConfig.loanToken.decimals
     )
     const rounded = Math.ceil(parseFloat(minPayment) * 10) / 10
+    // Rounding a cost up is the safe direction, but near payoff the rounded
+    // minimum can exceed the remaining balance — and the payment guard then
+    // rejects the app's own default suggestion with "Payment Too Large".
+    // Clamp to the exact remaining balance in that case.
+    const remaining = formatTokenAmount(
+      loan.remainingBalance,
+      tokenConfig.loanToken.decimals
+    )
+    if (rounded > parseFloat(remaining)) {
+      return remaining
+    }
     return rounded.toFixed(1)
   }
 
@@ -342,11 +386,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         tokenConfig.loanToken.decimals
       )
 
-      // Check if user has sufficient token balance
-      if (userLoanTokenBalance && paymentWei > userLoanTokenBalance) {
+      // Check if user has sufficient token balance for the gross debit
+      // (payment + protocol fee) the contract will pull.
+      if (
+        userLoanTokenBalance !== undefined &&
+        getGrossPaymentAmount(paymentWei) > userLoanTokenBalance
+      ) {
         toast({
           title: 'Insufficient Balance',
-          description: `You need ${currentPaymentAmount} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
+          description: `Including the protocol fee you need ${formatTokenAmount(getGrossPaymentAmount(paymentWei), tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
           variant: 'destructive'
         })
         setIsProcessingPayment(false)
@@ -391,6 +439,36 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     } finally {
       setIsProcessingPayment(false)
     }
+  }
+
+  // Loading takes 2+ sequential RPC rounds (loan IDs, then per-loan data) —
+  // without this gate every page load flashes "No Active Loans" at borrowers
+  // who do have loans, including overdue ones.
+  if (activeLoans.length === 0 && isLoading) {
+    return (
+      <div className='text-center py-8'>
+        <CreditCard className='h-12 w-12 mx-auto mb-4 text-muted-foreground animate-pulse' />
+        <p className='text-sm text-muted-foreground'>Loading your loans…</p>
+      </div>
+    )
+  }
+
+  // A load failure must never masquerade as "no loans" — a borrower could
+  // believe an overdue loan is gone.
+  if (activeLoans.length === 0 && loansError) {
+    return (
+      <div className='text-center py-8'>
+        <AlertCircle className='h-12 w-12 mx-auto mb-4 text-destructive' />
+        <h3 className='text-lg font-medium mb-2'>Couldn&apos;t load your loans</h3>
+        <p className='text-sm text-muted-foreground mb-4'>
+          Something went wrong while fetching your loan data. Your loans are
+          unaffected — please retry.
+        </p>
+        <Button variant='outline' onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    )
   }
 
   if (activeLoans.length === 0) {
@@ -463,8 +541,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
         // Countdown target — derived entirely from absolute timestamps on the
-        // loan struct (and loanConfig.balloonPaymentGraceDuration) so the value
-        // does not shift when the component re-renders. Three phases:
+        // loan struct so the value does not shift when the component
+        // re-renders. Three phases:
         //
         //   1. Interest NOT fully paid:
         //      count to the next cycle's payment deadline (capped at the loan
@@ -480,9 +558,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         // expected, since this is sized for mainnet cycle lengths.
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
-        const graceDurationMs = loanConfig?.balloonPaymentGraceDuration
-          ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
-          : 0
+        // Per-loan grace snapshot (fixed at creation) so a config change
+        // can't shift existing loans' default countdowns; the shared util
+        // handles the pre-upgrade fallback to the global config and keeps
+        // this countdown in lockstep with useLoans' status override.
+        const graceDurationMs =
+          Number(
+            resolveGraceDuration(
+              loan.balloonGraceSnapshot,
+              loanConfig?.balloonPaymentGraceDuration ?? 0n
+            )
+          ) * 1000
         const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
 
         // End of the next cycle the user must pay, accounting for prepayments.
@@ -652,8 +738,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   </span>
                   <span>
                     {isInGracePeriod ? 'Principal' : 'Remaining'}:{' '}
+                    {/* remainingBalance in both phases — showing the original
+                        loanAmount here overstated the debt for borrowers who
+                        prepaid part of the principal before the grace window. */}
                     {formatAmountWithSymbol(
-                      isInGracePeriod ? loan.loanAmount : loan.remainingBalance,
+                      loan.remainingBalance,
                       tokenConfig?.loanToken.symbol || 'Token'
                     )}
                   </span>
@@ -725,6 +814,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <Dialog
                     open={isPaymentDialogOpen && selectedLoan === loan.id}
                     onOpenChange={(open) => {
+                      // Don't let ESC / outside-click dismiss mid-transaction —
+                      // the user would lose the pending-payment context.
+                      if (!open && (isApprovingPayment || isProcessingPayment)) {
+                        return
+                      }
                       setIsPaymentDialogOpen(open)
                       if (!open) {
                         setSelectedLoan(null)
@@ -840,25 +934,115 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               />
                             </div>
                           )}
-                        </div>
-                        <div className='flex gap-2'>
+
+                          {/* Fee disclosure — the contract debits payment +
+                              protocol fee, and payable ops charge a native
+                              network fee. Both must be visible pre-sign. */}
                           {(() => {
-                            // Check if approval is needed. The contract pulls
-                            // amount + protocol fee on makeLoanPayment, so the
-                            // allowance must cover the gross — otherwise this
-                            // button silently shows "Confirm Payment" and the
-                            // tx reverts with insufficient allowance.
                             const currentPaymentAmount = getPaymentAmount(loan)
                             const paymentWei =
                               currentPaymentAmount && tokenConfig?.loanToken.decimals
                                 ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
                                 : 0n
-                            const grossPaymentWei = paymentWei + paymentWei / 100n
+                            if (paymentWei <= 0n) return null
+                            const grossWei = getGrossPaymentAmount(paymentWei)
+                            const feePercent =
+                              Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
+                            return (
+                              <div className='rounded-md bg-muted p-3 text-sm space-y-1'>
+                                <div className='flex justify-between'>
+                                  <span className='text-muted-foreground'>
+                                    Protocol fee ({feePercent}%)
+                                  </span>
+                                  <span>
+                                    {formatAmountWithSymbol(
+                                      grossWei - paymentWei,
+                                      tokenConfig?.loanToken.symbol || 'Token'
+                                    )}
+                                  </span>
+                                </div>
+                                <div className='flex justify-between font-medium'>
+                                  <span>Total debit</span>
+                                  <span>
+                                    {formatAmountWithSymbol(
+                                      grossWei,
+                                      tokenConfig?.loanToken.symbol || 'Token'
+                                    )}
+                                  </span>
+                                </div>
+                                {paymentNativeFee !== undefined &&
+                                  paymentNativeFee > 0n && (
+                                    <div className='flex justify-between'>
+                                      <span className='text-muted-foreground'>
+                                        Network fee
+                                      </span>
+                                      <span>
+                                        {Number(
+                                          formatEther(paymentNativeFee)
+                                        ).toLocaleString('en-US', {
+                                          maximumFractionDigits: 4
+                                        })}{' '}
+                                        {nativeSymbol}
+                                      </span>
+                                    </div>
+                                  )}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                        <div className='flex gap-2'>
+                          {/* Standard modal contract: Cancel left (disabled
+                              mid-tx), confirm right with spinner. */}
+                          <Button
+                            variant='outline'
+                            disabled={isApprovingPayment || isProcessingPayment}
+                            onClick={() => {
+                              setPaymentAmount('')
+                              setSelectedLoan(null)
+                              setPaymentType('minimum')
+                              setCustomAmount('')
+                              setIsApprovingPayment(false)
+                              setIsProcessingPayment(false)
+                              setIsPaymentDialogOpen(false)
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          {(() => {
+                            // Check if approval is needed. The contract pulls
+                            // amount + protocol fee (FEE_BPS, read from chain)
+                            // on makeLoanPayment, so the allowance must cover
+                            // the gross — otherwise this button silently shows
+                            // "Confirm Payment" and the tx reverts with
+                            // insufficient allowance.
+                            const currentPaymentAmount = getPaymentAmount(loan)
+                            const paymentWei =
+                              currentPaymentAmount && tokenConfig?.loanToken.decimals
+                                ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
+                                : 0n
+                            const contractPullWei = getGrossPaymentAmount(paymentWei)
                             const needsApproval =
-                              !currentAllowance || currentAllowance < grossPaymentWei
+                              !currentAllowance || currentAllowance < contractPullWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0
+                            const hasInsufficientPaymentBalance =
+                              userLoanTokenBalance !== undefined &&
+                              hasValidAmount &&
+                              paymentWei > 0n &&
+                              userLoanTokenBalance < contractPullWei
+
+                            if (hasInsufficientPaymentBalance) {
+                              return (
+                                <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4' />
+                                  <span>
+                                    You don&apos;t have enough{' '}
+                                    {tokenConfig?.loanToken.symbol || 'tokens'} for this payment.
+                                  </span>
+                                </div>
+                              )
+                            }
 
                             if (
                               needsApproval &&
@@ -875,9 +1059,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isApprovingPayment
-                                    ? 'Approving...'
-                                    : 'Approve Tokens'}
+                                  {isApprovingPayment ? (
+                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>
+                                  ) : (
+                                    'Approve Tokens'
+                                  )}
                                 </Button>
                               )
                             } else {
@@ -892,27 +1078,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isProcessingPayment
-                                    ? 'Processing...'
-                                    : 'Confirm Payment'}
+                                  {isProcessingPayment ? (
+                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>
+                                  ) : (
+                                    'Confirm Payment'
+                                  )}
                                 </Button>
                               )
                             }
                           })()}
-                          <Button
-                            variant='outline'
-                            onClick={() => {
-                              setPaymentAmount('')
-                              setSelectedLoan(null)
-                              setPaymentType('minimum')
-                              setCustomAmount('')
-                              setIsApprovingPayment(false)
-                              setIsProcessingPayment(false)
-                              setIsPaymentDialogOpen(false)
-                            }}
-                          >
-                            Cancel
-                          </Button>
                         </div>
                       </div>
                     </DialogContent>
@@ -927,6 +1101,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       selectedLoanForExtension === loan.id
                     }
                     onOpenChange={(open) => {
+                      // Don't dismiss mid-transaction (see payment dialog).
+                      if (
+                        !open &&
+                        (isApprovingExtension || isProcessingExtension)
+                      ) {
+                        return
+                      }
                       setIsExtensionDialogOpen(open)
                       if (!open) {
                         setSelectedLoanForExtension(null)
@@ -971,8 +1152,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         const ltvPct = tokenConfig
                           ? formatPercentage(loan.ltv, tokenConfig.ltvDecimals) + '%'
                           : '—'
+                        // currentLmlnAllowance + userLmlnBalance are auto-redirected to the
+                        // delegate's wallet when one is unlocked + valid (see useLoans options
+                        // wired up at top of this component). Same comparisons work either way.
                         const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
                         const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < loan.originationFee
+                        // Block the CTA if the borrower has unlocked the field but
+                        // hasn't supplied a verified delegate yet (red text in the
+                        // OriginationPayerField surfaces the reason).
+                        const payerBlocks =
+                          !isExtensionPayerLocked && !extensionPayerValidation.isValid
 
                         return (
                           <div className='space-y-5'>
@@ -1032,32 +1221,58 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               )}
                             </div>
 
-                            {/* Actions */}
-                            <div className='flex gap-2'>
-                              {hasInsufficientBalance ? (
-                                <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
-                                  <AlertCircle className='h-4 w-4' />
-                                  <span>Insufficient LMLN balance for extension fee</span>
-                                </div>
-                              ) : needsApproval && loan.originationFee > 0n ? (
-                                <Button
-                                  onClick={() => handleExtensionApproval(loan)}
-                                  disabled={isApprovingExtension || isProcessingExtension}
-                                  className='flex-1'
-                                >
-                                  {isApprovingExtension ? 'Approving...' : 'Approve LMLN'}
-                                </Button>
-                              ) : (
-                                <Button
-                                  onClick={() => handleExtension(loan)}
-                                  disabled={isProcessingExtension || extensionDuration === 0}
-                                  className='flex-1'
-                                >
-                                  {isProcessingExtension ? 'Processing...' : 'Confirm Extension'}
-                                </Button>
+                            {/* Origination-fee payer (default = self; unlock to delegate). */}
+                            <OriginationPayerField
+                              value={extensionPayerInput}
+                              onChange={setExtensionPayerInput}
+                              validation={extensionPayerValidation}
+                              isLocked={isExtensionPayerLocked}
+                              onToggleLock={() => {
+                                setIsExtensionPayerLocked((wasLocked) => {
+                                  if (!wasLocked) {
+                                    setExtensionPayerInput(address ?? '')
+                                  }
+                                  return !wasLocked
+                                })
+                              }}
+                              feeTokenSymbol={tokenConfig?.feeToken.symbol || 'LMLN'}
+                              feeTokenDecimals={tokenConfig?.feeToken.decimals ?? 18}
+                              id={`extend-payer-${loan.id}`}
+                            />
+
+                            {/* Actions. hasInsufficientBalance / needsApproval reflect the
+                             *  *fee payer's* wallet — borrower when locked or self, delegate
+                             *  otherwise. The Approve LMLN button only shows when the user
+                             *  is paying their own fee; a delegate is expected to have
+                             *  pre-approved max LMLN when authorizing themselves.
+                             *
+                             *  We suppress the balance warning while a delegate is unlocked
+                             *  but unauthorized — the field's "not authorized" message is
+                             *  the actionable error to show first. */}
+                            {/* A verified delegate with insufficient allowance used to
+                                leave "Confirm Extension" inexplicably dead while the
+                                field showed green — say why and what to do. */}
+                            {!isExtensionPayerLocked &&
+                              !extensionPayerValidation.isSelf &&
+                              extensionPayerValidation.isValid &&
+                              needsApproval &&
+                              loan.originationFee > 0n &&
+                              !hasInsufficientBalance && (
+                                <p className='text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4 shrink-0' />
+                                  <span>
+                                    The delegate hasn&apos;t approved enough{' '}
+                                    {tokenConfig?.feeToken.symbol || 'LMLN'} to the
+                                    Loans contract. They need to grant approval (the
+                                    Delegation Manager does this when authorizing)
+                                    before you can extend.
+                                  </span>
+                                </p>
                               )}
+                            <div className='flex gap-2'>
                               <Button
                                 variant='outline'
+                                disabled={isApprovingExtension || isProcessingExtension}
                                 onClick={() => {
                                   setSelectedLoanForExtension(null)
                                   setIsApprovingExtension(false)
@@ -1067,6 +1282,46 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               >
                                 Cancel
                               </Button>
+                              {hasInsufficientBalance &&
+                              (isExtensionPayerLocked ||
+                                extensionPayerValidation.isValid) ? (
+                                <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
+                                  <AlertCircle className='h-4 w-4' />
+                                  <span>
+                                    {!isExtensionPayerLocked && !extensionPayerValidation.isSelf
+                                      ? `The chosen delegate doesn't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`
+                                      : `You don't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`}
+                                  </span>
+                                </div>
+                              ) : needsApproval &&
+                                loan.originationFee > 0n &&
+                                (isExtensionPayerLocked || extensionPayerValidation.isSelf) ? (
+                                <Button
+                                  onClick={() => handleExtensionApproval(loan)}
+                                  disabled={isApprovingExtension || isProcessingExtension}
+                                  className='flex-1'
+                                >
+                                  {isApprovingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : ('Approve LMLN')}
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => handleExtension(loan)}
+                                  disabled={
+                                    isProcessingExtension ||
+                                    extensionDuration === 0 ||
+                                    payerBlocks ||
+                                    // Delegate must have sufficient allowance too —
+                                    // currentLmlnAllowance is auto-targeted to them.
+                                    (!isExtensionPayerLocked &&
+                                      !extensionPayerValidation.isSelf &&
+                                      needsApproval &&
+                                      loan.originationFee > 0n)
+                                  }
+                                  className='flex-1'
+                                >
+                                  {isProcessingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>) : ('Confirm Extension')}
+                                </Button>
+                              )}
                             </div>
                           </div>
                         )
