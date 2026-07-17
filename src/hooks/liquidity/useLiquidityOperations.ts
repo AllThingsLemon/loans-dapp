@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
-import { erc20Abi } from 'viem'
+import { erc20Abi, BaseError, HttpRequestError, TimeoutError } from 'viem'
 import {
   useWriteLiquidityPoolDeposit,
   useWriteLiquidityPoolRequestWithdrawal,
@@ -172,10 +172,11 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           args: [feeUSD],
         }) as bigint
       } catch (feeError) {
-        // A recently-fetched hook value is an acceptable fallback; having no
-        // value at all is not — surface the real reason rather than sending
-        // a transaction destined to revert.
-        if (hookValue !== undefined && hookValue > 0n) return hookValue
+        // A recently-fetched hook value is an acceptable fallback — including
+        // a legitimately-zero fee on chains with the native fee disabled.
+        // Having no value at all is not: surface the real reason rather than
+        // sending a transaction destined to revert.
+        if (hookValue !== undefined) return hookValue
         throw feeError
       }
     },
@@ -195,15 +196,29 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       value: bigint
     ): Promise<bigint | undefined> => {
       if (!publicClient || !lpAddress || !address) return undefined
-      const estimated = await publicClient.estimateContractGas({
-        address: lpAddress,
-        abi: liquidityPoolAbi,
-        functionName,
-        args,
-        value,
-        account: address,
-      } as any)
-      return (estimated * 120n) / 100n
+      try {
+        const estimated = await publicClient.estimateContractGas({
+          address: lpAddress,
+          abi: liquidityPoolAbi,
+          functionName,
+          args,
+          value,
+          account: address,
+        } as any)
+        return (estimated * 120n) / 100n
+      } catch (estimationError) {
+        // A transport failure (RPC timeout / rate-limit) is not a revert —
+        // fall back to the wallet's own estimation instead of hard-blocking
+        // a transaction that would succeed. Genuine reverts still throw so
+        // the user sees the decoded reason before the wallet prompt.
+        const isTransport =
+          estimationError instanceof BaseError &&
+          estimationError.walk(
+            (e) => e instanceof HttpRequestError || e instanceof TimeoutError
+          ) !== null
+        if (isTransport) return undefined
+        throw estimationError
+      }
     },
     [publicClient, lpAddress, address]
   )

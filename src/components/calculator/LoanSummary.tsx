@@ -33,6 +33,10 @@ interface LoanSummaryProps {
   handleApproveLoanFee: () => Promise<void>
   needsCollateralApproval: boolean
   needsApproval: boolean
+  /** Delegate is paying the fee but their LMLN allowance is short — blocks
+   *  creation with a message instead of offering a self-approval that would
+   *  credit the wrong wallet. */
+  delegateNeedsAllowance?: boolean
   isDashboard?: boolean
   selectedLtvOption?: { ltv: bigint; fee: bigint }
   // Origination-fee payer field (shown only in dashboard mode where the CTA exists).
@@ -69,6 +73,7 @@ export function LoanSummary({
   handleApproveLoanFee,
   needsCollateralApproval,
   needsApproval,
+  delegateNeedsAllowance = false,
   isDashboard = false,
   selectedLtvOption,
   originationPayerInput,
@@ -185,7 +190,7 @@ export function LoanSummary({
               <span
                 className={`font-medium ${!isDashboard ? 'text-yellow-400' : 'text-yellow-600'}`}
               >
-                {Math.round(calculation.apr)}%
+                {calculation.apr}%
               </span>
             </div>
 
@@ -328,6 +333,7 @@ export function LoanSummary({
               handleApproveLoanFee={handleApproveLoanFee}
               needsCollateralApproval={needsCollateralApproval}
               needsApproval={needsApproval}
+              delegateNeedsAllowance={delegateNeedsAllowance}
               nativeFee={initiateNativeFee}
               nativeSymbol={nativeSymbol}
             />

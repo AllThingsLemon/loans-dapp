@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useChainId } from 'wagmi'
+import { BaseError, ContractFunctionRevertedError } from 'viem'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   readLoansGetAccountLoanIds,
@@ -107,6 +108,10 @@ const LOAN_IDS_PAGE_SIZE = 50n
 
 export const useUserLoans = (): UseUserLoansReturn => {
   const { address } = useAccount()
+  // Scope every cache key by chain — the wagmi-generated hooks did this
+  // automatically; without it a network switch serves the previous chain's
+  // loan IDs as fresh data against the new chain's contract.
+  const chainId = useChainId()
   // Get ALL of the user's loan IDs, paging through getAccountLoanIds until a
   // short page. A single fixed-limit call would silently hide any loan past
   // the 50th — invisible loans can't be paid and default unnoticed.
@@ -116,7 +121,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
     error: idsError,
     refetch: refetchLoanIds
   } = useQuery({
-    queryKey: ['accountLoanIds', address],
+    queryKey: ['accountLoanIds', chainId, address],
     queryFn: async () => {
       const all: `0x${string}`[] = []
       let offset = 0n
@@ -128,9 +133,16 @@ export const useUserLoans = (): UseUserLoansReturn => {
           })
         } catch (pageError) {
           // The first page failing is a real error; a later page failing
-          // (e.g. out-of-range offset when the count is an exact multiple
-          // of the page size) means we've read everything.
+          // with a CONTRACT REVERT (out-of-range offset when the count is an
+          // exact multiple of the page size) means we've read everything.
+          // A transport error (RPC timeout/rate-limit) must fail the whole
+          // query so React Query retries — treating it as end-of-list would
+          // cache a silently truncated loan list as success.
           if (offset === 0n) throw pageError
+          const isRevert =
+            pageError instanceof BaseError &&
+            pageError.walk((e) => e instanceof ContractFunctionRevertedError) !== null
+          if (!isRevert) throw pageError
           break
         }
         all.push(...page)
@@ -147,7 +159,7 @@ export const useUserLoans = (): UseUserLoansReturn => {
   // Create queries for each loan's data
   const loanQueries = useQueries({
     queries: (loanIds || []).map((loanId) => ({
-      queryKey: ['loan', loanId, 'fullData'],
+      queryKey: ['loan', chainId, loanId, 'fullData'],
       queryFn: async () => {
         if (!config) throw new Error('Wagmi config not available')
 
@@ -264,12 +276,12 @@ export const useUserLoans = (): UseUserLoansReturn => {
       await Promise.all(
         loanIds.map((loanId) =>
           queryClient.invalidateQueries({
-            queryKey: ['loan', loanId, 'fullData']
+            queryKey: ['loan', chainId, loanId, 'fullData']
           })
         )
       )
     }
-  }, [refetchLoanIds, loanIds, queryClient])
+  }, [refetchLoanIds, loanIds, chainId, queryClient])
 
   return {
     loans,

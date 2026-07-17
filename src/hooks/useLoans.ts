@@ -162,7 +162,10 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
       userData.isLoading || operations.isTransacting || config.isLoading,
 
     // Combined error state
-    error: userData.error || operations.error || config.error
+    error: userData.error || operations.error || config.error,
+    // Config-only error — the calculator must not hard-fail on a per-loan
+    // read error (userData.error), which is unrelated to creating new loans.
+    configError: config.error
   }
 }
 

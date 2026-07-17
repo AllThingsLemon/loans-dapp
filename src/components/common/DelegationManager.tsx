@@ -83,8 +83,9 @@ export function DelegationManager() {
         // try again without retyping the borrower address.
         return
       }
+      // Standard modal contract: stay open on failure so the user can
+      // retry without retyping the borrower address.
       handleContractError(e, toast, "Couldn't delegate")
-      setIsConfirmOpen(false)
     }
   }
 
@@ -100,8 +101,8 @@ export function DelegationManager() {
     } catch (err) {
       const e = err as ContractError
       if (isUserRejection(e)) return
+      // Stay open on failure (standard modal contract).
       handleContractError(e, toast, "Couldn't revoke")
-      setIsConfirmOpen(false)
     }
   }
 

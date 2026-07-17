@@ -398,7 +398,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // Compare against raw originationFee — the approval itself adds a buffer for the transfer tax.
   // Using the grossed-up amount as the threshold causes an infinite approval loop when the
   // LMLN price shifts, because the previously approved gross amount no longer meets the new gross threshold.
-  const needsApproval = useMemo(() => {
+  const allowanceShort = useMemo(() => {
     const originationFee = loanOperations.calculationData?.originationFee
     if (!originationFee) return false
     if (loanOperations.currentLmlnAllowance === undefined) return true
@@ -407,6 +407,14 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     loanOperations.calculationData?.originationFee,
     loanOperations.currentLmlnAllowance
   ])
+
+  // The Approve button sends the approval FROM THE CONNECTED WALLET, but with
+  // a delegate set the allowance read targets the delegate — approving would
+  // credit the wrong wallet and loop forever. Only offer self-approval; a
+  // short delegate allowance is surfaced as a blocking message instead
+  // (mirrors the extension flow's handling in ActiveLoans).
+  const needsApproval = allowanceShort && !effectiveOriginationPayer
+  const delegateNeedsAllowance = allowanceShort && !!effectiveOriginationPayer
 
   // Handle collateral ERC20 approval (WLEMX → CollateralManager)
   const handleApproveCollateral = async () => {
@@ -512,7 +520,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     )
   }
 
-  if (initialHookData.error || !initialHookData.loanConfig) {
+  // Only a CONFIG failure blocks the calculator — a per-loan read error
+  // (surfaced via initialHookData.error) affects the dashboard lists, not
+  // the ability to create a new loan.
+  if (initialHookData.configError || !initialHookData.loanConfig) {
     return (
       <div className='text-center py-8'>
         <p className='text-red-600'>Error loading loan configuration</p>
@@ -562,6 +573,7 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
         handleApproveLoanFee={handleApproveLoanFee}
         needsCollateralApproval={needsCollateralApproval}
         needsApproval={needsApproval}
+        delegateNeedsAllowance={delegateNeedsAllowance}
         isDashboard={isDashboard}
         selectedLtvOption={selectedLtvOption}
         originationPayerInput={originationPayerInput}

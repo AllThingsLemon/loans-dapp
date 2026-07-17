@@ -44,6 +44,7 @@ import {
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
+import { resolveGraceDuration } from '@/src/utils/loanStatus'
 import {
   handleContractError,
   type ContractError
@@ -558,14 +559,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const ONE_DAY_MS = 24 * 60 * 60 * 1000
         const loanEndMs = Number(loan.dueTimestamp) * 1000
         // Per-loan grace snapshot (fixed at creation) so a config change
-        // can't shift existing loans' default countdowns; pre-upgrade loans
-        // have no snapshot (0) and fall back to the global config.
+        // can't shift existing loans' default countdowns; the shared util
+        // handles the pre-upgrade fallback to the global config and keeps
+        // this countdown in lockstep with useLoans' status override.
         const graceDurationMs =
-          loan.balloonGraceSnapshot > 0n
-            ? Number(loan.balloonGraceSnapshot) * 1000
-            : loanConfig?.balloonPaymentGraceDuration
-              ? Number(loanConfig.balloonPaymentGraceDuration) * 1000
-              : 0
+          Number(
+            resolveGraceDuration(
+              loan.balloonGraceSnapshot,
+              loanConfig?.balloonPaymentGraceDuration ?? 0n
+            )
+          ) * 1000
         const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
 
         // End of the next cycle the user must pay, accounting for prepayments.

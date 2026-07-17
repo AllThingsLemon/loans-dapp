@@ -88,4 +88,7 @@ export interface UseLoansReturn {
 
   // Combined error state
   error: Error | null
+
+  // Loan-config-only error (excludes per-loan read failures)
+  configError: Error | null
 }

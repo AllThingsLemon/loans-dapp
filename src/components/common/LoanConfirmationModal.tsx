@@ -28,6 +28,11 @@ interface LoanConfirmationModalProps {
   handleApproveLoanFee: () => Promise<void>
   needsCollateralApproval: boolean
   needsApproval: boolean
+  /** Delegate pays the fee but their LMLN allowance to the Loans contract is
+   *  short. The Approve button would approve from the CONNECTED wallet (the
+   *  borrower) and can never clear this, so creation is blocked with a
+   *  message instead. */
+  delegateNeedsAllowance?: boolean
   /** Native (gas-token) fee attached to initiateLoan, in wei */
   nativeFee?: bigint
   /** Native currency symbol for the connected chain (e.g. TLEMX) */
@@ -49,6 +54,7 @@ export function LoanConfirmationModal({
   handleApproveLoanFee,
   needsCollateralApproval,
   needsApproval,
+  delegateNeedsAllowance = false,
   nativeFee,
   nativeSymbol
 }: LoanConfirmationModalProps) {
@@ -95,7 +101,7 @@ export function LoanConfirmationModal({
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>APR:</span>
-              <span>{Math.round(calculation.apr)}%</span>
+              <span>{calculation.apr}%</span>
             </div>
             <div className='flex justify-between'>
               <span className='font-medium'>Collateral Required:</span>
@@ -165,6 +171,15 @@ export function LoanConfirmationModal({
             })()}
           </div>
 
+          {delegateNeedsAllowance && (
+            <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
+              The delegate hasn&apos;t approved enough {tokenConfig?.feeToken.symbol || 'LMLN'} to
+              the Loans contract. They need to grant approval (the Delegation
+              Manager does this when authorizing) before you can create this
+              loan.
+            </div>
+          )}
+
           {operationError && (
             <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
               {extractErrorMessage(operationError)}
@@ -199,7 +214,7 @@ export function LoanConfirmationModal({
           ) : (
             <Button
               onClick={handleCreateLoan}
-              disabled={isBusy || !calculation.isValid}
+              disabled={isBusy || !calculation.isValid || delegateNeedsAllowance}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
               {isCreatingLoan ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Creating Loan…</>) : ('Confirm & Create Loan')}

@@ -74,7 +74,12 @@ export function useDelegateValidation(
           : undefined,
       query: { enabled: enable && !!loansContractAddress }
     })
-  const isAuthorized = Boolean(delegationRead)
+  // undefined means the check hasn't RUN (disabled query on an unsupported
+  // network, or the wallet briefly disconnected) — that must surface as
+  // 'loading', never as a definitive "hasn't authorized you" error.
+  // Mirrors useDelegationManager's handling of the same read.
+  const isAuthorized =
+    delegationRead === undefined ? undefined : Boolean(delegationRead)
 
   // Delegate's LMLN balance — shown for context once verified. Useful for
   // the borrower to see their delegate has funds before submitting.
@@ -114,7 +119,7 @@ export function useDelegateValidation(
         delegateLmlnBalance: undefined
       }
     }
-    if (isCheckingDelegation) {
+    if (isCheckingDelegation || isAuthorized === undefined) {
       return {
         state: 'loading',
         isValid: false,
