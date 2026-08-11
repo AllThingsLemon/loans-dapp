@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAccount, useReadContract, useReadContracts } from 'wagmi'
 import { erc20Abi, formatEther } from 'viem'
 import {
@@ -29,10 +29,7 @@ import {
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
-import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
-import { ReferralBanner } from '@/src/components/referral/ReferralBanner'
-import { useReferralParam } from '@/src/hooks/referral/useReferralParam'
-import { useReferralRouter } from '@/src/hooks/referral/useReferralRouter'
+import type { ReferralState } from '@/src/hooks/referral/useReferralState'
 import { describeSkipReason, truncateAddress } from '@/src/utils/referral'
 
 // Lock-tier durations are configured in 360-day years (e.g. 10 yr =
@@ -68,9 +65,14 @@ function formatLockDurationLong(duration: bigint): string {
 
 interface AddLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
+  /**
+   * Owned by LiquidityDashboard so the full-width banner and this form share
+   * one instance. Inert when no router is configured for the chain.
+   */
+  referral: ReferralState
 }
 
-export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
+export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardProps) {
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isNonEarning, setIsNonEarning] = useState(false)
@@ -146,28 +148,29 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   // ── Referral layer ────────────────────────────────────────────────────────
   // Entirely inert unless a ReferralDepositRouter is configured for this chain:
   // useReferralRouter gates every read on that, and the banner renders nothing.
-  const { referrer, isSelfReferral } = useReferralParam()
-  const referral = useReferralRouter({
-    referrer,
-    pendingStableValue: parsedDollarAmount,
-    expectedPool: liquidityPoolContractAddress,
-  })
+  const { referrer, isSelfReferral, router: referralRouter, setPendingStableValue } = referral
+
+  // The banner lives a level up (it spans both liquidity cards), so the amount
+  // typed here has to be reported upward for its estimate.
+  useEffect(() => {
+    setPendingStableValue(parsedDollarAmount)
+  }, [parsedDollarAmount, setPendingStableValue])
 
   // The one condition that decides whether this deposit goes through the
   // router. Everything downstream (approval spender, write call, copy) keys off
   // it, and when it is false the code path is identical to before.
   const useReferralPath =
-    referral.enabled &&
+    referralRouter.enabled &&
     !!referrer &&
     !isSelfReferral &&
-    !referral.hasPoolMismatch &&
-    referral.isCommissionsAllowed &&
-    !referral.isPaused
+    !referralRouter.hasPoolMismatch &&
+    referralRouter.isCommissionsAllowed &&
+    !referralRouter.isPaused
 
   // The router pulls tokens with transferFrom, so on the referral path the
   // ROUTER — not the pool — is the spender that must be approved.
   const depositSpender = useReferralPath
-    ? referral.routerAddress
+    ? referralRouter.routerAddress
     : liquidityPoolContractAddress
 
   // How many tokens does the user need to cover the dollar input?
@@ -345,7 +348,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
 
   // A self-referral link is the only referrer state that blocks — the contract
   // reverts with SelfReferral, so there is no point letting the user pay gas.
-  const isBlockedBySelfReferral = referral.enabled && !!referrer && isSelfReferral
+  const isBlockedBySelfReferral = referralRouter.enabled && !!referrer && isSelfReferral
 
   const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined && !isBlockedBySelfReferral
 
@@ -409,268 +412,255 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     selectedAsset.toLowerCase() !== stableTokenAddress.toLowerCase()
 
   return (
-    <div className='flex flex-col h-full gap-4'>
-      {/* Renders nothing when no router is configured or no referrer was
-          captured, leaving the card exactly where it was. */}
-      <Web3ErrorBoundary>
-        <ReferralBanner
-          referrer={referrer}
-          isSelfReferral={isSelfReferral}
-          referral={referral}
-          stableDecimals={stableDecimals}
-        />
-      </Web3ErrorBoundary>
-
-      <Card className='flex flex-col flex-1'>
-        <CardHeader>
-          <CardTitle className='flex items-center gap-2'>
-            <Plus className='h-5 w-5' />
-            Add Liquidity
-          </CardTitle>
-          <CardDescription>Deposit tokens into the lending pool</CardDescription>
-        </CardHeader>
-        <CardContent className='flex flex-col flex-1 space-y-4'>
-          {/* Token Selector */}
-          {depositableAssets.length > 0 && (
-            <div className='flex gap-2'>
-              {depositableAssets.map((asset, idx) => (
-                <AssetButton
-                  key={asset}
-                  address={asset}
-                  isSelected={selectedAssetIndex === idx}
-                  onClick={() => handleAssetChange(idx)}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className='space-y-2'>
-            <div className='relative'>
-              <span className='absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground'>
-                $
-              </span>
-              <Input
-                type='number'
-                placeholder='0.00'
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className='pl-7 pr-16'
-                min='0'
-                step='any'
+    <Card className='flex flex-col h-full'>
+      <CardHeader>
+        <CardTitle className='flex items-center gap-2'>
+          <Plus className='h-5 w-5' />
+          Add Liquidity
+        </CardTitle>
+        <CardDescription>Deposit tokens into the lending pool</CardDescription>
+      </CardHeader>
+      <CardContent className='flex flex-col flex-1 space-y-4'>
+        {/* Token Selector */}
+        {depositableAssets.length > 0 && (
+          <div className='flex gap-2'>
+            {depositableAssets.map((asset, idx) => (
+              <AssetButton
+                key={asset}
+                address={asset}
+                isSelected={selectedAssetIndex === idx}
+                onClick={() => handleAssetChange(idx)}
               />
-              <span className='absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground'>
-                USD
-              </span>
-            </div>
-            <div className='flex justify-between text-xs text-muted-foreground'>
-              <span>
-                {tokenEquivalent ? `~${tokenEquivalent} ${symbol}` : '\u00A0'}
-              </span>
-              <span>
-                {selectedAsset && balanceInUsd
-                  ? `Balance: $${balanceInUsd} USD`
-                  : '\u00A0'}
-              </span>
+            ))}
+          </div>
+        )}
+
+        <div className='space-y-2'>
+          <div className='relative'>
+            <span className='absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground'>
+              $
+            </span>
+            <Input
+              type='number'
+              placeholder='0.00'
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className='pl-7 pr-16'
+              min='0'
+              step='any'
+            />
+            <span className='absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground'>
+              USD
+            </span>
+          </div>
+          <div className='flex justify-between text-xs text-muted-foreground'>
+            <span>
+              {tokenEquivalent ? `~${tokenEquivalent} ${symbol}` : '\u00A0'}
+            </span>
+            <span>
+              {selectedAsset && balanceInUsd
+                ? `Balance: $${balanceInUsd} USD`
+                : '\u00A0'}
+            </span>
+          </div>
+        </div>
+
+        {/* Lock Duration + Interest Multiplier */}
+        {enabledTiers.length > 0 && (
+          <div className='space-y-1.5'>
+            <label className='text-xs font-medium text-muted-foreground'>Lock Duration · Interest Multiplier</label>
+            <div className='flex gap-2 flex-wrap'>
+              {enabledTiers.map((tier, idx) => {
+                const mult = Number(tier.interestMultiplier) / 100
+                return (
+                  <Button
+                    key={idx}
+                    variant={selectedTierIndex === idx ? 'default' : 'outline'}
+                    size='sm'
+                    onClick={() => setSelectedTierIndex(idx)}
+                    className='text-xs'
+                  >
+                    {formatLockDuration(tier.duration)} · {mult}x
+                  </Button>
+                )
+              })}
             </div>
           </div>
+        )}
 
-          {/* Lock Duration + Interest Multiplier */}
-          {enabledTiers.length > 0 && (
-            <div className='space-y-1.5'>
-              <label className='text-xs font-medium text-muted-foreground'>Lock Duration · Interest Multiplier</label>
-              <div className='flex gap-2 flex-wrap'>
-                {enabledTiers.map((tier, idx) => {
-                  const mult = Number(tier.interestMultiplier) / 100
-                  return (
-                    <Button
-                      key={idx}
-                      variant={selectedTierIndex === idx ? 'default' : 'outline'}
-                      size='sm'
-                      onClick={() => setSelectedTierIndex(idx)}
-                      className='text-xs'
-                    >
-                      {formatLockDuration(tier.duration)} · {mult}x
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+        {/* The referral router fixes nonEarning, so the choice isn't offered
+            on that path. */}
+        {!useReferralPath && (
+          <label className='flex items-center gap-2 cursor-pointer'>
+            <input
+              type='checkbox'
+              checked={isNonEarning}
+              onChange={(e) => setIsNonEarning(e.target.checked)}
+              className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
+            />
+            <span className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}>
+              Deposit as non-earning{isNonEarning && ' — will not earn interest from borrower payments'}
+            </span>
+          </label>
+        )}
 
-          {/* The referral router fixes nonEarning, so the choice isn't offered
-              on that path. */}
-          {!useReferralPath && (
-            <label className='flex items-center gap-2 cursor-pointer'>
-              <input
-                type='checkbox'
-                checked={isNonEarning}
-                onChange={(e) => setIsNonEarning(e.target.checked)}
-                className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
-              />
-              <span className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}>
-                Deposit as non-earning{isNonEarning && ' — will not earn interest from borrower payments'}
-              </span>
-            </label>
-          )}
+        {requiresSwap && (
+          <p className='text-xs text-muted-foreground'>
+            This token will be converted to stablecoins via DCA swap after deposit.
+          </p>
+        )}
 
-          {requiresSwap && (
-            <p className='text-xs text-muted-foreground'>
-              This token will be converted to stablecoins via DCA swap after deposit.
+        <div className='flex-1 space-y-1'>
+          {isBelowMinimum && minimumForDisplay && (
+            <p className='text-sm text-destructive'>
+              Minimum deposit is ${minimumForDisplay} USD.
             </p>
           )}
-
-          <div className='flex-1 space-y-1'>
-            {isBelowMinimum && minimumForDisplay && (
-              <p className='text-sm text-destructive'>
-                Minimum deposit is ${minimumForDisplay} USD.
-              </p>
-            )}
-            {insufficientBalance && (
-              <p className='text-sm text-destructive'>
-                Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
-              </p>
-            )}
-            {/* The Deposit button used to sit inexplicably disabled when a
-                required choice was missing (or no tiers are enabled, in which
-                case the tier section doesn't render at all) — say why. */}
-            {amount && selectedAsset === undefined && (
-              <p className='text-sm text-muted-foreground'>
-                Select a token above to continue.
-              </p>
-            )}
-            {selectedAsset !== undefined && enabledTiers.length === 0 && (
-              <p className='text-sm text-destructive'>
-                No lock durations are currently enabled for this token — deposits
-                are unavailable.
-              </p>
-            )}
-            {amount &&
-              selectedAsset !== undefined &&
-              enabledTiers.length > 0 &&
-              selectedTier === undefined &&
-              !isBelowMinimum &&
-              !insufficientBalance && (
-                <p className='text-sm text-muted-foreground'>
-                  Select a lock duration to continue.
-                </p>
-              )}
-          </div>
-
-          <div>
-          {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum ? (
-            <Button
-              onClick={handleApprove}
-              disabled={isProcessing || !tokenAmount}
-              className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
-            >
-              {isProcessing ? (
-                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving...</>
-              ) : (
-                `Approve ${symbol}`
-              )}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleDepositClick}
-              disabled={isProcessing || !canDeposit}
-              className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
-            >
-              {isProcessing ? (
-                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing...</>
-              ) : (
-                'Deposit'
-              )}
-            </Button>
+          {insufficientBalance && (
+            <p className='text-sm text-destructive'>
+              Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
+            </p>
           )}
-          </div>
-        </CardContent>
-
-        <Dialog
-          open={showConfirmDialog}
-          onOpenChange={(open) => {
-            if (!open && isProcessing) return
-            setShowConfirmDialog(open)
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Confirm Deposit</DialogTitle>
-              <DialogDescription>
-                You are about to deposit ${amount} USD (~{tokenEquivalent} {symbol}) into the liquidity pool.
-              </DialogDescription>
-            </DialogHeader>
-            <div className='space-y-3 py-2'>
+          {/* The Deposit button used to sit inexplicably disabled when a
+              required choice was missing (or no tiers are enabled, in which
+              case the tier section doesn't render at all) — say why. */}
+          {amount && selectedAsset === undefined && (
+            <p className='text-sm text-muted-foreground'>
+              Select a token above to continue.
+            </p>
+          )}
+          {selectedAsset !== undefined && enabledTiers.length === 0 && (
+            <p className='text-sm text-destructive'>
+              No lock durations are currently enabled for this token — deposits
+              are unavailable.
+            </p>
+          )}
+          {amount &&
+            selectedAsset !== undefined &&
+            enabledTiers.length > 0 &&
+            selectedTier === undefined &&
+            !isBelowMinimum &&
+            !insufficientBalance && (
               <p className='text-sm text-muted-foreground'>
-                Your deposit will be locked for <span className='font-semibold text-foreground'>{formatLockDurationLong(selectedLockDuration)}</span>.
-                {selectedTier && !effectiveNonEarning && (
-                  <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
-                )}
+                Select a lock duration to continue.
               </p>
-              {depositFeeApplies && (
-                <p className='text-sm text-muted-foreground'>
-                  A <span className='font-semibold text-foreground'>{depositFeePct}%</span> deposit fee applies
-                  {depositFeeTokens && (
-                    <> — ~<span className='font-semibold text-foreground'>{depositFeeTokens} {symbol}</span> will be taken on top of the deposit amount</>
-                  )}
-                  .
-                </p>
+            )}
+        </div>
+
+        <div>
+        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum ? (
+          <Button
+            onClick={handleApprove}
+            disabled={isProcessing || !tokenAmount}
+            className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+          >
+            {isProcessing ? (
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving...</>
+            ) : (
+              `Approve ${symbol}`
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={handleDepositClick}
+            disabled={isProcessing || !canDeposit}
+            className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+          >
+            {isProcessing ? (
+              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing...</>
+            ) : (
+              'Deposit'
+            )}
+          </Button>
+        )}
+        </div>
+      </CardContent>
+
+      <Dialog
+        open={showConfirmDialog}
+        onOpenChange={(open) => {
+          if (!open && isProcessing) return
+          setShowConfirmDialog(open)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deposit</DialogTitle>
+            <DialogDescription>
+              You are about to deposit ${amount} USD (~{tokenEquivalent} {symbol}) into the liquidity pool.
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-3 py-2'>
+            <p className='text-sm text-muted-foreground'>
+              Your deposit will be locked for <span className='font-semibold text-foreground'>{formatLockDurationLong(selectedLockDuration)}</span>.
+              {selectedTier && !effectiveNonEarning && (
+                <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
               )}
-              {depositNativeFee !== undefined && depositNativeFee > 0n && (
-                <p className='text-sm text-muted-foreground'>
-                  A network fee of ~<span className='font-semibold text-foreground'>
-                    {Number(formatEther(depositNativeFee)).toLocaleString('en-US', {
-                      maximumFractionDigits: 4
-                    })}{' '}
-                    {nativeCurrencySymbol}
-                  </span>{' '}
-                  is charged on deposit.
-                </p>
-              )}
-              {requiresSwap && (
-                <p className='text-sm text-muted-foreground'>
-                  Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
-                </p>
-              )}
-              {effectiveNonEarning && (
-                <p className='text-sm text-destructive font-medium'>
-                  This is a non-earning deposit. You will not earn interest from borrower payments on this deposit.
-                </p>
-              )}
-              {useReferralPath && referrer && (
-                <p className='text-sm text-muted-foreground'>
-                  This deposit will be routed through the referral router, crediting{' '}
-                  <span className='font-mono font-semibold text-foreground'>
-                    {truncateAddress(referrer)}
-                  </span>
-                  . Your liquidity position is unaffected and still goes to your
-                  wallet.
-                </p>
-              )}
-            </div>
-            <DialogFooter className='gap-2 sm:gap-0'>
-              <Button
-                variant='outline'
-                onClick={() => setShowConfirmDialog(false)}
-                disabled={isProcessing}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmDeposit}
-                disabled={isProcessing}
-                className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
-              >
-                {isProcessing ? (
-                  <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…</>
-                ) : (
-                  'Confirm Deposit'
+            </p>
+            {depositFeeApplies && (
+              <p className='text-sm text-muted-foreground'>
+                A <span className='font-semibold text-foreground'>{depositFeePct}%</span> deposit fee applies
+                {depositFeeTokens && (
+                  <> — ~<span className='font-semibold text-foreground'>{depositFeeTokens} {symbol}</span> will be taken on top of the deposit amount</>
                 )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </Card>
-    </div>
+                .
+              </p>
+            )}
+            {depositNativeFee !== undefined && depositNativeFee > 0n && (
+              <p className='text-sm text-muted-foreground'>
+                A network fee of ~<span className='font-semibold text-foreground'>
+                  {Number(formatEther(depositNativeFee)).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })}{' '}
+                  {nativeCurrencySymbol}
+                </span>{' '}
+                is charged on deposit.
+              </p>
+            )}
+            {requiresSwap && (
+              <p className='text-sm text-muted-foreground'>
+                Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
+              </p>
+            )}
+            {effectiveNonEarning && (
+              <p className='text-sm text-destructive font-medium'>
+                This is a non-earning deposit. You will not earn interest from borrower payments on this deposit.
+              </p>
+            )}
+            {useReferralPath && referrer && (
+              <p className='text-sm text-muted-foreground'>
+                This deposit will be routed through the referral router, crediting{' '}
+                <span className='font-mono font-semibold text-foreground'>
+                  {truncateAddress(referrer)}
+                </span>
+                . Your liquidity position is unaffected and still goes to your
+                wallet.
+              </p>
+            )}
+          </div>
+          <DialogFooter className='gap-2 sm:gap-0'>
+            <Button
+              variant='outline'
+              onClick={() => setShowConfirmDialog(false)}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmDeposit}
+              disabled={isProcessing}
+              className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+            >
+              {isProcessing ? (
+                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…</>
+              ) : (
+                'Confirm Deposit'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }
 
