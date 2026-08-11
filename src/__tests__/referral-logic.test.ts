@@ -2,14 +2,22 @@ import { describe, it, expect } from 'vitest'
 import { getAddress } from 'viem'
 import {
   BPS_DENOMINATOR,
+  REFERRAL_BLOCK_REMEDY,
+  describeReferralBlock,
+  describeSkipReason,
   estimateCommission,
+  evaluateReferralGate,
+  hasReferralParams,
   isSelfReferral,
   normalizeReferrer,
+  parseCommissionsFromSearch,
+  parseReferralLink,
   parseReferrerFromSearch,
-  describeSkipReason,
   tierRateForBps,
   truncateAddress,
-  type CommissionTier
+  type CommissionTier,
+  type ReferralBlockReason,
+  type ReferralGateInput
 } from '../utils/referral'
 import { __testables } from '../config/referral'
 import { extractErrorMessage, type ContractError } from '../utils/errorHandling'
@@ -60,7 +68,7 @@ describe('referral param parsing', () => {
     expect(parseReferrerFromSearch(params)).toBe(REFERRER)
   })
 
-  it('treats malformed values as absent rather than blocking a deposit', () => {
+  it('returns null for malformed values — the gate turns that into a block', () => {
     expect(parseReferrerFromSearch('?ref=0x123')).toBeNull()
     expect(parseReferrerFromSearch('?ref=not-an-address')).toBeNull()
     expect(parseReferrerFromSearch('?ref=')).toBeNull()
@@ -350,5 +358,192 @@ describe('address truncation', () => {
 
   it('leaves short strings alone', () => {
     expect(truncateAddress('0x1234')).toBe('0x1234')
+  })
+})
+
+describe('commissions param parsing', () => {
+  it('reads ?commissions=', () => {
+    expect(parseCommissionsFromSearch(`?commissions=${OTHER}`)).toBe(OTHER)
+  })
+
+  it('checksums and rejects malformed values like the affiliate param', () => {
+    expect(
+      parseCommissionsFromSearch(`?commissions=${OTHER.toLowerCase()}`)
+    ).toBe(OTHER)
+    expect(parseCommissionsFromSearch('?commissions=0x123')).toBeNull()
+    expect(parseCommissionsFromSearch('?commissions=')).toBeNull()
+    expect(parseCommissionsFromSearch('?ref=' + REFERRER)).toBeNull()
+  })
+})
+
+describe('hasReferralParams', () => {
+  it('is true whenever a referral key is present, even if the value is junk', () => {
+    expect(hasReferralParams('?ref=nonsense')).toBe(true)
+    expect(hasReferralParams('?affiliate=')).toBe(true)
+    expect(hasReferralParams('?commissions=0x123')).toBe(true)
+  })
+
+  it('is false for an unrelated or empty query string', () => {
+    expect(hasReferralParams('?utm_source=x')).toBe(false)
+    expect(hasReferralParams('')).toBe(false)
+    expect(hasReferralParams(null)).toBe(false)
+  })
+})
+
+describe('parseReferralLink', () => {
+  it('reads both halves of a complete link', () => {
+    const link = parseReferralLink(
+      `?affiliate=${REFERRER}&commissions=${OTHER}`
+    )
+    expect(link).toEqual({ referrer: REFERRER, commissions: OTHER })
+  })
+
+  it('reports a half-built link as a null half rather than guessing', () => {
+    expect(parseReferralLink(`?affiliate=${REFERRER}`)).toEqual({
+      referrer: REFERRER,
+      commissions: null
+    })
+    expect(parseReferralLink(`?commissions=${OTHER}`)).toEqual({
+      referrer: null,
+      commissions: OTHER
+    })
+  })
+})
+
+describe('referral gate', () => {
+  const ready: ReferralGateInput = {
+    enabled: true,
+    referrer: REFERRER,
+    commissions: OTHER,
+    hasLink: true,
+    account: getAddress('0xad1c4acbb1d3b13bc0e06bc9cbeae0103bcc878b'),
+    allowedCommissions: [OTHER],
+    isRegistered: true,
+    isPaused: false,
+    hasPoolMismatch: false
+  }
+
+  const gate = (over: Partial<ReferralGateInput> = {}) =>
+    evaluateReferralGate({ ...ready, ...over })
+
+  it('lets a fully valid link through', () => {
+    expect(gate()).toEqual({
+      status: 'ready',
+      referrer: REFERRER,
+      commissions: OTHER
+    })
+  })
+
+  it('is disabled — not blocked — when the chain has no router', () => {
+    // This is the kill switch: without it, unsetting the router env var would
+    // brick deposits instead of restoring the plain path.
+    expect(gate({ enabled: false })).toEqual({ status: 'disabled' })
+    // …and it wins even when everything else about the link is broken.
+    expect(
+      gate({
+        enabled: false,
+        referrer: null,
+        commissions: null,
+        hasLink: false
+      })
+    ).toEqual({ status: 'disabled' })
+  })
+
+  const blockedCases: Array<
+    [string, Partial<ReferralGateInput>, ReferralBlockReason]
+  > = [
+    [
+      'no link at all',
+      { hasLink: false, referrer: null, commissions: null },
+      'no-link'
+    ],
+    ['missing/malformed affiliate', { referrer: null }, 'invalid-referrer'],
+    [
+      'missing/malformed commissions',
+      { commissions: null },
+      'invalid-commissions'
+    ],
+    ['self-referral', { account: REFERRER }, 'self-referral'],
+    [
+      'commissions not allowlisted',
+      { allowedCommissions: [REFERRER] },
+      'commissions-not-allowed'
+    ],
+    [
+      'affiliate not registered',
+      { isRegistered: false },
+      'referrer-not-registered'
+    ],
+    ['router paused', { isPaused: true }, 'router-paused'],
+    ['pool mismatch', { hasPoolMismatch: true }, 'pool-mismatch']
+  ]
+
+  for (const [label, over, reason] of blockedCases) {
+    it(`blocks on ${label}`, () => {
+      expect(gate(over)).toEqual({ status: 'blocked', reason })
+    })
+  }
+
+  it('withholds a verdict while the allowlist / registration reads are pending', () => {
+    // A valid link must never flash an error while its reads resolve.
+    expect(gate({ allowedCommissions: undefined })).toEqual({
+      status: 'checking'
+    })
+    expect(gate({ isRegistered: undefined })).toEqual({ status: 'checking' })
+  })
+
+  it('rejects a non-allowlisted contract without waiting on isRegistered', () => {
+    // `commissions` is URL-supplied and may not be a contract at all, in which
+    // case isRegistered() reverts and never resolves. Judging the allowlist
+    // first is what stops that spinning on 'checking' forever.
+    expect(
+      gate({ allowedCommissions: [REFERRER], isRegistered: undefined })
+    ).toEqual({ status: 'blocked', reason: 'commissions-not-allowed' })
+  })
+
+  it('reports local failures immediately, without waiting on chain reads', () => {
+    expect(
+      gate({
+        allowedCommissions: undefined,
+        isRegistered: undefined,
+        referrer: null
+      })
+    ).toEqual({ status: 'blocked', reason: 'invalid-referrer' })
+    expect(
+      gate({
+        allowedCommissions: undefined,
+        isRegistered: undefined,
+        account: REFERRER
+      })
+    ).toEqual({ status: 'blocked', reason: 'self-referral' })
+  })
+
+  it('matches the allowlist case-insensitively', () => {
+    expect(gate({ allowedCommissions: [OTHER.toLowerCase()] }).status).toBe(
+      'ready'
+    )
+  })
+
+  it('does not treat a disconnected wallet as a self-referral', () => {
+    expect(gate({ account: undefined }).status).toBe('ready')
+  })
+
+  it('gives every block reason copy that points at the referrer', () => {
+    const reasons: ReferralBlockReason[] = [
+      'no-link',
+      'invalid-referrer',
+      'invalid-commissions',
+      'commissions-not-allowed',
+      'self-referral',
+      'referrer-not-registered',
+      'router-paused',
+      'pool-mismatch'
+    ]
+    for (const reason of reasons) {
+      const { title, detail } = describeReferralBlock(reason)
+      expect(title.length).toBeGreaterThan(0)
+      expect(detail.length).toBeGreaterThan(0)
+    }
+    expect(REFERRAL_BLOCK_REMEDY).toMatch(/referred you/i)
   })
 })

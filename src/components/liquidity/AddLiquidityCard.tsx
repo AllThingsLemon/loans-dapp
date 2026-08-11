@@ -146,9 +146,10 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
   }, [amount, stableDecimals])
 
   // ── Referral layer ────────────────────────────────────────────────────────
-  // Entirely inert unless a ReferralDepositRouter is configured for this chain:
-  // useReferralRouter gates every read on that, and the banner renders nothing.
-  const { referrer, isSelfReferral, router: referralRouter, setPendingStableValue } = referral
+  // The gate is the single verdict; this form never re-derives it. On a chain
+  // with no router configured it is 'disabled' and everything below behaves
+  // exactly as it did before the referral layer existed.
+  const { router: referralRouter, gate, setPendingStableValue } = referral
 
   // The banner lives a level up (it spans both liquidity cards), so the amount
   // typed here has to be reported upward for its estimate.
@@ -156,16 +157,11 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     setPendingStableValue(parsedDollarAmount)
   }, [parsedDollarAmount, setPendingStableValue])
 
-  // The one condition that decides whether this deposit goes through the
-  // router. Everything downstream (approval spender, write call, copy) keys off
-  // it, and when it is false the code path is identical to before.
-  const useReferralPath =
-    referralRouter.enabled &&
-    !!referrer &&
-    !isSelfReferral &&
-    !referralRouter.hasPoolMismatch &&
-    referralRouter.isCommissionsAllowed &&
-    !referralRouter.isPaused
+  const useReferralPath = gate.status === 'ready'
+
+  // Referral-only: with a router configured, anything short of a valid link
+  // stops the deposit. The banner above carries the reason and the remedy.
+  const isReferralBlocked = gate.status === 'blocked' || gate.status === 'checking'
 
   // The router pulls tokens with transferFrom, so on the referral path the
   // ROUTER — not the pool — is the spender that must be approved.
@@ -346,11 +342,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     }
   }
 
-  // A self-referral link is the only referrer state that blocks — the contract
-  // reverts with SelfReferral, so there is no point letting the user pay gas.
-  const isBlockedBySelfReferral = referralRouter.enabled && !!referrer && isSelfReferral
-
-  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined && !isBlockedBySelfReferral
+  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined && !isReferralBlocked
 
   const handleDepositClick = () => {
     if (!canDeposit) return
@@ -363,7 +355,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     if (!tokenAmount || !selectedAsset) return
     setIsProcessing(true)
     try {
-      if (useReferralPath && referrer) {
+      if (gate.status === 'ready') {
         // Same token / amount / lockDuration as the plain path \u2014 only the
         // contract being called and the extra referral args differ. The router
         // fixes nonEarning, so it is not passed (and is hidden in the form).
@@ -371,7 +363,8 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
           selectedAsset,
           tokenAmount,
           selectedLockDuration,
-          referrer
+          gate.referrer,
+          gate.commissions
         )
         const commissionNote =
           outcome.kind === 'paid'
@@ -524,6 +517,18 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
           {/* The Deposit button used to sit inexplicably disabled when a
               required choice was missing (or no tiers are enabled, in which
               case the tier section doesn't render at all) — say why. */}
+          {/* The banner above carries the full reason and the remedy; this is
+              only so the disabled button is never left unexplained. */}
+          {gate.status === 'blocked' && (
+            <p className='text-sm text-destructive'>
+              Deposits require a valid referral link — see the notice above.
+            </p>
+          )}
+          {gate.status === 'checking' && (
+            <p className='text-sm text-muted-foreground'>
+              Verifying your referral link…
+            </p>
+          )}
           {amount && selectedAsset === undefined && (
             <p className='text-sm text-muted-foreground'>
               Select a token above to continue.
@@ -548,7 +553,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
         </div>
 
         <div>
-        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum ? (
+        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum && !isReferralBlocked ? (
           <Button
             onClick={handleApprove}
             disabled={isProcessing || !tokenAmount}
@@ -627,11 +632,11 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
                 This is a non-earning deposit. You will not earn interest from borrower payments on this deposit.
               </p>
             )}
-            {useReferralPath && referrer && (
+            {gate.status === 'ready' && (
               <p className='text-sm text-muted-foreground'>
                 This deposit will be routed through the referral router, crediting{' '}
                 <span className='font-mono font-semibold text-foreground'>
-                  {truncateAddress(referrer)}
+                  {truncateAddress(gate.referrer)}
                 </span>
                 . Your liquidity position is unaffected and still goes to your
                 wallet.

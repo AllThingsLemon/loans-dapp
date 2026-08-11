@@ -1,11 +1,9 @@
 'use client'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useChainId, useReadContract, useReadContracts } from 'wagmi'
 import { erc20Abi, parseAbi } from 'viem'
 import { referralDepositRouterAbi } from '@/src/generated'
 import {
-  allowCommissionsOverride,
-  getCommissionsAddress,
   getReferralRouterAddress,
   isReferralEnabled
 } from '@/src/config/referral'
@@ -31,6 +29,13 @@ const MAX_TIERS = 32
 export interface UseReferralRouterParams {
   /** Captured referrer, or null when there is none. */
   referrer: `0x${string}` | null
+  /**
+   * Per-company commissions contract from the referral link. Not configured
+   * per chain — one build serves every partner — so it arrives here already
+   * validated as an address, and is checked against allowedCommissionsList()
+   * below.
+   */
+  commissions: `0x${string}` | null
   /** Stable-token value of the deposit currently entered, for the estimate. */
   pendingStableValue?: bigint
   /**
@@ -45,15 +50,11 @@ export interface UseReferralRouterReturn {
   /** True when this chain has a router + commissions contract configured. */
   enabled: boolean
   routerAddress: `0x${string}` | undefined
-  /** The commissions contract that will be passed to depositWithReferral. */
-  commissionsAddress: `0x${string}` | undefined
-  /** Every commissions contract the router currently allows. */
-  allowedCommissions: readonly `0x${string}`[]
-  /** False when the configured commissions contract is no longer allowlisted. */
-  isCommissionsAllowed: boolean
-  /** Non-production only — swap the commissions contract for testing. */
-  canOverrideCommissions: boolean
-  setCommissionsOverride: (address: `0x${string}` | undefined) => void
+  /**
+   * Every commissions contract the router currently allows. `undefined` while
+   * the read is in flight — the gate must not judge a link before it arrives.
+   */
+  allowedCommissions: readonly `0x${string}`[] | undefined
   /** LiquidityPool the router deposits into. */
   routerPool: `0x${string}` | undefined
   /** True when router.pool() differs from the pool the UI is showing. */
@@ -84,21 +85,14 @@ export interface UseReferralRouterReturn {
  */
 export function useReferralRouter({
   referrer,
+  commissions,
   pendingStableValue,
   expectedPool
 }: UseReferralRouterParams): UseReferralRouterReturn {
   const chainId = useChainId()
   const enabled = isReferralEnabled(chainId)
   const routerAddress = getReferralRouterAddress(chainId)
-  const configuredCommissions = getCommissionsAddress(chainId)
-
-  const [commissionsOverride, setCommissionsOverride] = useState<
-    `0x${string}` | undefined
-  >(undefined)
-
-  const commissionsAddress = allowCommissionsOverride
-    ? (commissionsOverride ?? configuredCommissions)
-    : configuredCommissions
+  const commissionsAddress = commissions ?? undefined
 
   // Reads use useReadContract with a loosened ABI type — the generated hooks
   // hit the same TS deep-instantiation limit as the LiquidityPool ones.
@@ -184,14 +178,25 @@ export function useReferralRouter({
     return tierRateForBps(tiers, cumulativeReferred)
   }, [rateBpsRaw, cumulativeReferred, tiers])
 
-  const { data: isRegisteredRaw, isLoading: isRegistrationLoading } =
-    useReadContract({
-      address: commissionsAddress,
-      abi: commissionsAbi,
-      functionName: 'isRegistered',
-      args: referrer ? [referrer] : undefined,
-      query: { enabled: enabled && !!commissionsAddress && !!referrer }
-    })
+  const {
+    data: isRegisteredRaw,
+    isLoading: isRegistrationLoading,
+    error: isRegistrationError
+  } = useReadContract({
+    address: commissionsAddress,
+    abi: commissionsAbi,
+    functionName: 'isRegistered',
+    args: referrer ? [referrer] : undefined,
+    query: { enabled: enabled && !!commissionsAddress && !!referrer }
+  })
+
+  // Fail closed on a read error rather than leaving the gate on 'checking'
+  // forever. `commissions` is URL-supplied, so the call can revert simply
+  // because the address is not the contract it claims to be — and an
+  // unverifiable affiliate is not a registered one.
+  const isRegistered = isRegistrationError
+    ? false
+    : (isRegisteredRaw as boolean | undefined)
 
   const { data: commissionTokenRaw } = useReadContract({
     address: commissionsAddress,
@@ -207,19 +212,9 @@ export function useReferralRouter({
     query: { enabled: enabled && !!commissionTokenRaw }
   })
 
-  const allowedCommissions = useMemo(
-    () => (allowedRaw as readonly `0x${string}`[] | undefined) ?? [],
-    [allowedRaw]
-  )
-
-  // Only claim "not allowlisted" once the list has actually loaded — an empty
-  // list while the read is pending must not raise a false alarm.
-  const isCommissionsAllowed = useMemo(() => {
-    if (!commissionsAddress || allowedCommissions.length === 0) return true
-    return allowedCommissions.some(
-      (a) => a.toLowerCase() === commissionsAddress.toLowerCase()
-    )
-  }, [allowedCommissions, commissionsAddress])
+  // Left undefined while pending on purpose: evaluateReferralGate returns
+  // 'checking' rather than judging a link against a list it hasn't read yet.
+  const allowedCommissions = allowedRaw as readonly `0x${string}`[] | undefined
 
   const routerPool = poolRaw as `0x${string}` | undefined
 
@@ -243,11 +238,7 @@ export function useReferralRouter({
   return {
     enabled,
     routerAddress,
-    commissionsAddress,
     allowedCommissions,
-    isCommissionsAllowed,
-    canOverrideCommissions: allowCommissionsOverride,
-    setCommissionsOverride,
     routerPool,
     hasPoolMismatch,
     isPaused: (pausedRaw as boolean | undefined) ?? false,
@@ -255,7 +246,7 @@ export function useReferralRouter({
     cumulativeReferred,
     rateBps,
     maxCommissionBasisPerTx,
-    isRegistered: isRegisteredRaw as boolean | undefined,
+    isRegistered,
     isRegistrationLoading,
     commissionTokenSymbol: commissionTokenSymbolRaw as string | undefined,
     estimated,

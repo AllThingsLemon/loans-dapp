@@ -39,11 +39,6 @@ const REFERRAL_ROUTER_ADDRESSES: Record<number, string | undefined> = {
   [CHAINS.BSC]: process.env.NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS
 }
 
-const COMMISSIONS_ADDRESSES: Record<number, string | undefined> = {
-  [CHAINS.LEMON]: process.env.NEXT_PUBLIC_LEMON_COMMISSIONS_ADDRESS,
-  [CHAINS.CITRON]: process.env.NEXT_PUBLIC_CITRON_COMMISSIONS_ADDRESS
-}
-
 /**
  * ReferralDepositRouter address for a chain, or undefined when the chain has no
  * router configured (env var unset, zero address, or malformed).
@@ -56,31 +51,19 @@ export function getReferralRouterAddress(
 }
 
 /**
- * The commissions contract passed as the `commissions` argument of
- * `depositWithReferral`. Config-driven and never user-supplied — it must be a
- * member of the router's `allowedCommissionsList()`.
- */
-export function getCommissionsAddress(
-  chainId?: number
-): `0x${string}` | undefined {
-  if (chainId === undefined) return undefined
-  return normalizeAddress(COMMISSIONS_ADDRESSES[chainId])
-}
-
-/**
- * The master switch. Referral UI, reads and the router deposit branch are all
- * gated on this — false means the app behaves exactly as it did before the
- * referral layer existed.
+ * The master switch, and the kill switch.
  *
- * Both a router AND a commissions contract are required: the router's
- * `depositWithReferral` takes `commissions` as a mandatory argument, so a
- * router without one could never settle a commission.
+ * True means this chain runs referral-only: a deposit requires a valid referral
+ * link. False means there is no router to deposit through, so the app behaves
+ * exactly as it did before the referral layer existed — unsetting the router
+ * address restores the plain deposit flow on that chain.
+ *
+ * Only the router is configured per chain. The commissions contract is
+ * per-company and arrives in the referral link, so one build serves every
+ * partner.
  */
 export function isReferralEnabled(chainId?: number): boolean {
-  return (
-    getReferralRouterAddress(chainId) !== undefined &&
-    getCommissionsAddress(chainId) !== undefined
-  )
+  return getReferralRouterAddress(chainId) !== undefined
 }
 
 /**
@@ -89,10 +72,6 @@ export function isReferralEnabled(chainId?: number): boolean {
  */
 export const isLoansPageHidden =
   process.env.NEXT_PUBLIC_HIDE_LOANS_PAGE === 'true'
-
-/** Non-production builds may override the commissions contract for testing. */
-export const allowCommissionsOverride =
-  process.env.NEXT_PUBLIC_ENV !== 'production'
 
 /**
  * Exported for tests — lets a suite exercise the resolution rules (including

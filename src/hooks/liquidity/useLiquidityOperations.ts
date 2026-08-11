@@ -20,7 +20,6 @@ import {
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 import {
-  getCommissionsAddress,
   getReferralRouterAddress,
   isReferralEnabled,
 } from '@/src/config/referral'
@@ -37,7 +36,8 @@ export interface UseLiquidityOperationsReturn {
     token: `0x${string}`,
     amount: bigint,
     lockDuration: bigint,
-    referrer: `0x${string}`
+    referrer: `0x${string}`,
+    commissions: `0x${string}`
   ) => Promise<{ txHash: `0x${string}`; outcome: ReferralOutcome }>
   /** Spender the deposit approval must target — the router on the referral path. */
   referralRouterAddress: `0x${string}` | undefined
@@ -71,11 +71,10 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   // Referral router — undefined on chains with no router configured, which
   // keeps every referral branch below unreachable.
+  // The commissions contract is per-company and travels in the referral link,
+  // so it is a call argument rather than config — see useReferralParam.
   const referralRouterAddress = isReferralEnabled(chainId)
     ? getReferralRouterAddress(chainId)
-    : undefined
-  const commissionsAddress = isReferralEnabled(chainId)
-    ? getCommissionsAddress(chainId)
     : undefined
 
   // Native fee reads — use useReadContract directly to avoid TS deep-instantiation
@@ -301,8 +300,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   /**
    * The referral variant of deposit(). Identical inputs to the plain path —
    * same token, amount and lockDuration the form already computed — plus the
-   * referrer, the destination that receives the LP position (the connected
-   * wallet) and the config-driven commissions contract.
+   * referrer and commissions contract from the referral link, and the
+   * destination that receives the LP position (the connected wallet).
    *
    * Two things differ from deposit(): the tokens are pulled by the router
    * (so the ROUTER must be the approved spender, see approveToken's caller),
@@ -313,12 +312,16 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       token: `0x${string}`,
       amount: bigint,
       lockDuration: bigint,
-      referrer: `0x${string}`
+      referrer: `0x${string}`,
+      commissions: `0x${string}`
     ) => {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-      if (!referralRouterAddress || !commissionsAddress) {
+      if (!referralRouterAddress) {
         throw new Error('Referral router is not configured for this network')
+      }
+      if (!commissions) {
+        throw new Error('No commissions contract was supplied by the referral link')
       }
       if (referrer.toLowerCase() === address.toLowerCase()) {
         throw new Error('You cannot refer yourself')
@@ -355,7 +358,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         lockDuration,
         referrer,
         address, // destination — the connected wallet receives the LP position
-        commissionsAddress,
+        commissions,
       ] as const
 
       const gasEstimate = await estimateGasWithBuffer(
@@ -385,7 +388,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       lpAddress,
       publicClient,
       referralRouterAddress,
-      commissionsAddress,
       writeReferralDepositFn,
       resolveNativeFee,
       estimateGasWithBuffer,
