@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useAccount, useReadContract, useReadContracts } from 'wagmi'
 import { erc20Abi, formatEther } from 'viem'
 import {
@@ -149,13 +149,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
   // The gate is the single verdict; this form never re-derives it. On a chain
   // with no router configured it is 'disabled' and everything below behaves
   // exactly as it did before the referral layer existed.
-  const { router: referralRouter, gate, setPendingStableValue } = referral
-
-  // The banner lives a level up (it spans both liquidity cards), so the amount
-  // typed here has to be reported upward for its estimate.
-  useEffect(() => {
-    setPendingStableValue(parsedDollarAmount)
-  }, [parsedDollarAmount, setPendingStableValue])
+  const { router: referralRouter, gate } = referral
 
   const useReferralPath = gate.status === 'ready'
 

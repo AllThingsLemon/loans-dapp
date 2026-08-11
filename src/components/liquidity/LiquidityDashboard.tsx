@@ -35,10 +35,7 @@ export function LiquidityDashboard() {
       {/* Full width, above both cards — renders nothing when no router is
           configured or no referrer was captured. */}
       <Web3ErrorBoundary>
-        <ReferralBanner
-          referral={referral}
-          stableDecimals={liquidityPool.stableTokenDecimals ?? 18}
-        />
+        <ReferralBanner referral={referral} />
       </Web3ErrorBoundary>
 
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>

@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useAccount } from 'wagmi'
 import { useReferralParam } from './useReferralParam'
 import {
@@ -23,12 +23,6 @@ export interface ReferralState {
    * the two can never disagree about what is allowed.
    */
   gate: ReferralGate
-  /**
-   * Reported by the deposit form as the user types, so the banner can show an
-   * estimate for the amount currently entered. The amount lives in the form,
-   * but the banner renders a level above it.
-   */
-  setPendingStableValue: (value: bigint | undefined) => void
 }
 
 /**
@@ -47,16 +41,8 @@ export interface ReferralState {
 export function useReferralState(expectedPool?: `0x${string}`): ReferralState {
   const { address } = useAccount()
   const { referrer, commissions, hasLink } = useReferralParam()
-  const [pendingStableValue, setPendingStableValue] = useState<
-    bigint | undefined
-  >(undefined)
 
-  const router = useReferralRouter({
-    referrer,
-    commissions,
-    pendingStableValue,
-    expectedPool
-  })
+  const router = useReferralRouter({ referrer, commissions, expectedPool })
 
   const gate = useMemo(
     () =>
@@ -89,7 +75,6 @@ export function useReferralState(expectedPool?: `0x${string}`): ReferralState {
     commissions,
     hasLink,
     router,
-    gate,
-    setPendingStableValue
+    gate
   }
 }
