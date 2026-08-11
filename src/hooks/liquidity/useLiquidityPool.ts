@@ -8,6 +8,8 @@ export function useLiquidityPool() {
   return {
     ...data,
     deposit: operations.deposit,
+    depositWithReferral: operations.depositWithReferral,
+    referralRouterAddress: operations.referralRouterAddress,
     requestWithdrawal: operations.requestWithdrawal,
     claimEarnings: operations.claimEarnings,
     compoundEarnings: operations.compoundEarnings,

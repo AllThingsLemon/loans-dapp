@@ -16,11 +16,31 @@ import {
   loansAddress,
   loansAbi,
   liquidityPoolAbi,
+  referralDepositRouterAbi,
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
+import {
+  getCommissionsAddress,
+  getReferralRouterAddress,
+  isReferralEnabled,
+} from '@/src/config/referral'
+import { parseReferralOutcome, type ReferralOutcome } from '@/src/utils/referral'
 
 export interface UseLiquidityOperationsReturn {
   deposit: (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => Promise<`0x${string}` | undefined>
+  /**
+   * Same deposit, routed through ReferralDepositRouter so the referrer earns a
+   * commission. Only reachable when a router is configured for the chain and a
+   * valid non-self referrer was captured — see useReferralParam.
+   */
+  depositWithReferral: (
+    token: `0x${string}`,
+    amount: bigint,
+    lockDuration: bigint,
+    referrer: `0x${string}`
+  ) => Promise<{ txHash: `0x${string}`; outcome: ReferralOutcome }>
+  /** Spender the deposit approval must target — the router on the referral path. */
+  referralRouterAddress: `0x${string}` | undefined
   requestWithdrawal: (amount: bigint) => Promise<`0x${string}` | undefined>
   claimEarnings: () => Promise<`0x${string}` | undefined>
   compoundEarnings: (lockDuration: bigint) => Promise<`0x${string}` | undefined>
@@ -48,6 +68,15 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   // LiquidityPool address resolved from Loans.liquidityPool()
   const { liquidityPool: lpAddress } = useProtocolAddresses()
+
+  // Referral router — undefined on chains with no router configured, which
+  // keeps every referral branch below unreachable.
+  const referralRouterAddress = isReferralEnabled(chainId)
+    ? getReferralRouterAddress(chainId)
+    : undefined
+  const commissionsAddress = isReferralEnabled(chainId)
+    ? getCommissionsAddress(chainId)
+    : undefined
 
   // Native fee reads — use useReadContract directly to avoid TS deep-instantiation
   // errors when overriding address on the generated LP hooks.
@@ -108,15 +137,28 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { writeContractAsync: approveTokenFn, isPending: isApproving } =
     useWriteContract({ mutation: { retry: false } })
 
+  // Raw write for the router — the generated hook hits the TS
+  // deep-instantiation limit the same way the LiquidityPool ones do.
+  const {
+    writeContractAsync: writeReferralDepositFn,
+    isPending: isDepositingWithReferral,
+  } = useWriteContract({ mutation: { retry: false } })
+
   const invalidateAll = useCallback(async () => {
     await queryClient.invalidateQueries()
     await queryClient.refetchQueries({ type: 'active' })
   }, [queryClient])
 
+  // Returns the receipt when one could be fetched — the referral path reads its
+  // logs to tell "commission paid" from "commission skipped". Callers that
+  // don't need it can keep ignoring the return value.
   const waitAndInvalidate = useCallback(
     async (txHash: `0x${string}`) => {
+      let receipt: Awaited<
+        ReturnType<NonNullable<typeof publicClient>['waitForTransactionReceipt']>
+      > | undefined
       if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
         if (receipt.status === 'reverted') {
           // Re-simulate the exact transaction to extract the real revert reason.
           // We simulate at blockNumber - 1 (just before the block that included the tx)
@@ -141,6 +183,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       // Delay to allow RPC node state to propagate after block confirmation
       await new Promise((resolve) => setTimeout(resolve, 3000))
       await invalidateAll()
+      return receipt
     },
     [publicClient, invalidateAll]
   )
@@ -193,13 +236,19 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     async (
       functionName: string,
       args: readonly unknown[] | undefined,
-      value: bigint
+      value: bigint,
+      // Defaults to the LiquidityPool; the referral path passes the router so
+      // the estimate (and any decoded revert) comes from the contract actually
+      // being called.
+      target?: { address: `0x${string}`; abi: unknown }
     ): Promise<bigint | undefined> => {
-      if (!publicClient || !lpAddress || !address) return undefined
+      const to = target?.address ?? lpAddress
+      const abi = target?.abi ?? liquidityPoolAbi
+      if (!publicClient || !to || !address) return undefined
       try {
         const estimated = await publicClient.estimateContractGas({
-          address: lpAddress,
-          abi: liquidityPoolAbi,
+          address: to,
+          abi,
           functionName,
           args,
           value,
@@ -247,6 +296,101 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       return txHash
     },
     [address, lpAddress, depositFn, resolveNativeFee, estimateGasWithBuffer, waitAndInvalidate]
+  )
+
+  /**
+   * The referral variant of deposit(). Identical inputs to the plain path —
+   * same token, amount and lockDuration the form already computed — plus the
+   * referrer, the destination that receives the LP position (the connected
+   * wallet) and the config-driven commissions contract.
+   *
+   * Two things differ from deposit(): the tokens are pulled by the router
+   * (so the ROUTER must be the approved spender, see approveToken's caller),
+   * and `nonEarning` is not exposed — the router fixes it.
+   */
+  const depositWithReferral = useCallback(
+    async (
+      token: `0x${string}`,
+      amount: bigint,
+      lockDuration: bigint,
+      referrer: `0x${string}`
+    ) => {
+      if (!address) throw new Error('Wallet not connected')
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      if (!referralRouterAddress || !commissionsAddress) {
+        throw new Error('Referral router is not configured for this network')
+      }
+      if (referrer.toLowerCase() === address.toLowerCase()) {
+        throw new Error('You cannot refer yourself')
+      }
+
+      // The router deposits into router.pool(). If that is not the pool the
+      // rest of the UI is reading from, the user would be depositing somewhere
+      // other than what is on screen — refuse rather than silently diverge.
+      if (publicClient) {
+        const routerPool = (await publicClient.readContract({
+          address: referralRouterAddress,
+          abi: referralDepositRouterAbi,
+          functionName: 'pool',
+        })) as `0x${string}`
+        if (routerPool.toLowerCase() !== lpAddress.toLowerCase()) {
+          // eslint-disable-next-line no-console
+          console.error(
+            '[referral] router.pool() does not match the protocol LiquidityPool — refusing referral deposit.',
+            { router: referralRouterAddress, routerPool, protocolPool: lpAddress }
+          )
+          throw new Error(
+            'Referral deposits are unavailable: the referral router points at a different liquidity pool than the one shown here. Deposit without the referral link, or contact support.'
+          )
+        }
+      }
+
+      // Same payable native fee as the direct deposit — resolved fresh from
+      // chain because an underpayment reverts after the user has paid gas.
+      const nativeFee = await resolveNativeFee('deposit')
+
+      const args = [
+        token,
+        amount,
+        lockDuration,
+        referrer,
+        address, // destination — the connected wallet receives the LP position
+        commissionsAddress,
+      ] as const
+
+      const gasEstimate = await estimateGasWithBuffer(
+        'depositWithReferral',
+        args,
+        nativeFee,
+        { address: referralRouterAddress, abi: referralDepositRouterAbi }
+      )
+
+      const txHash = await writeReferralDepositFn({
+        address: referralRouterAddress,
+        abi: referralDepositRouterAbi,
+        functionName: 'depositWithReferral',
+        args,
+        value: nativeFee,
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+      } as any)
+
+      const receipt = await waitAndInvalidate(txHash)
+      // settleCommission is a gas-capped self-call, so the deposit can succeed
+      // while the commission is skipped. The receipt is the only place that
+      // distinction is recorded.
+      return { txHash, outcome: parseReferralOutcome(receipt?.logs) }
+    },
+    [
+      address,
+      lpAddress,
+      publicClient,
+      referralRouterAddress,
+      commissionsAddress,
+      writeReferralDepositFn,
+      resolveNativeFee,
+      estimateGasWithBuffer,
+      waitAndInvalidate,
+    ]
   )
 
   const requestWithdrawal = useCallback(
@@ -379,10 +523,13 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isClaimingWithdrawal ||
     isFundingQueue ||
     isProcessingSwaps ||
-    isApproving
+    isApproving ||
+    isDepositingWithReferral
 
   return {
     deposit,
+    depositWithReferral,
+    referralRouterAddress,
     requestWithdrawal,
     claimEarnings,
     compoundEarnings,

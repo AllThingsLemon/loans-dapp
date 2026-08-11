@@ -3,6 +3,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { isLoansPageHidden } from '@/src/config/referral'
 
 export default function Header() {
   const pathname = usePathname()
@@ -26,16 +27,18 @@ export default function Header() {
             </h1>
           </Link>
           <nav className='flex items-center gap-3 sm:gap-4 sm:ml-6 shrink-0'>
-            <Link
-              href='/'
-              className={`text-sm font-medium transition-colors ${
-                pathname === '/'
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Loans
-            </Link>
+            {!isLoansPageHidden && (
+              <Link
+                href='/'
+                className={`text-sm font-medium transition-colors ${
+                  pathname === '/'
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Loans
+              </Link>
+            )}
             <Link
               href='/liquidity'
               className={`text-sm font-medium transition-colors ${

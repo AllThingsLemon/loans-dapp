@@ -12,6 +12,7 @@ import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
 import LiquidityPoolAbi from './src/abis/LiquidityPool.json'
 import PriceHelperAbi from './src/abis/PriceHelper.json'
 import CollateralManagerAbi from './src/abis/CollateralManager.json'
+import ReferralDepositRouterAbi from './src/abis/ReferralDepositRouter.json'
 
 // Only the Loans address is sourced from env. Every other protocol contract
 // address is discovered on-chain at runtime via useProtocolAddresses():
@@ -30,6 +31,15 @@ const LOANS_ADDRESSES = {
   [CHAINS.LEMON]: (process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   [CHAINS.CITRON]: (process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   [CHAINS.BSC]: (process.env.NEXT_PUBLIC_BSC_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+} as const
+
+// ReferralDepositRouter is opt-in per chain. Leaving the env var unset falls
+// back to the zero address, which src/config/referral.ts treats as "no router
+// configured" — every referral read/write stays inert on that chain.
+const REFERRAL_ROUTER_ADDRESSES = {
+  [CHAINS.LEMON]: (process.env.NEXT_PUBLIC_LEMON_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+  [CHAINS.CITRON]: (process.env.NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+  [CHAINS.BSC]: (process.env.NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
 } as const
 
 export default defineConfig({
@@ -59,6 +69,11 @@ export default defineConfig({
       name: 'CollateralManager',
       abi: CollateralManagerAbi as Abi,
       // Address resolved at runtime from Loans.collateralManager()
+    },
+    {
+      name: 'ReferralDepositRouter',
+      abi: ReferralDepositRouterAbi as Abi,
+      address: REFERRAL_ROUTER_ADDRESSES,
     },
   ],
   plugins: [

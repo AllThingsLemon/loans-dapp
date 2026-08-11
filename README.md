@@ -34,10 +34,35 @@ All variables must be prefixed `NEXT_PUBLIC_` to be available in the browser.
 | `NEXT_PUBLIC_CITRON_LOANS_ADDRESS` | When 1005 is in supported chains | Loans contract address on Citron testnet |
 | `NEXT_PUBLIC_BSC_LOANS_ADDRESS` | When 56 is in supported chains | Loans contract address on BNB Smart Chain mainnet |
 | `NEXT_PUBLIC_SUPPORTED_CHAINS` | No | Comma-separated chain ids (e.g. `1006,56`). First entry is the default. Defaults to LemonChain mainnet (`1006`) when unset. Known ids: `1006` LemonChain mainnet, `1005` Citron testnet, `56` BNB Smart Chain mainnet. |
+| `NEXT_PUBLIC_HIDE_LOANS_PAGE` | No | Set to `true` to hide the loans page — the nav item is removed and `/` redirects to `/liquidity`. Any other value (or unset) leaves loans visible. |
+| `NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on Citron testnet. Unset or zero address disables all referral behaviour on that chain. |
+| `NEXT_PUBLIC_LEMON_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on LemonChain mainnet. |
+| `NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on BNB Smart Chain mainnet. |
+| `NEXT_PUBLIC_CITRON_COMMISSIONS_ADDRESS` | With the Citron router | Commissions contract passed as the router's `commissions` argument. Must be in the router's `allowedCommissionsList()`. |
+| `NEXT_PUBLIC_LEMON_COMMISSIONS_ADDRESS` | With the LemonChain router | Commissions contract for LemonChain mainnet. |
 
 Only the Loans contract address is required per chain. The rest of the protocol contracts (`CollateralManager`, `LiquidityPool`, `SwapManager`) are discovered on-chain at app load via `Loans.collateralManager()`, `Loans.liquidityPool()`, and `LiquidityPool.swapManager()`.
 
 Copy `.env.example` to `.env` and fill in the values. Never commit `.env` — it is gitignored.
+
+### Referrals
+
+When a `ReferralDepositRouter` **and** a commissions contract are configured for the
+active chain, a deposit made with `?ref=0x…` (or `?affiliate=0x…`) in the URL is routed
+through `ReferralDepositRouter.depositWithReferral()` so the referrer earns a commission.
+The referrer is remembered in `sessionStorage` for the visit, so it survives navigation
+and the wallet-connect round-trip.
+
+Leave either address unset (or at the zero address) and the referral layer is **inert**:
+no referral UI, no referral RPC calls, and deposits behave exactly as they did before.
+
+Two details worth knowing when operating this:
+
+- On the referral path the token approval targets the **router**, not the pool — the router
+  pulls tokens with `transferFrom`. The UI switches the spender automatically.
+- Commission settlement is a gas-capped self-call inside the router. It can fail while the
+  deposit itself succeeds; the router then emits `ReferralSkipped` and the success toast
+  reports "commission was skipped". That is an expected outcome, not an error.
 
 ### Cloudflare Pages Secrets
 
@@ -48,6 +73,13 @@ npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-na
 npx wrangler pages secret put NEXT_PUBLIC_LEMON_LOANS_ADDRESS --project-name=loans-dapp
 npx wrangler pages secret put NEXT_PUBLIC_BSC_LOANS_ADDRESS --project-name=loans-dapp
 # Plus NEXT_PUBLIC_CITRON_LOANS_ADDRESS for builds that include the Citron testnet.
+
+# Referral layer + loans-page visibility. Both are NEXT_PUBLIC_*, so they are inlined at
+# BUILD time — changing either requires a rebuild, not just a redeploy.
+npx wrangler pages secret put NEXT_PUBLIC_HIDE_LOANS_PAGE --project-name=loans-dapp
+npx wrangler pages secret put NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS --project-name=loans-dapp
+npx wrangler pages secret put NEXT_PUBLIC_CITRON_COMMISSIONS_ADDRESS --project-name=loans-dapp
+# Plus the NEXT_PUBLIC_LEMON_* / NEXT_PUBLIC_BSC_* equivalents once those chains have a router.
 ```
 
 Non-sensitive public variables can alternatively be set in `wrangler.toml` under `[vars]`.

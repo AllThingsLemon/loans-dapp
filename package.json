@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "test": "vitest run",
     "build": "wagmi generate && npx prettier --write src/generated.ts && NODE_OPTIONS=--max-old-space-size=6144 next build",
     "build:local": "wagmi generate && npx prettier --write src/generated.ts && NODE_OPTIONS=--max-old-space-size=6144 next build",
     "start": "next start",
