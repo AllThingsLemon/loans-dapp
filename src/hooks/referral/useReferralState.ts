@@ -9,7 +9,11 @@ import {
 import { evaluateReferralGate, type ReferralGate } from '@/src/utils/referral'
 
 export interface ReferralState {
-  /** Affiliate address from the link, or null when missing/malformed. */
+  /**
+   * Affiliate address as it appeared in the LINK. May differ from the one that
+   * actually gets credited — see `gate.referrer`, which the UI and the deposit
+   * both use. The two are compared to decide whether to warn the visitor.
+   */
   referrer: `0x${string}` | null
   /** Per-company commissions contract from the link, or null. */
   commissions: `0x${string}` | null
@@ -42,28 +46,35 @@ export function useReferralState(expectedPool?: `0x${string}`): ReferralState {
   const { address } = useAccount()
   const { referrer, commissions, hasLink } = useReferralParam()
 
-  const router = useReferralRouter({ referrer, commissions, expectedPool })
+  const router = useReferralRouter({
+    referrer,
+    commissions,
+    account: address,
+    expectedPool
+  })
 
   const gate = useMemo(
     () =>
       evaluateReferralGate({
         enabled: router.enabled,
-        referrer,
+        referrer: router.effectiveReferrer,
         commissions,
         hasLink,
         account: address,
         allowedCommissions: router.allowedCommissions,
         isRegistered: router.isRegistered,
         isPaused: router.isPaused,
-        hasPoolMismatch: router.hasPoolMismatch
+        hasPoolMismatch: router.hasPoolMismatch,
+        isResolvingSponsor: router.isResolvingSponsor
       }),
     [
       router.enabled,
+      router.effectiveReferrer,
+      router.isResolvingSponsor,
       router.allowedCommissions,
       router.isRegistered,
       router.isPaused,
       router.hasPoolMismatch,
-      referrer,
       commissions,
       hasLink,
       address

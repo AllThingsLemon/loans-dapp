@@ -11,6 +11,7 @@ import {
   parseCommissionsFromSearch,
   parseReferralLink,
   parseReferrerFromSearch,
+  resolveEffectiveReferrer,
   type ReferralBlockReason,
   type ReferralGateInput
 } from '../utils/referral'
@@ -408,5 +409,93 @@ describe('referral gate', () => {
       expect(detail.length).toBeGreaterThan(0)
     }
     expect(REFERRAL_BLOCK_REMEDY).toMatch(/referred you/i)
+  })
+})
+
+describe('effective referrer — chain sponsor beats the link', () => {
+  const ZERO = '0x0000000000000000000000000000000000000000'
+
+  it('keeps the link affiliate when the wallet has no sponsor yet', () => {
+    for (const sponsor of [
+      undefined,
+      null,
+      ZERO,
+      ZERO.toUpperCase().replace('0X', '0x')
+    ]) {
+      expect(
+        resolveEffectiveReferrer({
+          linkReferrer: REFERRER,
+          existingSponsor: sponsor
+        })
+      ).toEqual({ referrer: REFERRER, wasOverridden: false })
+    }
+  })
+
+  it('keeps the link affiliate when it already matches the sponsor, ignoring case', () => {
+    expect(
+      resolveEffectiveReferrer({
+        linkReferrer: REFERRER,
+        existingSponsor: REFERRER.toLowerCase()
+      })
+    ).toEqual({ referrer: REFERRER, wasOverridden: false })
+  })
+
+  it('overrides with the existing sponsor when they differ', () => {
+    // Attribution is permanent: the contract reverts with
+    // CustomerAffiliateMismatch() rather than re-attribute, so the sponsor wins.
+    expect(
+      resolveEffectiveReferrer({
+        linkReferrer: REFERRER,
+        existingSponsor: OTHER
+      })
+    ).toEqual({ referrer: OTHER, wasOverridden: true })
+  })
+
+  it('adopts the sponsor even when the link had no valid affiliate at all', () => {
+    expect(
+      resolveEffectiveReferrer({ linkReferrer: null, existingSponsor: OTHER })
+    ).toEqual({ referrer: OTHER, wasOverridden: true })
+  })
+
+  it('leaves a broken link broken when there is no sponsor to fall back on', () => {
+    expect(
+      resolveEffectiveReferrer({ linkReferrer: null, existingSponsor: ZERO })
+    ).toEqual({ referrer: null, wasOverridden: false })
+  })
+})
+
+describe('gate holds while the sponsor is still being read', () => {
+  const base = {
+    enabled: true,
+    referrer: REFERRER,
+    commissions: OTHER,
+    hasLink: true,
+    account: getAddress('0xad1c4acbb1d3b13bc0e06bc9cbeae0103bcc878b'),
+    allowedCommissions: [OTHER],
+    isRegistered: true,
+    isPaused: false,
+    hasPoolMismatch: false
+  }
+
+  it('is checking while resolving, then ready once resolved', () => {
+    // The credited affiliate can still change, so no verdict may be issued yet.
+    expect(evaluateReferralGate({ ...base, isResolvingSponsor: true })).toEqual(
+      {
+        status: 'checking'
+      }
+    )
+    expect(
+      evaluateReferralGate({ ...base, isResolvingSponsor: false }).status
+    ).toBe('ready')
+  })
+
+  it('still reports a missing link before waiting on the sponsor read', () => {
+    expect(
+      evaluateReferralGate({
+        ...base,
+        hasLink: false,
+        isResolvingSponsor: true
+      })
+    ).toEqual({ status: 'blocked', reason: 'no-link' })
   })
 })
