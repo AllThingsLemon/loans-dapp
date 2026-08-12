@@ -29,6 +29,9 @@ import {
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
+import type { ReferralState } from '@/src/hooks/referral/useReferralState'
+import { describeSkipReason } from '@/src/utils/referral'
+import { truncateAddress } from '@/src/utils/format'
 
 // Lock-tier durations are configured in 360-day years (e.g. 10 yr =
 // 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
@@ -63,9 +66,14 @@ function formatLockDurationLong(duration: bigint): string {
 
 interface AddLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
+  /**
+   * Owned by LiquidityDashboard so the full-width banner and this form share
+   * one instance. Inert when no router is configured for the chain.
+   */
+  referral: ReferralState
 }
 
-export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
+export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardProps) {
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isNonEarning, setIsNonEarning] = useState(false)
@@ -83,6 +91,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     feeConfig,
     approveToken,
     deposit,
+    depositWithReferral,
     depositNativeFee,
     refetch,
   } = liquidityPool
@@ -136,6 +145,24 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
       return undefined
     }
   }, [amount, stableDecimals])
+
+  // ── Referral layer ────────────────────────────────────────────────────────
+  // The gate is the single verdict; this form never re-derives it. On a chain
+  // with no router configured it is 'disabled' and everything below behaves
+  // exactly as it did before the referral layer existed.
+  const { router: referralRouter, gate } = referral
+
+  const useReferralPath = gate.status === 'ready'
+
+  // Referral-only: with a router configured, anything short of a valid link
+  // stops the deposit. The banner above carries the reason and the remedy.
+  const isReferralBlocked = gate.status === 'blocked' || gate.status === 'checking'
+
+  // The router pulls tokens with transferFrom, so on the referral path the
+  // ROUTER — not the pool — is the spender that must be approved.
+  const depositSpender = useReferralPath
+    ? referralRouter.routerAddress
+    : liquidityPoolContractAddress
 
   // How many tokens does the user need to cover the dollar input?
   const { data: tokenAmountRaw } = useReadContract({
@@ -192,8 +219,8 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     address: selectedAsset,
     abi: erc20Abi,
     functionName: 'allowance',
-    args: address && liquidityPoolContractAddress ? [address, liquidityPoolContractAddress] : undefined,
-    query: { enabled: !!selectedAsset && !!address && !!liquidityPoolContractAddress },
+    args: address && depositSpender ? [address, depositSpender] : undefined,
+    query: { enabled: !!selectedAsset && !!address && !!depositSpender },
   })
 
   const decimals = tokenDecimals !== undefined ? Number(tokenDecimals) : 18
@@ -246,7 +273,10 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     if (!feeConfig || feeConfig.feeBps === 0n) return null
     return Number(feeConfig.feeBps) / 100
   }, [feeConfig])
-  const depositFeeApplies = !!depositFeePct && !isNonEarning
+  // The router does not expose nonEarning — it fixes the value — so the option
+  // is hidden on the referral path and must not leak into the fee/confirm copy.
+  const effectiveNonEarning = useReferralPath ? false : isNonEarning
+  const depositFeeApplies = !!depositFeePct && !effectiveNonEarning
 
   const depositFeeTokens = useMemo(() => {
     if (!depositFeeApplies || !tokenAmount || !feeConfig) return undefined
@@ -290,11 +320,11 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
   }, [tokenAmount, currentAllowance])
 
   const handleApprove = async () => {
-    if (!tokenAmount || !selectedAsset || !liquidityPoolContractAddress) return
+    if (!tokenAmount || !selectedAsset || !depositSpender) return
     setIsProcessing(true)
     try {
       const approvalAmount = tokenAmount + (tokenAmount / 10n)
-      await approveToken(approvalAmount, selectedAsset, liquidityPoolContractAddress)
+      await approveToken(approvalAmount, selectedAsset, depositSpender)
       await refetchAllowance()
       toast({
         title: '\u2705 Approval Successful',
@@ -307,7 +337,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     }
   }
 
-  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined
+  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined && !isReferralBlocked
 
   const handleDepositClick = () => {
     if (!canDeposit) return
@@ -320,11 +350,37 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
     if (!tokenAmount || !selectedAsset) return
     setIsProcessing(true)
     try {
-      await deposit(selectedAsset, tokenAmount, selectedLockDuration, isNonEarning)
-      toast({
-        title: '\u2705 Deposit Successful',
-        description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`,
-      })
+      if (gate.status === 'ready') {
+        // Same token / amount / lockDuration as the plain path \u2014 only the
+        // contract being called and the extra referral args differ. The router
+        // fixes nonEarning, so it is not passed (and is hidden in the form).
+        const { outcome } = await depositWithReferral(
+          selectedAsset,
+          tokenAmount,
+          selectedLockDuration,
+          gate.referrer,
+          gate.commissions
+        )
+        // Deliberately generic \u2014 the rate is the referrer's business, not the
+        // depositor's, and quoting a percentage here invites questions about a
+        // number the depositor has no stake in.
+        const commissionNote =
+          outcome.kind === 'paid'
+            ? ' A referral commission was awarded to the referrer.'
+            : outcome.kind === 'skipped'
+              ? ` The deposit succeeded, but the referral commission was skipped \u2014 ${describeSkipReason(outcome.reason)}.`
+              : ''
+        toast({
+          title: '\u2705 Deposit Successful',
+          description: `Deposited $${amount} (${tokenEquivalent} ${symbol}) into the liquidity pool.${commissionNote}`,
+        })
+      } else {
+        await deposit(selectedAsset, tokenAmount, selectedLockDuration, isNonEarning)
+        toast({
+          title: '\u2705 Deposit Successful',
+          description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`,
+        })
+      }
       setAmount('')
       setShowConfirmDialog(false)
       await refetchBalance()
@@ -423,17 +479,21 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
           </div>
         )}
 
-        <label className='flex items-center gap-2 cursor-pointer'>
-          <input
-            type='checkbox'
-            checked={isNonEarning}
-            onChange={(e) => setIsNonEarning(e.target.checked)}
-            className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
-          />
-          <span className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}>
-            Deposit as non-earning{isNonEarning && ' — will not earn interest from borrower payments'}
-          </span>
-        </label>
+        {/* The referral router fixes nonEarning, so the choice isn't offered
+            on that path. */}
+        {!useReferralPath && (
+          <label className='flex items-center gap-2 cursor-pointer'>
+            <input
+              type='checkbox'
+              checked={isNonEarning}
+              onChange={(e) => setIsNonEarning(e.target.checked)}
+              className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
+            />
+            <span className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}>
+              Deposit as non-earning{isNonEarning && ' — will not earn interest from borrower payments'}
+            </span>
+          </label>
+        )}
 
         {requiresSwap && (
           <p className='text-xs text-muted-foreground'>
@@ -455,6 +515,18 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
           {/* The Deposit button used to sit inexplicably disabled when a
               required choice was missing (or no tiers are enabled, in which
               case the tier section doesn't render at all) — say why. */}
+          {/* The banner above carries the full reason and the remedy; this is
+              only so the disabled button is never left unexplained. */}
+          {gate.status === 'blocked' && (
+            <p className='text-sm text-destructive'>
+              Deposits require a valid referral link — see the notice above.
+            </p>
+          )}
+          {gate.status === 'checking' && (
+            <p className='text-sm text-muted-foreground'>
+              Verifying your referral link…
+            </p>
+          )}
           {amount && selectedAsset === undefined && (
             <p className='text-sm text-muted-foreground'>
               Select a token above to continue.
@@ -479,7 +551,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
         </div>
 
         <div>
-        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum ? (
+        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum && !isReferralBlocked ? (
           <Button
             onClick={handleApprove}
             disabled={isProcessing || !tokenAmount}
@@ -524,7 +596,7 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
           <div className='space-y-3 py-2'>
             <p className='text-sm text-muted-foreground'>
               Your deposit will be locked for <span className='font-semibold text-foreground'>{formatLockDurationLong(selectedLockDuration)}</span>.
-              {selectedTier && !isNonEarning && (
+              {selectedTier && !effectiveNonEarning && (
                 <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
               )}
             </p>
@@ -553,9 +625,19 @@ export function AddLiquidityCard({ liquidityPool }: AddLiquidityCardProps) {
                 Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
               </p>
             )}
-            {isNonEarning && (
+            {effectiveNonEarning && (
               <p className='text-sm text-destructive font-medium'>
                 This is a non-earning deposit. You will not earn interest from borrower payments on this deposit.
+              </p>
+            )}
+            {gate.status === 'ready' && (
+              <p className='text-sm text-muted-foreground'>
+                This deposit will be routed through the referral router, crediting{' '}
+                <span className='font-mono font-semibold text-foreground'>
+                  {truncateAddress(gate.referrer)}
+                </span>
+                . Your liquidity position is unaffected and still goes to your
+                wallet.
               </p>
             )}
           </div>

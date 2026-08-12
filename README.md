@@ -34,10 +34,70 @@ All variables must be prefixed `NEXT_PUBLIC_` to be available in the browser.
 | `NEXT_PUBLIC_CITRON_LOANS_ADDRESS` | When 1005 is in supported chains | Loans contract address on Citron testnet |
 | `NEXT_PUBLIC_BSC_LOANS_ADDRESS` | When 56 is in supported chains | Loans contract address on BNB Smart Chain mainnet |
 | `NEXT_PUBLIC_SUPPORTED_CHAINS` | No | Comma-separated chain ids (e.g. `1006,56`). First entry is the default. Defaults to LemonChain mainnet (`1006`) when unset. Known ids: `1006` LemonChain mainnet, `1005` Citron testnet, `56` BNB Smart Chain mainnet. |
+| `NEXT_PUBLIC_HIDE_LOANS_PAGE` | No | Set to `true` to hide the loans page — the nav item is removed and `/` redirects to `/liquidity`. Any other value (or unset) leaves loans visible. |
+| `NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on Citron testnet. **Setting this makes the chain referral-only** — see Referrals below. Unset or zero address disables all referral behaviour and restores the plain deposit flow. |
+| `NEXT_PUBLIC_LEMON_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on LemonChain mainnet. |
+| `NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS` | No | `ReferralDepositRouter` on BNB Smart Chain mainnet. |
+
+The commissions contract is deliberately **not** an environment variable — it is per-company and travels in the referral link, so a single build serves every partner.
 
 Only the Loans contract address is required per chain. The rest of the protocol contracts (`CollateralManager`, `LiquidityPool`, `SwapManager`) are discovered on-chain at app load via `Loans.collateralManager()`, `Loans.liquidityPool()`, and `LiquidityPool.swapManager()`.
 
 Copy `.env.example` to `.env` and fill in the values. Never commit `.env` — it is gitignored.
+
+### Referrals
+
+A referral link carries **two** halves, and both are required:
+
+```
+https://<app>/liquidity?affiliate=0xAFFILIATE&commissions=0xCOMMISSIONS
+```
+
+- `?affiliate=` (or `?ref=`) — the affiliate's wallet, credited with the commission.
+- `?commissions=` — the **per-company** commissions contract, which must appear in the
+  router's `allowedCommissionsList()`. This is why it travels in the link rather than in
+  build config: one build serves every partner.
+
+The pair is remembered in `sessionStorage` for the visit, so it survives navigation and the
+wallet-connect round-trip. The URL always wins over storage, and a broken link clears
+storage rather than silently falling back to an earlier company's contract.
+
+**On a chain with a router configured, deposits are referral-only.** A visitor with no
+link, a half-built link, a malformed address, a commissions contract the router does not
+allowlist, an affiliate that `isRegistered()` reports as false, or a link pointing at their
+own wallet, cannot deposit. They are shown the reason and told to contact the person who
+referred them.
+
+Leave `NEXT_PUBLIC_<CHAIN>_REFERRAL_ROUTER_ADDRESS` unset (or at the zero address) and the
+referral layer is **inert** on that chain: no referral UI, no referral RPC calls, and
+deposits behave exactly as they did before. That is the kill switch — use it to take a
+chain out of referral-only mode.
+
+Three details worth knowing when operating this:
+
+- On the referral path the token approval targets the **router**, not the pool — the router
+  pulls tokens with `transferFrom`. The UI switches the spender automatically.
+- Commission settlement is a gas-capped self-call inside the router. It can fail while the
+  deposit itself succeeds; the router then emits `ReferralSkipped` and the success toast
+  reports "commission was skipped". That is an expected outcome, not an error. The reason
+  codes come from the verified implementation behind the router proxy: `1` referrer not
+  registered, `3` pay/pricing failed, `4` commissions not allowlisted. Reason `3` is the
+  common one and is settled inside the Commissions tree, not this dapp — the router's
+  `settleCommission` prices the commission and moves it from the tree's primary payout vault
+  into its secondary vault, and any failure there unwinds to a skip.
+- `isRegistered(referrer)` returning true is necessary but **not sufficient** for the
+  commission to land — a registered referrer can still hit reason `3` at settle time, and
+  whether it does depends on the (referrer, lender) **pair**, not the referrer alone.
+  Because of that, the deposit is re-verified immediately before signing: the router's
+  `pool()`, `paused()` and `allowedCommissions()`, the commissions contract's
+  `isRegistered()`, and — critically — a simulation of `settleCommission` itself.
+  `settleCommission` is guarded by `OnlySelf`, which an `eth_call` can satisfy by
+  presenting the router as `from`, so the exact settlement can be dry-run against current
+  state. If it would revert, the deposit is stopped before the wallet prompt and no gas is
+  spent. This is what keeps a deposit from landing with no commission attached; the
+  `ReferralSkipped` handling remains as a backstop for a same-block race.
+- `royal-citadel-affiliate-dapp` currently generates `?affiliate=` only. It must be updated
+  to append `&commissions=` before its links will work against a referral-only chain.
 
 ### Cloudflare Pages Secrets
 
@@ -48,6 +108,13 @@ npx wrangler pages secret put NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID --project-na
 npx wrangler pages secret put NEXT_PUBLIC_LEMON_LOANS_ADDRESS --project-name=loans-dapp
 npx wrangler pages secret put NEXT_PUBLIC_BSC_LOANS_ADDRESS --project-name=loans-dapp
 # Plus NEXT_PUBLIC_CITRON_LOANS_ADDRESS for builds that include the Citron testnet.
+
+# Referral layer + loans-page visibility. Both are NEXT_PUBLIC_*, so they are inlined at
+# BUILD time — changing either requires a rebuild, not just a redeploy.
+npx wrangler pages secret put NEXT_PUBLIC_HIDE_LOANS_PAGE --project-name=loans-dapp
+npx wrangler pages secret put NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS --project-name=loans-dapp
+# Plus the NEXT_PUBLIC_LEMON_* / NEXT_PUBLIC_BSC_* equivalents once those chains have a router.
+# There is no commissions secret — that address travels in the referral link.
 ```
 
 Non-sensitive public variables can alternatively be set in `wrangler.toml` under `[vars]`.

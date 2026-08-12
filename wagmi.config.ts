@@ -12,6 +12,7 @@ import PriceDataFeedAbi from './src/abis/PriceDataFeed.json'
 import LiquidityPoolAbi from './src/abis/LiquidityPool.json'
 import PriceHelperAbi from './src/abis/PriceHelper.json'
 import CollateralManagerAbi from './src/abis/CollateralManager.json'
+import ReferralDepositRouterAbi from './src/abis/ReferralDepositRouter.json'
 
 // Only the Loans address is sourced from env. Every other protocol contract
 // address is discovered on-chain at runtime via useProtocolAddresses():
@@ -59,6 +60,16 @@ export default defineConfig({
       name: 'CollateralManager',
       abi: CollateralManagerAbi as Abi,
       // Address resolved at runtime from Loans.collateralManager()
+    },
+    {
+      name: 'ReferralDepositRouter',
+      abi: ReferralDepositRouterAbi as Abi,
+      // ABI only — deliberately NO address map here. The address is resolved at
+      // runtime by src/config/referral.ts, which validates it and treats
+      // anything malformed as "no router configured". Declaring it here instead
+      // would make wagmi validate the env var at BUILD time, so a stray space or
+      // a placeholder in a deployment variable fails the whole build rather than
+      // just disabling referrals.
     },
   ],
   plugins: [
