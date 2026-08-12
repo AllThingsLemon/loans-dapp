@@ -9,6 +9,7 @@ import {
   collateralManagerAbi
 } from '../generated'
 import defaultLiquidatorAbi from '../abis/DefaultLiquidator.json'
+import referralDepositRouterAbi from '../abis/ReferralDepositRouter.json'
 
 /**
  * ABI-drift QA guards.
@@ -28,7 +29,8 @@ const CONTRACTS: Array<{ name: string; abi: Abi }> = [
   { name: 'PriceDataFeed', abi: priceDataFeedAbi as Abi },
   { name: 'PriceHelper', abi: priceHelperAbi as Abi },
   { name: 'CollateralManager', abi: collateralManagerAbi as Abi },
-  { name: 'DefaultLiquidator', abi: defaultLiquidatorAbi as Abi }
+  { name: 'DefaultLiquidator', abi: defaultLiquidatorAbi as Abi },
+  { name: 'ReferralDepositRouter', abi: referralDepositRouterAbi as Abi }
 ]
 
 /** Placeholder arg values per solidity type, enough to encode any error. */

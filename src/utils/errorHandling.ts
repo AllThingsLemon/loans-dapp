@@ -15,6 +15,7 @@ import {
   collateralManagerAbi
 } from '@/src/generated'
 import defaultLiquidatorAbiJson from '@/src/abis/DefaultLiquidator.json'
+import referralDepositRouterAbiJson from '@/src/abis/ReferralDepositRouter.json'
 
 export interface ContractError {
   message: string
@@ -116,6 +117,36 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   OnlyLoans: 'This action can only be called by the Loans contract.',
   SlotBusy: 'Swap slot is already in use.',
   TooSoon: 'Cannot create a new swap yet — please wait for the creation interval.',
+  // ReferralDepositRouter
+  BelowMinimum: 'Amount is below the minimum deposit — please increase your amount and try again.',
+  EnforcedPause: 'This contract is paused — deposits are temporarily unavailable.',
+  ExpectedPause: 'This action is only available while the contract is paused.',
+  InsufficientGasForCommission:
+    'Not enough gas was left to settle the referral commission. Try again with a higher gas limit — your deposit is unaffected.',
+  InvalidRate: 'Invalid commission rate configuration.',
+  NativeRefundFailed: 'Failed to refund the unused network fee.',
+  NoCommission: 'No commission is available for this referrer.',
+  NoLock: 'The selected lock duration is not available for this token.',
+  OnlySelf: 'This action can only be performed by the contract itself.',
+  SelfReferral: 'You cannot refer yourself — remove the referral link and deposit normally.',
+  TiersNotSorted: 'Commission tiers are misconfigured (thresholds are not in ascending order).',
+  ZeroAddress: 'Invalid address provided.',
+  ZeroAmount: 'Amount must be greater than zero.',
+  // OpenZeppelin base errors inherited by the upgradeable router. These should
+  // never reach a user in normal operation, but the ABI-drift guard requires a
+  // message for every error so a real one is never silently rendered as raw.
+  AccessControlBadConfirmation: 'Role renouncement must be confirmed by the account itself.',
+  AccessControlUnauthorizedAccount: 'Your wallet does not have the role required for this action.',
+  AddressEmptyCode: 'The target address has no contract code.',
+  ERC1967InvalidImplementation: 'The contract points at an invalid implementation.',
+  ERC1967NonPayable: 'This contract cannot receive the gas token during an upgrade.',
+  FailedCall: 'An internal contract call failed.',
+  InvalidInitialization: 'This contract has already been initialized.',
+  NotInitializing: 'This contract is not currently initializing.',
+  ReentrancyGuardReentrantCall: 'Reentrant call rejected — please retry the transaction.',
+  SafeERC20FailedOperation: 'A token transfer failed — please check your balance and approval.',
+  UUPSUnauthorizedCallContext: 'Upgrade call made in an invalid context.',
+  UUPSUnsupportedProxiableUUID: 'The proposed implementation is not upgrade-compatible.',
 }
 
 /**
@@ -130,7 +161,8 @@ const ALL_CONTRACT_ERRORS: AbiErrorItem[] = [
   priceDataFeedAbi,
   priceHelperAbi,
   collateralManagerAbi,
-  defaultLiquidatorAbiJson as Abi
+  defaultLiquidatorAbiJson as Abi,
+  referralDepositRouterAbiJson as Abi
 ].flatMap((abi) =>
   (abi as Abi).filter((item): item is AbiErrorItem => item.type === 'error')
 )
