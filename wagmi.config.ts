@@ -33,15 +33,6 @@ const LOANS_ADDRESSES = {
   [CHAINS.BSC]: (process.env.NEXT_PUBLIC_BSC_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
 } as const
 
-// ReferralDepositRouter is opt-in per chain. Leaving the env var unset falls
-// back to the zero address, which src/config/referral.ts treats as "no router
-// configured" — every referral read/write stays inert on that chain.
-const REFERRAL_ROUTER_ADDRESSES = {
-  [CHAINS.LEMON]: (process.env.NEXT_PUBLIC_LEMON_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-  [CHAINS.CITRON]: (process.env.NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-  [CHAINS.BSC]: (process.env.NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
-} as const
-
 export default defineConfig({
   out: 'src/generated.ts',
   contracts: [
@@ -73,7 +64,12 @@ export default defineConfig({
     {
       name: 'ReferralDepositRouter',
       abi: ReferralDepositRouterAbi as Abi,
-      address: REFERRAL_ROUTER_ADDRESSES,
+      // ABI only — deliberately NO address map here. The address is resolved at
+      // runtime by src/config/referral.ts, which validates it and treats
+      // anything malformed as "no router configured". Declaring it here instead
+      // would make wagmi validate the env var at BUILD time, so a stray space or
+      // a placeholder in a deployment variable fails the whole build rather than
+      // just disabling referrals.
     },
   ],
   plugins: [
