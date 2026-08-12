@@ -37,8 +37,6 @@ export interface UseReferralRouterReturn {
    * the read is in flight — the gate must not judge a link before it arrives.
    */
   allowedCommissions: readonly `0x${string}`[] | undefined
-  /** LiquidityPool the router deposits into. */
-  routerPool: `0x${string}` | undefined
   /** True when router.pool() differs from the pool the UI is showing. */
   hasPoolMismatch: boolean
   isPaused: boolean
@@ -48,13 +46,10 @@ export interface UseReferralRouterReturn {
    * contract, in which case that sponsor wins.
    */
   effectiveReferrer: `0x${string}` | null
-  /** True when the chain's sponsor replaced the affiliate from the link. */
-  wasReferrerOverridden: boolean
   /** True while the sponsor lookup is still in flight. */
   isResolvingSponsor: boolean
   /** Whether the EFFECTIVE referrer is registered with the commissions contract. */
   isRegistered: boolean | undefined
-  isRegistrationLoading: boolean
   isLoading: boolean
 }
 
@@ -109,32 +104,31 @@ export function useReferralRouter({
     query: { enabled: enabled && !!commissionsAddress && !!account }
   })
 
-  const { referrer: effectiveReferrer, wasOverridden: wasReferrerOverridden } =
-    useMemo(
-      () =>
-        resolveEffectiveReferrer({
-          linkReferrer: referrer,
-          existingSponsor: sponsorRaw as string | undefined
-        }),
-      [referrer, sponsorRaw]
-    )
+  // The banner decides whether to warn by comparing the link's affiliate with
+  // this one, so the `wasOverridden` flag is not surfaced.
+  const { referrer: effectiveReferrer } = useMemo(
+    () =>
+      resolveEffectiveReferrer({
+        linkReferrer: referrer,
+        existingSponsor: sponsorRaw as string | undefined
+      }),
+    [referrer, sponsorRaw]
+  )
 
   const isResolvingSponsor =
     enabled && !!commissionsAddress && !!account && sponsorLoading
 
-  const {
-    data: isRegisteredRaw,
-    isLoading: isRegistrationLoading,
-    error: isRegistrationError
-  } = useReadContract({
-    address: commissionsAddress,
-    abi: commissionsAbi,
-    functionName: 'isRegistered',
-    args: effectiveReferrer ? [effectiveReferrer] : undefined,
-    query: {
-      enabled: enabled && !!commissionsAddress && !!effectiveReferrer
+  const { data: isRegisteredRaw, error: isRegistrationError } = useReadContract(
+    {
+      address: commissionsAddress,
+      abi: commissionsAbi,
+      functionName: 'isRegistered',
+      args: effectiveReferrer ? [effectiveReferrer] : undefined,
+      query: {
+        enabled: enabled && !!commissionsAddress && !!effectiveReferrer
+      }
     }
-  })
+  )
 
   // Fail closed on a read error rather than leaving the gate on 'checking'
   // forever. `commissions` is URL-supplied, so the call can revert simply
@@ -159,14 +153,11 @@ export function useReferralRouter({
     enabled,
     routerAddress,
     allowedCommissions,
-    routerPool,
     hasPoolMismatch,
     isPaused: (pausedRaw as boolean | undefined) ?? false,
     effectiveReferrer,
-    wasReferrerOverridden,
     isResolvingSponsor,
     isRegistered,
-    isRegistrationLoading,
     isLoading: enabled && (poolLoading || pausedLoading || allowedLoading)
   }
 }
