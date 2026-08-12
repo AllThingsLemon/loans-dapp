@@ -293,6 +293,66 @@ export function describeReferralBlock(reason: ReferralBlockReason): {
 export const REFERRAL_BLOCK_REMEDY =
   'Please contact the person who referred you for a working link.'
 
+/**
+ * Reasons the pre-flight re-check can stop a deposit at the moment of signing.
+ *
+ * The gate already vets all of these when the page loads, but its reads are not
+ * polled — so on a tab that has been open a while they can go stale. Worse, the
+ * router checks the allowlist and the registration only AFTER the deposit has
+ * landed, meaning a stale gate would let a deposit through and merely emit
+ * `ReferralSkipped`. Re-reading immediately before signing collapses that window
+ * to a single block and moves the failure to BEFORE the user spends gas.
+ */
+export type ReferralPreflightFailure =
+  | 'pool-mismatch'
+  | 'router-paused'
+  | 'commissions-not-allowed'
+  | 'referrer-not-registered'
+  | 'commission-would-fail'
+
+/**
+ * Written for a toast rather than the banner, so each one is a complete
+ * thought. "No transaction was sent" is load-bearing — the user pressed
+ * Confirm and needs to know nothing happened and no gas was spent.
+ */
+export const REFERRAL_PREFLIGHT_MESSAGES: Record<
+  ReferralPreflightFailure,
+  string
+> = {
+  'pool-mismatch':
+    'Referral deposits are unavailable: the referral router points at a different liquidity pool than the one shown here. No transaction was sent — please contact support.',
+  'router-paused':
+    'Referral deposits are paused right now. No transaction was sent — please try again shortly.',
+  'commissions-not-allowed':
+    'This referral link is no longer valid: its commissions contract is no longer approved by the protocol. No transaction was sent — please contact the person who referred you for a working link.',
+  'referrer-not-registered':
+    'This referral link is no longer valid: the affiliate is no longer registered with the commissions contract. No transaction was sent — please contact the person who referred you for a working link.',
+  'commission-would-fail':
+    'This deposit would not pay a referral commission, so it was stopped before any gas was spent. No transaction was sent — please contact the person who referred you for a working link.'
+}
+
+/**
+ * Referrer eligibility and the commission token live on the commissions
+ * contract, whose ABI is not checked into this repo. Only these two functions
+ * are needed, so they are declared here rather than adding a whole ABI file.
+ */
+export const commissionsAbi = [
+  {
+    type: 'function',
+    name: 'isRegistered',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    type: 'function',
+    name: 'commissionToken',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }]
+  }
+] as const satisfies Abi
+
 /** True when the referrer is the depositor — `depositWithReferral` reverts. */
 export function isSelfReferral(
   referrer: string | null | undefined,

@@ -1,20 +1,12 @@
 'use client'
 import { useCallback, useMemo } from 'react'
 import { useChainId, useReadContract } from 'wagmi'
-import { parseAbi } from 'viem'
 import { referralDepositRouterAbi } from '@/src/generated'
 import {
   getReferralRouterAddress,
   isReferralEnabled
 } from '@/src/config/referral'
-/**
- * Referrer eligibility lives on the commissions contract, not the router. Its
- * ABI isn't checked into this repo, and only this one function is needed, so it
- * is declared inline rather than adding a whole ABI file for a single read.
- */
-const commissionsAbi = parseAbi([
-  'function isRegistered(address account) view returns (bool)'
-])
+import { commissionsAbi } from '@/src/utils/referral'
 
 export interface UseReferralRouterParams {
   /** Captured referrer, or null when there is none. */

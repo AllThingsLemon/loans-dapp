@@ -86,8 +86,16 @@ Three details worth knowing when operating this:
   `settleCommission` prices the commission and moves it from the tree's primary payout vault
   into its secondary vault, and any failure there unwinds to a skip.
 - `isRegistered(referrer)` returning true is necessary but **not sufficient** for the
-  commission to land. The gate uses it because it is the only pre-flight check available,
-  but a registered referrer can still hit reason `3` at settle time.
+  commission to land — a registered referrer can still hit reason `3` at settle time, and
+  whether it does depends on the (referrer, lender) **pair**, not the referrer alone.
+  Because of that, the deposit is re-verified immediately before signing: the router's
+  `pool()`, `paused()` and `allowedCommissions()`, the commissions contract's
+  `isRegistered()`, and — critically — a simulation of `settleCommission` itself.
+  `settleCommission` is guarded by `OnlySelf`, which an `eth_call` can satisfy by
+  presenting the router as `from`, so the exact settlement can be dry-run against current
+  state. If it would revert, the deposit is stopped before the wallet prompt and no gas is
+  spent. This is what keeps a deposit from landing with no commission attached; the
+  `ReferralSkipped` handling remains as a backstop for a same-block race.
 - `royal-citadel-affiliate-dapp` currently generates `?affiliate=` only. It must be updated
   to append `&commissions=` before its links will work against a referral-only chain.
 

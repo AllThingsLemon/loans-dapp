@@ -4,6 +4,7 @@ import { extractErrorMessage, type ContractError } from '../utils/errorHandling'
 import referralDepositRouterAbi from '../abis/ReferralDepositRouter.json'
 import {
   REFERRAL_BLOCK_REMEDY,
+  REFERRAL_PREFLIGHT_MESSAGES,
   describeReferralBlock,
   describeSkipReason,
   type ReferralBlockReason
@@ -159,6 +160,47 @@ describe('deposit toast bodies', () => {
   })
 
   it('unknown reason falls back to the raw code', () => {
-    expect(skipped(9)).toContain('the referrer was not eligible (reason code 9)')
+    expect(skipped(9)).toContain(
+      'the referrer was not eligible (reason code 9)'
+    )
+  })
+})
+
+describe('pre-flight re-check messages', () => {
+  // Thrown at the moment of signing and surfaced as the body of a
+  // "Deposit Failed" toast. Every one must make clear nothing was sent.
+  const EXPECTED: Array<[keyof typeof REFERRAL_PREFLIGHT_MESSAGES, string]> = [
+    [
+      'pool-mismatch',
+      'Referral deposits are unavailable: the referral router points at a different liquidity pool than the one shown here. No transaction was sent — please contact support.'
+    ],
+    [
+      'router-paused',
+      'Referral deposits are paused right now. No transaction was sent — please try again shortly.'
+    ],
+    [
+      'commissions-not-allowed',
+      'This referral link is no longer valid: its commissions contract is no longer approved by the protocol. No transaction was sent — please contact the person who referred you for a working link.'
+    ],
+    [
+      'referrer-not-registered',
+      'This referral link is no longer valid: the affiliate is no longer registered with the commissions contract. No transaction was sent — please contact the person who referred you for a working link.'
+    ],
+    [
+      'commission-would-fail',
+      'This deposit would not pay a referral commission, so it was stopped before any gas was spent. No transaction was sent — please contact the person who referred you for a working link.'
+    ]
+  ]
+
+  for (const [kind, expected] of EXPECTED) {
+    it(`${kind}`, () => {
+      expect(REFERRAL_PREFLIGHT_MESSAGES[kind]).toBe(expected)
+    })
+  }
+
+  it('every pre-flight message states that nothing was sent', () => {
+    for (const msg of Object.values(REFERRAL_PREFLIGHT_MESSAGES)) {
+      expect(msg).toContain('No transaction was sent')
+    }
   })
 })

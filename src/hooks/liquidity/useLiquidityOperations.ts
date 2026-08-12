@@ -1,7 +1,13 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
-import { erc20Abi, BaseError, HttpRequestError, TimeoutError } from 'viem'
+import {
+  erc20Abi,
+  encodeFunctionData,
+  BaseError,
+  HttpRequestError,
+  TimeoutError,
+} from 'viem'
 import {
   useWriteLiquidityPoolDeposit,
   useWriteLiquidityPoolRequestWithdrawal,
@@ -23,7 +29,26 @@ import {
   getReferralRouterAddress,
   isReferralEnabled,
 } from '@/src/config/referral'
-import { parseReferralOutcome, type ReferralOutcome } from '@/src/utils/referral'
+import {
+  commissionsAbi,
+  parseReferralOutcome,
+  REFERRAL_PREFLIGHT_MESSAGES,
+  type ReferralOutcome,
+  type ReferralPreflightFailure,
+} from '@/src/utils/referral'
+
+/**
+ * A transport failure (RPC timeout / rate-limit) is not an answer from chain.
+ * Callers use this to avoid turning "we couldn't ask" into "the answer is no".
+ */
+function isTransportError(error: unknown): boolean {
+  return (
+    error instanceof BaseError &&
+    error.walk(
+      (e) => e instanceof HttpRequestError || e instanceof TimeoutError
+    ) !== null
+  )
+}
 
 export interface UseLiquidityOperationsReturn {
   deposit: (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => Promise<`0x${string}` | undefined>
@@ -259,12 +284,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         // fall back to the wallet's own estimation instead of hard-blocking
         // a transaction that would succeed. Genuine reverts still throw so
         // the user sees the decoded reason before the wallet prompt.
-        const isTransport =
-          estimationError instanceof BaseError &&
-          estimationError.walk(
-            (e) => e instanceof HttpRequestError || e instanceof TimeoutError
-          ) !== null
-        if (isTransport) return undefined
+        if (isTransportError(estimationError)) return undefined
         throw estimationError
       }
     },
@@ -298,6 +318,124 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   )
 
   /**
+   * Re-verify, at the moment of signing, every condition the referral gate
+   * checked when the page loaded.
+   *
+   * This exists because of an asymmetry in the router: `depositWithReferral`
+   * performs the deposit FIRST and only then checks the allowlist and the
+   * referrer's registration, emitting `ReferralSkipped` if either has changed.
+   * So a stale gate does not produce a failed transaction — it produces a
+   * successful deposit that silently earns no commission. The gate's reads are
+   * never polled, so on a long-open tab that window is unbounded.
+   *
+   * Re-reading here narrows it to a single block and, crucially, moves the
+   * failure to before the wallet prompt: nothing is signed and no gas is spent.
+   *
+   * A transport failure (RPC down, rate-limited) is NOT treated as a negative
+   * answer — that would block deposits that would have succeeded. Only a
+   * definite "no" from chain stops the deposit.
+   */
+  const preflightReferral = useCallback(
+    async (
+      token: `0x${string}`,
+      amount: bigint,
+      referrer: `0x${string}`,
+      commissions: `0x${string}`
+    ) => {
+      if (!publicClient || !referralRouterAddress || !lpAddress || !address) return
+
+      const fail = (kind: ReferralPreflightFailure, detail?: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error(`[referral] pre-flight failed: ${kind}`, {
+          router: referralRouterAddress,
+          commissions,
+          referrer,
+          ...(detail ? { detail } : {}),
+        })
+        return new Error(REFERRAL_PREFLIGHT_MESSAGES[kind])
+      }
+
+      let routerPool: `0x${string}`
+      let isPaused: boolean
+      let isAllowed: boolean
+      let isRegistered: boolean
+      try {
+        ;[routerPool, isPaused, isAllowed, isRegistered] = (await Promise.all([
+          publicClient.readContract({
+            address: referralRouterAddress,
+            abi: referralDepositRouterAbi,
+            functionName: 'pool',
+          }),
+          publicClient.readContract({
+            address: referralRouterAddress,
+            abi: referralDepositRouterAbi,
+            functionName: 'paused',
+          }),
+          publicClient.readContract({
+            address: referralRouterAddress,
+            abi: referralDepositRouterAbi,
+            functionName: 'allowedCommissions',
+            args: [commissions],
+          }),
+          publicClient.readContract({
+            address: commissions,
+            abi: commissionsAbi,
+            functionName: 'isRegistered',
+            args: [referrer],
+          }),
+        ])) as [`0x${string}`, boolean, boolean, boolean]
+      } catch (readError) {
+        // Could not reach chain. Fall through to the wallet rather than block —
+        // the router still re-checks all of this on-chain.
+        if (isTransportError(readError)) return
+        throw readError
+      }
+
+      // The router deposits into router.pool(). If that is not the pool the
+      // rest of the UI is reading from, the user would be depositing somewhere
+      // other than what is on screen — refuse rather than silently diverge.
+      if (routerPool.toLowerCase() !== lpAddress.toLowerCase()) {
+        throw fail('pool-mismatch', { routerPool, protocolPool: lpAddress })
+      }
+      if (isPaused) throw fail('router-paused')
+      if (!isAllowed) throw fail('commissions-not-allowed')
+      if (!isRegistered) throw fail('referrer-not-registered')
+
+      // Reason 3 — the only skip that actually happens, and the only one none
+      // of the checks above can predict. `settleCommission` is an external
+      // self-call guarded by OnlySelf, which an eth_call can satisfy by
+      // presenting the router as `from`. Simulating it against current state
+      // surfaces an unpriceable token, a zero commission or an underfunded
+      // vault before the user pays for a deposit that earns nothing.
+      //
+      // stableValue is what the router itself would compute: its internal
+      // _stableValueOf(token, amount) is the pool's own deposit credit.
+      try {
+        const stableValue = (await publicClient.readContract({
+          address: lpAddress,
+          abi: liquidityPoolAbi,
+          functionName: 'getDepositCredit',
+          args: [token, amount],
+        })) as bigint
+
+        await publicClient.call({
+          account: referralRouterAddress, // satisfies the router's OnlySelf guard
+          to: referralRouterAddress,
+          data: encodeFunctionData({
+            abi: referralDepositRouterAbi,
+            functionName: 'settleCommission',
+            args: [commissions, referrer, address, stableValue],
+          }),
+        })
+      } catch (settleError) {
+        if (isTransportError(settleError)) return
+        throw fail('commission-would-fail', settleError)
+      }
+    },
+    [publicClient, referralRouterAddress, lpAddress, address]
+  )
+
+  /**
    * The referral variant of deposit(). Identical inputs to the plain path —
    * same token, amount and lockDuration the form already computed — plus the
    * referrer and commissions contract from the referral link, and the
@@ -327,26 +465,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         throw new Error('You cannot refer yourself')
       }
 
-      // The router deposits into router.pool(). If that is not the pool the
-      // rest of the UI is reading from, the user would be depositing somewhere
-      // other than what is on screen — refuse rather than silently diverge.
-      if (publicClient) {
-        const routerPool = (await publicClient.readContract({
-          address: referralRouterAddress,
-          abi: referralDepositRouterAbi,
-          functionName: 'pool',
-        })) as `0x${string}`
-        if (routerPool.toLowerCase() !== lpAddress.toLowerCase()) {
-          // eslint-disable-next-line no-console
-          console.error(
-            '[referral] router.pool() does not match the protocol LiquidityPool — refusing referral deposit.',
-            { router: referralRouterAddress, routerPool, protocolPool: lpAddress }
-          )
-          throw new Error(
-            'Referral deposits are unavailable: the referral router points at a different liquidity pool than the one shown here. Deposit without the referral link, or contact support.'
-          )
-        }
-      }
+      await preflightReferral(token, amount, referrer, commissions)
 
       // Same payable native fee as the direct deposit — resolved fresh from
       // chain because an underpayment reverts after the user has paid gas.
@@ -386,8 +505,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     [
       address,
       lpAddress,
-      publicClient,
       referralRouterAddress,
+      preflightReferral,
       writeReferralDepositFn,
       resolveNativeFee,
       estimateGasWithBuffer,
