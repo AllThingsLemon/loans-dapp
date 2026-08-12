@@ -6,7 +6,7 @@ import {
   getReferralRouterAddress,
   isReferralEnabled
 } from '@/src/config/referral'
-import { commissionsAbi } from '@/src/utils/referral'
+import { commissionsAbi, resolveEffectiveReferrer } from '@/src/utils/referral'
 
 export interface UseReferralRouterParams {
   /** Captured referrer, or null when there is none. */
@@ -18,6 +18,8 @@ export interface UseReferralRouterParams {
    * below.
    */
   commissions: `0x${string}` | null
+  /** Connected wallet — its existing sponsor can override the link's affiliate. */
+  account?: `0x${string}`
   /**
    * The LiquidityPool the rest of the UI is reading from. Compared against
    * `router.pool()` — a mismatch means the referral path would deposit
@@ -35,14 +37,19 @@ export interface UseReferralRouterReturn {
    * the read is in flight — the gate must not judge a link before it arrives.
    */
   allowedCommissions: readonly `0x${string}`[] | undefined
-  /** LiquidityPool the router deposits into. */
-  routerPool: `0x${string}` | undefined
   /** True when router.pool() differs from the pool the UI is showing. */
   hasPoolMismatch: boolean
   isPaused: boolean
-  /** Whether the referrer is registered with the commissions contract. */
+  /**
+   * The affiliate that will actually be credited: the link's affiliate, unless
+   * the wallet is already attributed to someone else on this commissions
+   * contract, in which case that sponsor wins.
+   */
+  effectiveReferrer: `0x${string}` | null
+  /** True while the sponsor lookup is still in flight. */
+  isResolvingSponsor: boolean
+  /** Whether the EFFECTIVE referrer is registered with the commissions contract. */
   isRegistered: boolean | undefined
-  isRegistrationLoading: boolean
   isLoading: boolean
 }
 
@@ -56,6 +63,7 @@ export interface UseReferralRouterReturn {
 export function useReferralRouter({
   referrer,
   commissions,
+  account,
   expectedPool
 }: UseReferralRouterParams): UseReferralRouterReturn {
   const chainId = useChainId()
@@ -86,17 +94,41 @@ export function useReferralRouter({
   const { data: allowedRaw, isLoading: allowedLoading } = useReadContract(
     routerRead('allowedCommissionsList')
   )
-  const {
-    data: isRegisteredRaw,
-    isLoading: isRegistrationLoading,
-    error: isRegistrationError
-  } = useReadContract({
+  // Who, if anyone, already owns this wallet on this commissions contract?
+  // Attribution is permanent, so this beats whatever the link says.
+  const { data: sponsorRaw, isLoading: sponsorLoading } = useReadContract({
     address: commissionsAddress,
     abi: commissionsAbi,
-    functionName: 'isRegistered',
-    args: referrer ? [referrer] : undefined,
-    query: { enabled: enabled && !!commissionsAddress && !!referrer }
+    functionName: 'getSponsor',
+    args: account ? [account] : undefined,
+    query: { enabled: enabled && !!commissionsAddress && !!account }
   })
+
+  // The banner decides whether to warn by comparing the link's affiliate with
+  // this one, so the `wasOverridden` flag is not surfaced.
+  const { referrer: effectiveReferrer } = useMemo(
+    () =>
+      resolveEffectiveReferrer({
+        linkReferrer: referrer,
+        existingSponsor: sponsorRaw as string | undefined
+      }),
+    [referrer, sponsorRaw]
+  )
+
+  const isResolvingSponsor =
+    enabled && !!commissionsAddress && !!account && sponsorLoading
+
+  const { data: isRegisteredRaw, error: isRegistrationError } = useReadContract(
+    {
+      address: commissionsAddress,
+      abi: commissionsAbi,
+      functionName: 'isRegistered',
+      args: effectiveReferrer ? [effectiveReferrer] : undefined,
+      query: {
+        enabled: enabled && !!commissionsAddress && !!effectiveReferrer
+      }
+    }
+  )
 
   // Fail closed on a read error rather than leaving the gate on 'checking'
   // forever. `commissions` is URL-supplied, so the call can revert simply
@@ -121,11 +153,11 @@ export function useReferralRouter({
     enabled,
     routerAddress,
     allowedCommissions,
-    routerPool,
     hasPoolMismatch,
     isPaused: (pausedRaw as boolean | undefined) ?? false,
+    effectiveReferrer,
+    isResolvingSponsor,
     isRegistered,
-    isRegistrationLoading,
     isLoading: enabled && (poolLoading || pausedLoading || allowedLoading)
   }
 }

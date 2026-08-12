@@ -12,8 +12,6 @@ export interface UseReferralParamReturn {
   referrer: `0x${string}` | null
   /** Checksummed per-company commissions contract, or null. */
   commissions: `0x${string}` | null
-  /** Where the pair came from — null when there is nothing at all. */
-  source: 'url' | 'storage' | null
   /** True when the visitor arrived with a referral link, valid or not. */
   hasLink: boolean
 }
@@ -78,7 +76,6 @@ export function useReferralParam(): UseReferralParamReturn {
   const [captured, setCaptured] = useState<UseReferralParamReturn>({
     referrer: null,
     commissions: null,
-    source: null,
     hasLink: false
   })
 
@@ -90,7 +87,7 @@ export function useReferralParam(): UseReferralParamReturn {
     if (hasReferralParams(search)) {
       const { referrer, commissions } = parseReferralLink(search)
       writeStored(referrer && commissions ? { referrer, commissions } : null)
-      setCaptured({ referrer, commissions, source: 'url', hasLink: true })
+      setCaptured({ referrer, commissions, hasLink: true })
       return
     }
 
@@ -99,7 +96,6 @@ export function useReferralParam(): UseReferralParamReturn {
       setCaptured({
         referrer: null,
         commissions: null,
-        source: null,
         hasLink: false
       })
       return
@@ -108,7 +104,7 @@ export function useReferralParam(): UseReferralParamReturn {
     // Re-validate on the way out: storage is user-writable.
     const referrer = normalizeReferrer(stored.referrer)
     const commissions = normalizeReferrer(stored.commissions)
-    setCaptured({ referrer, commissions, source: 'storage', hasLink: true })
+    setCaptured({ referrer, commissions, hasLink: true })
   }, [])
 
   return captured

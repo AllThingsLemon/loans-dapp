@@ -2,6 +2,7 @@
 import { useAccount } from 'wagmi'
 import {
   REFERRAL_BLOCK_REMEDY,
+  REFERRAL_OVERRIDE_NOTICE,
   describeReferralBlock
 } from '@/src/utils/referral'
 import { truncateAddress } from '@/src/utils/format'
@@ -22,7 +23,7 @@ interface ReferralBannerProps {
  */
 export function ReferralBanner({ referral }: ReferralBannerProps) {
   const { chain } = useAccount()
-  const { referrer, gate } = referral
+  const { referrer: linkReferrer, gate } = referral
 
   // No router on this chain: the referral system does not apply and the plain
   // deposit flow is in charge. Render nothing at all.
@@ -57,10 +58,10 @@ export function ReferralBanner({ referral }: ReferralBannerProps) {
         <p className='text-sm font-medium'>{REFERRAL_BLOCK_REMEDY}</p>
         {/* Echo back whatever the link contained, so the referrer can be told
             exactly what their visitor received. */}
-        {referrer && (
+        {linkReferrer && (
           <p className='text-xs text-muted-foreground'>
             Affiliate in your link:{' '}
-            <span className='font-mono'>{truncateAddress(referrer)}</span>
+            <span className='font-mono'>{truncateAddress(linkReferrer)}</span>
           </p>
         )}
         {referral.commissions && (
@@ -77,10 +78,23 @@ export function ReferralBanner({ referral }: ReferralBannerProps) {
 
   // gate.status === 'ready' — confirm and stop talking. The banner is full
   // width, so the address fits in full without truncation.
+  //
+  // gate.referrer is the EFFECTIVE affiliate: if this wallet is already
+  // attributed to someone else on the commissions contract, that sponsor wins
+  // over the link, because the contract will not re-attribute. Showing the link's
+  // address here would promise a commission the chain would refuse to pay.
   const referrerUrl = explorerFor(gate.referrer)
+  const wasCorrected =
+    !!linkReferrer && linkReferrer.toLowerCase() !== gate.referrer.toLowerCase()
 
   return (
-    <div className='rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-4'>
+    <div className='rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-4 space-y-2'>
+      {wasCorrected && (
+        <p className='flex items-start gap-2 text-sm text-yellow-700 dark:text-yellow-500'>
+          <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+          {REFERRAL_OVERRIDE_NOTICE}
+        </p>
+      )}
       <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
         <CheckCircle2 className='h-4 w-4 shrink-0 text-emerald-600' />
         <span className='text-sm font-semibold'>Referred by</span>

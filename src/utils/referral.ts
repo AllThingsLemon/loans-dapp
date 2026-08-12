@@ -116,6 +116,37 @@ export function parseReferralLink(
   }
 }
 
+/**
+ * Attribution on a Commissions contract is first-affiliate-wins and permanent.
+ * Once a wallet has been credited to a sponsor, `_registerAffiliateIfNeeded`
+ * reverts with `CustomerAffiliateMismatch()` if a later deposit names anyone
+ * else — so a link pointing at a different affiliate cannot be honoured.
+ *
+ * Rather than fail that deposit, defer to the chain: whoever already owns the
+ * wallet is the real referrer, and the UI is corrected to match. The contract's
+ * own `getSponsor` falls back to the shared unified tree, so this single read
+ * sees exactly what the deposit will check.
+ */
+export function resolveEffectiveReferrer({
+  linkReferrer,
+  existingSponsor
+}: {
+  linkReferrer: `0x${string}` | null
+  existingSponsor?: string | null
+}): { referrer: `0x${string}` | null; wasOverridden: boolean } {
+  const sponsor =
+    existingSponsor && existingSponsor.toLowerCase() !== ZERO_ADDRESS_LOWER
+      ? (existingSponsor as `0x${string}`)
+      : null
+  if (!sponsor) return { referrer: linkReferrer, wasOverridden: false }
+  if (linkReferrer && sponsor.toLowerCase() === linkReferrer.toLowerCase()) {
+    return { referrer: linkReferrer, wasOverridden: false }
+  }
+  return { referrer: sponsor, wasOverridden: true }
+}
+
+const ZERO_ADDRESS_LOWER = '0x0000000000000000000000000000000000000000'
+
 export type ReferralBlockReason =
   | 'no-link'
   | 'invalid-referrer'
@@ -160,6 +191,12 @@ export interface ReferralGateInput {
   isRegistered?: boolean
   isPaused: boolean
   hasPoolMismatch: boolean
+  /**
+   * True while the connected wallet's existing sponsor is still being read.
+   * The verdict must wait: the referrer that ends up being credited can change
+   * once it resolves, and a link must not be judged against the wrong one.
+   */
+  isResolvingSponsor?: boolean
 }
 
 /**
@@ -187,6 +224,7 @@ export function evaluateReferralGate(input: ReferralGateInput): ReferralGate {
   if (!enabled) return { status: 'disabled' }
 
   if (!hasLink) return { status: 'blocked', reason: 'no-link' }
+  if (input.isResolvingSponsor) return { status: 'checking' }
   if (!referrer) return { status: 'blocked', reason: 'invalid-referrer' }
   if (!commissions) return { status: 'blocked', reason: 'invalid-commissions' }
   if (isSelfReferral(referrer, account)) {
@@ -281,6 +319,14 @@ export function describeReferralBlock(reason: ReferralBlockReason): {
   }
 }
 
+/**
+ * Shown above the affiliate address when the chain's sponsor replaced the one
+ * from the link. Attribution is permanent, so this is a correction, not an
+ * error — the deposit proceeds and credits the address on screen.
+ */
+export const REFERRAL_OVERRIDE_NOTICE =
+  'Your referral link had a different wallet address as the referrer, but we have updated it to show the correct wallet address.'
+
 /** The remedy shown under every block reason the visitor cannot self-fix. */
 export const REFERRAL_BLOCK_REMEDY =
   'Please contact the person who referred you for a working link.'
@@ -335,6 +381,13 @@ export const commissionsAbi = [
     stateMutability: 'view',
     inputs: [{ name: 'account', type: 'address' }],
     outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    type: 'function',
+    name: 'getSponsor',
+    stateMutability: 'view',
+    inputs: [{ name: 'affiliate', type: 'address' }],
+    outputs: [{ name: '', type: 'address' }]
   },
   {
     type: 'function',

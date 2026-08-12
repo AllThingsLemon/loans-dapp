@@ -4,6 +4,7 @@ import { extractErrorMessage, type ContractError } from '../utils/errorHandling'
 import referralDepositRouterAbi from '../abis/ReferralDepositRouter.json'
 import {
   REFERRAL_BLOCK_REMEDY,
+  REFERRAL_OVERRIDE_NOTICE,
   REFERRAL_PREFLIGHT_MESSAGES,
   describeReferralBlock,
   describeSkipReason,
@@ -202,5 +203,13 @@ describe('pre-flight re-check messages', () => {
     for (const msg of Object.values(REFERRAL_PREFLIGHT_MESSAGES)) {
       expect(msg).toContain('No transaction was sent')
     }
+  })
+})
+
+describe('referrer-corrected notice', () => {
+  it('reads exactly as reviewed', () => {
+    expect(REFERRAL_OVERRIDE_NOTICE).toBe(
+      'Your referral link had a different wallet address as the referrer, but we have updated it to show the correct wallet address.'
+    )
   })
 })
