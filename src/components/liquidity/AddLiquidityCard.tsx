@@ -360,9 +360,12 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
           gate.referrer,
           gate.commissions
         )
+        // Deliberately generic \u2014 the rate is the referrer's business, not the
+        // depositor's, and quoting a percentage here invites questions about a
+        // number the depositor has no stake in.
         const commissionNote =
           outcome.kind === 'paid'
-            ? ` Referral commission of ${Number(outcome.rateBps) / 100}% was allocated to the referrer to claim.`
+            ? ' A referral commission was awarded to the referrer.'
             : outcome.kind === 'skipped'
               ? ` The deposit succeeded, but the referral commission was skipped \u2014 ${describeSkipReason(outcome.reason)}.`
               : ''

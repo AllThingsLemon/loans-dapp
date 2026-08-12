@@ -269,10 +269,23 @@ describe('commission estimation', () => {
 })
 
 describe('ReferralSkipped reason codes', () => {
-  it('renders the raw code rather than guessing a meaning', () => {
-    // The verified router source is not available, so no code has a label yet.
-    // When the lookup map is filled in, this expectation should be updated.
-    expect(describeSkipReason(3)).toContain('reason code 3')
+  // Sourced from the verified implementation behind the router proxy
+  // (0xde6d…196a), which documents them on the ReferralSkipped event.
+  it('labels every code the contract can emit', () => {
+    expect(describeSkipReason(1)).toBe(
+      'the referrer is not registered with the commissions contract'
+    )
+    expect(describeSkipReason(3)).toBe(
+      'the commission could not be priced or paid out'
+    )
+    expect(describeSkipReason(4)).toBe(
+      'the commissions contract is not allowlisted by the router'
+    )
+  })
+
+  it('falls back to the raw code for anything unrecognised', () => {
+    // A future implementation could add codes; better a number than a wrong label.
+    expect(describeSkipReason(9)).toContain('reason code 9')
   })
 })
 

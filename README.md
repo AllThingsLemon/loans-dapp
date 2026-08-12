@@ -79,7 +79,15 @@ Three details worth knowing when operating this:
   pulls tokens with `transferFrom`. The UI switches the spender automatically.
 - Commission settlement is a gas-capped self-call inside the router. It can fail while the
   deposit itself succeeds; the router then emits `ReferralSkipped` and the success toast
-  reports "commission was skipped". That is an expected outcome, not an error.
+  reports "commission was skipped". That is an expected outcome, not an error. The reason
+  codes come from the verified implementation behind the router proxy: `1` referrer not
+  registered, `3` pay/pricing failed, `4` commissions not allowlisted. Reason `3` is the
+  common one and is settled inside the Commissions tree, not this dapp — the router's
+  `settleCommission` prices the commission and moves it from the tree's primary payout vault
+  into its secondary vault, and any failure there unwinds to a skip.
+- `isRegistered(referrer)` returning true is necessary but **not sufficient** for the
+  commission to land. The gate uses it because it is the only pre-flight check available,
+  but a registered referrer can still hit reason `3` at settle time.
 - `royal-citadel-affiliate-dapp` currently generates `?affiliate=` only. It must be updated
   to append `&commissions=` before its links will work against a referral-only chain.
 

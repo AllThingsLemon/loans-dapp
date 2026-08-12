@@ -352,17 +352,21 @@ export function estimateCommission({
 export const referralDepositRouterAbi = referralDepositRouterAbiJson as Abi
 
 /**
- * TODO: fill in from the verified source at
- * https://explorer-testnet.lemonchain.io/address/0x4aE07bB550DC860eb52eF570776423589AdD0DBe
+ * `ReferralSkipped(lender, referrer, uint8 reason, timestamp)` reason codes,
+ * taken from the verified implementation behind the router proxy
+ * (0xde6d50310554046e6f4b8249d21959e036a3196a), which documents them on the
+ * event itself:
  *
- * `ReferralSkipped(lender, referrer, uint8 reason, timestamp)` carries a numeric
- * reason code whose meaning is not published in any ABI or local repo. Until the
- * verified source is available we render the raw code with a generic message
- * rather than guessing — adding a wrong label here would be worse than none.
+ *   /// @param reason 1 = referrer not registered, 3 = pay/pricing failed,
+ *   ///        4 = commissions not allowlisted
+ *
+ * 0 and 2 are unused. A zero-address or self referrer reverts the whole call
+ * rather than skipping, so neither ever reaches this map.
  */
 export const REFERRAL_SKIPPED_REASONS: Record<number, string> = {
-  // 0: '...',
-  // 1: '...',
+  1: 'the referrer is not registered with the commissions contract',
+  3: 'the commission could not be priced or paid out',
+  4: 'the commissions contract is not allowlisted by the router'
 }
 
 export function describeSkipReason(reason: number): string {
