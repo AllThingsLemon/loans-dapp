@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { getAddress } from 'viem'
 import {
-  BPS_DENOMINATOR,
   REFERRAL_BLOCK_REMEDY,
   describeReferralBlock,
   describeSkipReason,
-  estimateCommission,
   evaluateReferralGate,
   hasReferralParams,
   isSelfReferral,
@@ -13,9 +11,6 @@ import {
   parseCommissionsFromSearch,
   parseReferralLink,
   parseReferrerFromSearch,
-  tierRateForBps,
-  truncateAddress,
-  type CommissionTier,
   type ReferralBlockReason,
   type ReferralGateInput
 } from '../utils/referral'
@@ -30,17 +25,6 @@ const { normalizeAddress } = __testables
 const REFERRER_LOWER = '0x33308a3a74eece1e7656bf73baf2789fb2e31cd4'
 const REFERRER = getAddress(REFERRER_LOWER)
 const OTHER = getAddress('0xc6e1cc44bbc9e047b5c25966dffe7ea673e913e0')
-
-/** The router's live tier table (thresholds ×1e18), read from citron. */
-const TIERS: CommissionTier[] = [
-  { threshold: 0n, rateBps: 500n },
-  { threshold: 250_000n * 10n ** 18n, rateBps: 1000n },
-  { threshold: 1_000_000n * 10n ** 18n, rateBps: 1500n },
-  { threshold: 5_000_000n * 10n ** 18n, rateBps: 2000n },
-  { threshold: 25_000_000n * 10n ** 18n, rateBps: 2500n }
-]
-
-const MAX_BASIS = 1_000_000n * 10n ** 18n
 
 describe('referral param parsing', () => {
   it('accepts ?ref=', () => {
@@ -146,128 +130,6 @@ describe('referral address config resolution', () => {
   })
 })
 
-describe('tier rate lookup', () => {
-  it('returns the base rate at zero volume', () => {
-    expect(tierRateForBps(TIERS, 0n)).toBe(500n)
-  })
-
-  it('steps up exactly at each threshold', () => {
-    for (const tier of TIERS) {
-      expect(tierRateForBps(TIERS, tier.threshold)).toBe(tier.rateBps)
-    }
-  })
-
-  it('stays on the lower tier one wei below a threshold', () => {
-    expect(tierRateForBps(TIERS, 250_000n * 10n ** 18n - 1n)).toBe(500n)
-    expect(tierRateForBps(TIERS, 1_000_000n * 10n ** 18n - 1n)).toBe(1000n)
-    expect(tierRateForBps(TIERS, 25_000_000n * 10n ** 18n - 1n)).toBe(2000n)
-  })
-
-  it('caps at the top tier for volume beyond the last threshold', () => {
-    expect(tierRateForBps(TIERS, 100_000_000n * 10n ** 18n)).toBe(2500n)
-  })
-
-  it('returns zero when no tiers are configured', () => {
-    expect(tierRateForBps([], 10n ** 30n)).toBe(0n)
-  })
-})
-
-describe('commission estimation', () => {
-  it('applies the rate as basis points of the deposit value', () => {
-    const value = 1_000n * 10n ** 18n
-    const { commission, basis, isCapped } = estimateCommission({
-      stableValue: value,
-      rateBps: 500n,
-      maxCommissionBasisPerTx: MAX_BASIS
-    })
-    expect(basis).toBe(value)
-    expect(commission).toBe((value * 500n) / BPS_DENOMINATOR)
-    expect(commission).toBe(50n * 10n ** 18n) // 5% of $1,000
-    expect(isCapped).toBe(false)
-  })
-
-  it('earns on the cap, not the full value, above maxCommissionBasisPerTx', () => {
-    const value = 4_000_000n * 10n ** 18n
-    const { commission, basis, isCapped } = estimateCommission({
-      stableValue: value,
-      rateBps: 1000n,
-      maxCommissionBasisPerTx: MAX_BASIS
-    })
-    expect(isCapped).toBe(true)
-    expect(basis).toBe(MAX_BASIS)
-    expect(commission).toBe((MAX_BASIS * 1000n) / BPS_DENOMINATOR)
-  })
-
-  it('is not capped exactly at the cap', () => {
-    const { isCapped, basis } = estimateCommission({
-      stableValue: MAX_BASIS,
-      rateBps: 500n,
-      maxCommissionBasisPerTx: MAX_BASIS
-    })
-    expect(isCapped).toBe(false)
-    expect(basis).toBe(MAX_BASIS)
-  })
-
-  it('truncates like Solidity rather than rounding', () => {
-    // 1 wei at 5% => 0.05 wei, which floors to 0
-    expect(
-      estimateCommission({ stableValue: 1n, rateBps: 500n }).commission
-    ).toBe(0n)
-    // 19 wei at 5% => 0.95 wei, still 0
-    expect(
-      estimateCommission({ stableValue: 19n, rateBps: 500n }).commission
-    ).toBe(0n)
-    expect(
-      estimateCommission({ stableValue: 20n, rateBps: 500n }).commission
-    ).toBe(1n)
-  })
-
-  it('returns zero for a zero amount or a zero rate', () => {
-    expect(
-      estimateCommission({ stableValue: 0n, rateBps: 500n }).commission
-    ).toBe(0n)
-    expect(
-      estimateCommission({ stableValue: 10n ** 20n, rateBps: 0n }).commission
-    ).toBe(0n)
-  })
-
-  it('ignores an unset or zero cap', () => {
-    const value = 10_000_000n * 10n ** 18n
-    expect(
-      estimateCommission({ stableValue: value, rateBps: 500n }).isCapped
-    ).toBe(false)
-    expect(
-      estimateCommission({
-        stableValue: value,
-        rateBps: 500n,
-        maxCommissionBasisPerTx: 0n
-      }).isCapped
-    ).toBe(false)
-  })
-
-  it('matches the tier table end to end at each threshold boundary', () => {
-    const deposit = 10_000n * 10n ** 18n
-    const expectedByCumulative: Array<[bigint, bigint]> = [
-      [0n, 500n],
-      [250_000n * 10n ** 18n, 1000n],
-      [1_000_000n * 10n ** 18n, 1500n],
-      [5_000_000n * 10n ** 18n, 2000n],
-      [25_000_000n * 10n ** 18n, 2500n]
-    ]
-    for (const [cumulative, expectedBps] of expectedByCumulative) {
-      const rateBps = tierRateForBps(TIERS, cumulative)
-      expect(rateBps).toBe(expectedBps)
-      expect(
-        estimateCommission({
-          stableValue: deposit,
-          rateBps,
-          maxCommissionBasisPerTx: MAX_BASIS
-        }).commission
-      ).toBe((deposit * expectedBps) / BPS_DENOMINATOR)
-    }
-  })
-})
-
 describe('ReferralSkipped reason codes', () => {
   // Sourced from the verified implementation behind the router proxy
   // (0xde6d…196a), which documents them on the ReferralSkipped event.
@@ -359,18 +221,6 @@ describe('ReferralDepositRouter error ABI drift guard', () => {
       'destination',
       'commissions'
     ])
-  })
-})
-
-describe('address truncation', () => {
-  it('shortens a full address', () => {
-    expect(truncateAddress(REFERRER)).toBe(
-      `${REFERRER.slice(0, 6)}…${REFERRER.slice(-4)}`
-    )
-  })
-
-  it('leaves short strings alone', () => {
-    expect(truncateAddress('0x1234')).toBe('0x1234')
   })
 })
 

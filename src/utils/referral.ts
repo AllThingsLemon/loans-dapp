@@ -8,9 +8,6 @@ import { getAddress, isAddress, decodeEventLog } from 'viem'
 import type { Abi, Log } from 'viem'
 import referralDepositRouterAbiJson from '@/src/abis/ReferralDepositRouter.json'
 
-/** Basis-point denominator used by the router's tier rates. */
-export const BPS_DENOMINATOR = 10_000n
-
 /** Query-string keys that may carry a referrer, in priority order. */
 export const REFERRAL_PARAM_KEYS = ['ref', 'affiliate'] as const
 
@@ -23,11 +20,6 @@ export const COMMISSIONS_PARAM_KEYS = ['commissions'] as const
 
 /** sessionStorage key the captured referral pair is persisted under. */
 export const REFERRAL_STORAGE_KEY = 'lemloans.referral'
-
-export interface CommissionTier {
-  threshold: bigint
-  rateBps: bigint
-}
 
 /**
  * Checksum an address candidate, or return null when it isn't a valid address.
@@ -362,53 +354,6 @@ export function isSelfReferral(
   return referrer.toLowerCase() === account.toLowerCase()
 }
 
-/**
- * Mirror of the router's `tierRateFor(cumulative)`: tiers are sorted ascending
- * by threshold and the rate is that of the highest tier whose threshold has
- * been reached. Used for display only — the contract remains the authority, and
- * the on-chain `tierRateFor` read is preferred when available.
- */
-export function tierRateForBps(
-  tiers: readonly CommissionTier[],
-  cumulative: bigint
-): bigint {
-  let rate = 0n
-  for (const tier of tiers) {
-    if (cumulative >= tier.threshold) rate = tier.rateBps
-    else break
-  }
-  return rate
-}
-
-/**
- * Indicative commission for a deposit, in the commission token's units.
- *
- * The router caps the basis a single transaction can earn on at
- * `maxCommissionBasisPerTx`, so a large deposit earns on the cap rather than
- * the full value. Truncating division matches Solidity.
- */
-export function estimateCommission({
-  stableValue,
-  rateBps,
-  maxCommissionBasisPerTx
-}: {
-  stableValue: bigint
-  rateBps: bigint
-  maxCommissionBasisPerTx?: bigint
-}): { basis: bigint; commission: bigint; isCapped: boolean } {
-  if (stableValue <= 0n || rateBps <= 0n) {
-    return { basis: 0n, commission: 0n, isCapped: false }
-  }
-  const cap = maxCommissionBasisPerTx
-  const isCapped = cap !== undefined && cap > 0n && stableValue > cap
-  const basis = isCapped ? cap! : stableValue
-  return {
-    basis,
-    commission: (basis * rateBps) / BPS_DENOMINATOR,
-    isCapped
-  }
-}
-
 export const referralDepositRouterAbi = referralDepositRouterAbiJson as Abi
 
 /**
@@ -483,10 +428,4 @@ export function parseReferralOutcome(
     }
   }
   return { kind: 'none' }
-}
-
-/** Shorten an address for display, e.g. 0x4aE0…0DBe. */
-export function truncateAddress(address: string): string {
-  if (address.length < 12) return address
-  return `${address.slice(0, 6)}…${address.slice(-4)}`
 }

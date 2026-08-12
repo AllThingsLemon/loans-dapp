@@ -2,9 +2,9 @@
 import { useAccount } from 'wagmi'
 import {
   REFERRAL_BLOCK_REMEDY,
-  describeReferralBlock,
-  truncateAddress
+  describeReferralBlock
 } from '@/src/utils/referral'
+import { truncateAddress } from '@/src/utils/format'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 

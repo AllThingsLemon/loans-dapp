@@ -30,7 +30,8 @@ import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityP
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
-import { describeSkipReason, truncateAddress } from '@/src/utils/referral'
+import { describeSkipReason } from '@/src/utils/referral'
+import { truncateAddress } from '@/src/utils/format'
 
 // Lock-tier durations are configured in 360-day years (e.g. 10 yr =
 // 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
