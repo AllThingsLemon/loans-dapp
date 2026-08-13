@@ -93,6 +93,22 @@ const ASSURANCES = [
   }
 ] as const
 
+const COLUMNS = [
+  { label: 'Time Period', sub: null },
+  { label: 'Weight', sub: '(Multiplier)' },
+  { label: 'Lock Duration', sub: '(Years)' },
+  { label: 'Estimated Total', sub: 'Return* (%)' }
+] as const
+
+const HEAD_CELL =
+  'px-1.5 py-2.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-3 sm:py-3 sm:text-xs'
+
+const CELL = 'px-1.5 py-3 text-center text-[11px] sm:px-3 sm:text-sm'
+
+/** The two three-across rows that bracket the returns panel share this shape. */
+const TRIPLET_ROW =
+  'grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'
+
 export function DisconnectedLiquidity() {
   const { openConnectModal } = useConnectModal()
 
@@ -119,7 +135,7 @@ export function DisconnectedLiquidity() {
       </div>
 
       {/* ── Three pillars ────────────────────────────────────────── */}
-      <div className='grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'>
+      <div className={TRIPLET_ROW}>
         {PILLARS.map(({ Icon, title, lines }) => (
           <div
             key={title}
@@ -160,42 +176,43 @@ export function DisconnectedLiquidity() {
           </div>
         </div>
 
-        {/* Wide content scrolls inside its own container so the page never
-            scrolls sideways on a phone. */}
+        {/* The table is sized to fit all four columns down to ~430px rather
+            than scroll — clipping the return column defeats the point of the
+            panel. overflow-x-auto is the backstop below that, so an unusually
+            narrow screen scrolls the table and never the page. */}
         <div className='mt-5 overflow-x-auto'>
           <table className='w-full border-collapse overflow-hidden rounded-lg'>
             <thead>
               <tr className='bg-gray-900 text-yellow-400'>
-                <th className='px-1.5 py-2.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-3 sm:py-3 sm:text-xs'>
-                  Time Period
-                </th>
-                <th className='px-1.5 py-2.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-3 sm:py-3 sm:text-xs'>
-                  Weight
-                  <span className='block font-semibold'>(Multiplier)</span>
-                </th>
-                <th className='px-1.5 py-2.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-3 sm:py-3 sm:text-xs'>
-                  Lock Duration
-                  <span className='block font-semibold'>(Years)</span>
-                </th>
-                <th className='px-1.5 py-2.5 text-center text-[9px] font-bold uppercase leading-tight tracking-wide sm:px-3 sm:py-3 sm:text-xs'>
-                  Estimated Total
-                  <span className='block font-semibold'>Return* (%)</span>
-                </th>
+                {COLUMNS.map(({ label, sub }) => (
+                  <th key={label} className={HEAD_CELL}>
+                    {label}
+                    {sub && <span className='block font-semibold'>{sub}</span>}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-200 dark:divide-gray-700'>
               {RETURN_MODEL.map((row) => (
                 <tr key={row.period} className='bg-white dark:bg-gray-900'>
-                  <td className='px-1.5 py-3 text-center text-[11px] font-bold uppercase text-yellow-600 sm:px-3 sm:text-sm dark:text-yellow-500'>
+                  <td
+                    className={`${CELL} font-bold uppercase text-yellow-600 dark:text-yellow-500`}
+                  >
                     {row.period}
                   </td>
-                  <td className='px-1.5 py-3 text-center text-[11px] font-bold tabular-nums text-green-700 sm:px-3 sm:text-sm dark:text-green-400'>
+                  <td
+                    className={`${CELL} font-bold tabular-nums text-green-700 dark:text-green-400`}
+                  >
                     {row.multiplier}
                   </td>
-                  <td className='px-1.5 py-3 text-center text-[11px] font-medium uppercase text-gray-800 sm:px-3 sm:text-sm dark:text-gray-200'>
+                  <td
+                    className={`${CELL} font-medium uppercase text-gray-800 dark:text-gray-200`}
+                  >
                     {row.lock}
                   </td>
-                  <td className='px-1.5 py-3 text-center text-[11px] font-bold tabular-nums text-green-700 sm:px-3 sm:text-sm dark:text-green-400'>
+                  <td
+                    className={`${CELL} font-bold tabular-nums text-green-700 dark:text-green-400`}
+                  >
                     {row.total}
                   </td>
                 </tr>
@@ -227,7 +244,7 @@ export function DisconnectedLiquidity() {
       </button>
 
       {/* ── Assurances ───────────────────────────────────────────── */}
-      <div className='grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'>
+      <div className={TRIPLET_ROW}>
         {ASSURANCES.map(({ Icon, headline, label, lines }) => (
           <div
             key={label}
