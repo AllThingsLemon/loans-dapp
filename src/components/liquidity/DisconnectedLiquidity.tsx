@@ -3,12 +3,14 @@ import { useConnectModal } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
 import {
   BarChart3,
+  Coins,
   FileLock2,
   Lock,
   PieChart,
   Search,
   ShieldCheck,
-  Users
+  Users,
+  Wallet
 } from 'lucide-react'
 
 /**
@@ -91,6 +93,97 @@ const ASSURANCES = [
     label: 'Built for Safety',
     lines: ['Capital security', 'is our priority.']
   }
+] as const
+
+/**
+ * Token marks are drawn inline rather than shipped as image files: the repo
+ * carries no token artwork, next/image has no remote host configured, and
+ * bundling third-party brand assets carries a licensing question this page
+ * doesn't need to answer. Each is the token's brand colour with a simple
+ * geometric mark, and the ticker sits directly beneath, so they read
+ * unambiguously at 36px. Swap in official artwork here if it's ever supplied.
+ */
+const g = (d: string) => (
+  <svg viewBox='0 0 32 32' className='h-5 w-5 sm:h-6 sm:w-6' fill='#fff'>
+    <path d={d} />
+  </svg>
+)
+const letter = (ch: string) => (
+  <span className='text-sm font-black text-white sm:text-base'>{ch}</span>
+)
+
+const SUPPORTED_ASSETS = [
+  { symbol: 'BTC', bg: '#F7931A', mark: letter('B') },
+  // octahedron: two stacked triangles
+  {
+    symbol: 'ETH',
+    bg: '#627EEA',
+    mark: g('M16 4l7 12-7 4-7-4 7-12zm0 22l7-9-7 4-7-4 7 9z')
+  },
+  {
+    symbol: 'BNB',
+    bg: '#F3BA2F',
+    mark: g(
+      'M16 6l4 4-4 4-4-4 4-4zm-7 7l3 3-3 3-3-3 3-3zm14 0l3 3-3 3-3-3 3-3zm-7 5l4 4-4 4-4-4 4-4z'
+    )
+  },
+  // three slanted bars
+  {
+    symbol: 'SOL',
+    bg: '#9945FF',
+    mark: g('M10 8h16l-4 4H6zm0 6h16l-4 4H6zm0 6h16l-4 4H6z')
+  },
+  {
+    symbol: 'XRP',
+    bg: '#23292F',
+    mark: g('M9 8l7 7 7-7h4l-9 9 9 9h-4l-7-7-7 7H5l9-9-9-9h4z')
+  },
+  // cluster of dots
+  {
+    symbol: 'ADA',
+    bg: '#0033AD',
+    mark: g(
+      'M16 13a3 3 0 110 6 3 3 0 010-6zM8 9a2 2 0 110 4 2 2 0 010-4zm16 0a2 2 0 110 4 2 2 0 010-4zM8 19a2 2 0 110 4 2 2 0 010-4zm16 0a2 2 0 110 4 2 2 0 010-4zM16 5a2 2 0 110 4 2 2 0 010-4zm0 18a2 2 0 110 4 2 2 0 010-4z'
+    )
+  },
+  { symbol: 'AVAX', bg: '#E84142', mark: g('M16 7l9 17H7l9-17z') },
+  {
+    symbol: 'DOT',
+    bg: '#E6007A',
+    mark: g('M16 9a4 4 0 110 8 4 4 0 010-8zm0 11a3 3 0 110 6 3 3 0 010-6z')
+  },
+  {
+    symbol: 'ATOM',
+    bg: '#2E3148',
+    mark: (
+      <svg
+        viewBox='0 0 32 32'
+        className='h-5 w-5 sm:h-6 sm:w-6'
+        fill='none'
+        stroke='#fff'
+        strokeWidth='2'
+      >
+        <circle cx='16' cy='16' r='2.5' fill='#fff' stroke='none' />
+        <ellipse cx='16' cy='16' rx='11' ry='4.5' />
+        <ellipse
+          cx='16'
+          cy='16'
+          rx='11'
+          ry='4.5'
+          transform='rotate(60 16 16)'
+        />
+        <ellipse
+          cx='16'
+          cy='16'
+          rx='11'
+          ry='4.5'
+          transform='rotate(120 16 16)'
+        />
+      </svg>
+    )
+  },
+  { symbol: 'LEMX', bg: '#F5B301', mark: letter('L') },
+  { symbol: 'USDT', bg: '#26A17B', mark: letter('T') }
 ] as const
 
 const COLUMNS = [
@@ -233,13 +326,53 @@ export function DisconnectedLiquidity() {
         </p>
       </section>
 
+      {/* ── Supported assets ─────────────────────────────────────── */}
+      <section className='w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-900'>
+        <div className='flex flex-wrap items-center justify-center gap-3 sm:justify-between'>
+          <div className='flex items-center gap-3'>
+            <Coins
+              className='h-7 w-7 shrink-0 text-yellow-500 sm:h-8 sm:w-8'
+              strokeWidth={2}
+            />
+            <h3 className='text-left text-base font-extrabold tracking-tight text-gray-900 sm:text-xl dark:text-gray-100'>
+              SUPPORTED ASSETS ON BSC (BEP-20)
+            </h3>
+          </div>
+          <span className='rounded-full bg-gray-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-600 sm:text-xs dark:bg-gray-800 dark:text-gray-300'>
+            {SUPPORTED_ASSETS.length - 1} Assets + USDT
+          </span>
+        </div>
+
+        <ul className='mt-5 grid grid-cols-6 gap-y-4 sm:flex sm:flex-wrap sm:justify-between sm:gap-y-5'>
+          {SUPPORTED_ASSETS.map(({ symbol, bg, mark }) => (
+            <li key={symbol} className='flex flex-col items-center gap-1.5'>
+              <span
+                className='flex h-9 w-9 items-center justify-center rounded-full sm:h-11 sm:w-11'
+                style={{ backgroundColor: bg }}
+                aria-hidden='true'
+              >
+                {mark}
+              </span>
+              <span className='text-[10px] font-bold text-gray-700 sm:text-xs dark:text-gray-300'>
+                {symbol}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <p className='mt-5 text-center text-[10px] text-gray-500 sm:text-xs dark:text-gray-400'>
+          All assets are accepted as BEP-20 tokens on BNB Smart Chain.
+        </p>
+      </section>
+
       {/* ── Call to action ───────────────────────────────────────── */}
       <button
         type='button'
         onClick={openConnectModal}
         disabled={!openConnectModal}
-        className='w-full max-w-md rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60'
+        className='flex w-full max-w-md items-center justify-center gap-3 rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60'
       >
+        <Wallet className='h-5 w-5' strokeWidth={2} />
         Connect Wallet
       </button>
 
