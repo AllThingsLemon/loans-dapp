@@ -99,8 +99,8 @@ const ASSURANCES = [
  * Official token artwork from CoinMarketCap's logo CDN, committed to
  * public/images/tokens rather than hotlinked: next/image has no remote host
  * configured, and a third-party CDN is not something a landing page should be
- * unable to render without. LEMX is the LemLoans mark, which is what the design
- * shows and is not on CoinMarketCap.
+ * unable to render without. LEMX comes from CoinGecko: CoinMarketCap does not
+ * appear to list it, and its own app icon is a different mark from the token's.
  */
 const SUPPORTED_ASSETS = [
   { symbol: 'BTC', src: '/images/tokens/btc.png' },
@@ -112,7 +112,7 @@ const SUPPORTED_ASSETS = [
   { symbol: 'AVAX', src: '/images/tokens/avax.png' },
   { symbol: 'DOT', src: '/images/tokens/dot.png' },
   { symbol: 'ATOM', src: '/images/tokens/atom.png' },
-  { symbol: 'LEMX', src: '/images/lemloans-logo.png' },
+  { symbol: 'LEMX', src: '/images/tokens/lemx.png' },
   { symbol: 'USDT', src: '/images/tokens/usdt.png' }
 ] as const
 
