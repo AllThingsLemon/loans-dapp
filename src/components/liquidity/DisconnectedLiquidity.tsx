@@ -3,12 +3,14 @@ import { useConnectModal } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
 import {
   BarChart3,
+  Coins,
   FileLock2,
   Lock,
   PieChart,
   Search,
   ShieldCheck,
-  Users
+  Users,
+  Wallet
 } from 'lucide-react'
 
 /**
@@ -93,11 +95,32 @@ const ASSURANCES = [
   }
 ] as const
 
+/**
+ * Official token artwork from CoinMarketCap's logo CDN, committed to
+ * public/images/tokens rather than hotlinked: next/image has no remote host
+ * configured, and a third-party CDN is not something a landing page should be
+ * unable to render without. LEMX comes from CoinGecko: CoinMarketCap does not
+ * appear to list it, and its own app icon is a different mark from the token's.
+ */
+const SUPPORTED_ASSETS = [
+  { symbol: 'BTC', src: '/images/tokens/btc.png' },
+  { symbol: 'ETH', src: '/images/tokens/eth.png' },
+  { symbol: 'BNB', src: '/images/tokens/bnb.png' },
+  { symbol: 'SOL', src: '/images/tokens/sol.png' },
+  { symbol: 'XRP', src: '/images/tokens/xrp.png' },
+  { symbol: 'ADA', src: '/images/tokens/ada.png' },
+  { symbol: 'AVAX', src: '/images/tokens/avax.png' },
+  { symbol: 'DOT', src: '/images/tokens/dot.png' },
+  { symbol: 'ATOM', src: '/images/tokens/atom.png' },
+  { symbol: 'LEMX', src: '/images/tokens/lemx.png' },
+  { symbol: 'USDT', src: '/images/tokens/usdt.png' }
+] as const
+
 const COLUMNS = [
   { label: 'Time Period', sub: null },
   { label: 'Weight', sub: '(Multiplier)' },
   { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Estimated Total', sub: 'Return* (%)' }
+  { label: 'Estimated Total', sub: 'Return (%)' }
 ] as const
 
 const HEAD_CELL =
@@ -233,13 +256,54 @@ export function DisconnectedLiquidity() {
         </p>
       </section>
 
+      {/* ── Supported assets ─────────────────────────────────────── */}
+      <section className='w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-900'>
+        <div className='flex flex-wrap items-center justify-center gap-3 sm:justify-between'>
+          <div className='flex items-center gap-3'>
+            <Coins
+              className='h-7 w-7 shrink-0 text-yellow-500 sm:h-8 sm:w-8'
+              strokeWidth={2}
+            />
+            <h3 className='text-left text-base font-extrabold tracking-tight text-gray-900 sm:text-xl dark:text-gray-100'>
+              SUPPORTED ASSETS ON BSC (BEP-20)
+            </h3>
+          </div>
+          <span className='rounded-full bg-gray-100 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-600 sm:text-xs dark:bg-gray-800 dark:text-gray-300'>
+            {SUPPORTED_ASSETS.length - 1} Assets + USDT
+          </span>
+        </div>
+
+        <ul className='mt-5 grid grid-cols-6 gap-y-4 sm:flex sm:flex-wrap sm:justify-between sm:gap-y-5'>
+          {SUPPORTED_ASSETS.map(({ symbol, src }) => (
+            <li key={symbol} className='flex flex-col items-center gap-1.5'>
+              <Image
+                src={src}
+                alt=''
+                width={44}
+                height={44}
+                aria-hidden='true'
+                className='h-9 w-9 rounded-full object-contain sm:h-11 sm:w-11'
+              />
+              <span className='text-[10px] font-bold text-gray-700 sm:text-xs dark:text-gray-300'>
+                {symbol}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <p className='mt-5 text-center text-[10px] text-gray-500 sm:text-xs dark:text-gray-400'>
+          All assets are accepted as BEP-20 tokens on BNB Smart Chain.
+        </p>
+      </section>
+
       {/* ── Call to action ───────────────────────────────────────── */}
       <button
         type='button'
         onClick={openConnectModal}
         disabled={!openConnectModal}
-        className='w-full max-w-md rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60'
+        className='flex w-full max-w-md items-center justify-center gap-3 rounded-xl bg-blue-600 px-8 py-4 text-lg font-bold text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60'
       >
+        <Wallet className='h-5 w-5' strokeWidth={2} />
         Connect Wallet
       </button>
 
