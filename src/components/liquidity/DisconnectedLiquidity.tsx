@@ -96,101 +96,31 @@ const ASSURANCES = [
 ] as const
 
 /**
- * Token marks are drawn inline rather than shipped as image files: the repo
- * carries no token artwork, next/image has no remote host configured, and
- * bundling third-party brand assets carries a licensing question this page
- * doesn't need to answer. Each is the token's brand colour with a simple
- * geometric mark, and the ticker sits directly beneath, so they read
- * unambiguously at 36px. Swap in official artwork here if it's ever supplied.
+ * Official token artwork from CoinMarketCap's logo CDN, committed to
+ * public/images/tokens rather than hotlinked: next/image has no remote host
+ * configured, and a third-party CDN is not something a landing page should be
+ * unable to render without. LEMX is the LemLoans mark, which is what the design
+ * shows and is not on CoinMarketCap.
  */
-const g = (d: string) => (
-  <svg viewBox='0 0 32 32' className='h-5 w-5 sm:h-6 sm:w-6' fill='#fff'>
-    <path d={d} />
-  </svg>
-)
-const letter = (ch: string) => (
-  <span className='text-sm font-black text-white sm:text-base'>{ch}</span>
-)
-
 const SUPPORTED_ASSETS = [
-  { symbol: 'BTC', bg: '#F7931A', mark: letter('B') },
-  // octahedron: two stacked triangles
-  {
-    symbol: 'ETH',
-    bg: '#627EEA',
-    mark: g('M16 4l7 12-7 4-7-4 7-12zm0 22l7-9-7 4-7-4 7 9z')
-  },
-  {
-    symbol: 'BNB',
-    bg: '#F3BA2F',
-    mark: g(
-      'M16 6l4 4-4 4-4-4 4-4zm-7 7l3 3-3 3-3-3 3-3zm14 0l3 3-3 3-3-3 3-3zm-7 5l4 4-4 4-4-4 4-4z'
-    )
-  },
-  // three slanted bars
-  {
-    symbol: 'SOL',
-    bg: '#9945FF',
-    mark: g('M10 8h16l-4 4H6zm0 6h16l-4 4H6zm0 6h16l-4 4H6z')
-  },
-  {
-    symbol: 'XRP',
-    bg: '#23292F',
-    mark: g('M9 8l7 7 7-7h4l-9 9 9 9h-4l-7-7-7 7H5l9-9-9-9h4z')
-  },
-  // cluster of dots
-  {
-    symbol: 'ADA',
-    bg: '#0033AD',
-    mark: g(
-      'M16 13a3 3 0 110 6 3 3 0 010-6zM8 9a2 2 0 110 4 2 2 0 010-4zm16 0a2 2 0 110 4 2 2 0 010-4zM8 19a2 2 0 110 4 2 2 0 010-4zm16 0a2 2 0 110 4 2 2 0 010-4zM16 5a2 2 0 110 4 2 2 0 010-4zm0 18a2 2 0 110 4 2 2 0 010-4z'
-    )
-  },
-  { symbol: 'AVAX', bg: '#E84142', mark: g('M16 7l9 17H7l9-17z') },
-  {
-    symbol: 'DOT',
-    bg: '#E6007A',
-    mark: g('M16 9a4 4 0 110 8 4 4 0 010-8zm0 11a3 3 0 110 6 3 3 0 010-6z')
-  },
-  {
-    symbol: 'ATOM',
-    bg: '#2E3148',
-    mark: (
-      <svg
-        viewBox='0 0 32 32'
-        className='h-5 w-5 sm:h-6 sm:w-6'
-        fill='none'
-        stroke='#fff'
-        strokeWidth='2'
-      >
-        <circle cx='16' cy='16' r='2.5' fill='#fff' stroke='none' />
-        <ellipse cx='16' cy='16' rx='11' ry='4.5' />
-        <ellipse
-          cx='16'
-          cy='16'
-          rx='11'
-          ry='4.5'
-          transform='rotate(60 16 16)'
-        />
-        <ellipse
-          cx='16'
-          cy='16'
-          rx='11'
-          ry='4.5'
-          transform='rotate(120 16 16)'
-        />
-      </svg>
-    )
-  },
-  { symbol: 'LEMX', bg: '#F5B301', mark: letter('L') },
-  { symbol: 'USDT', bg: '#26A17B', mark: letter('T') }
+  { symbol: 'BTC', src: '/images/tokens/btc.png' },
+  { symbol: 'ETH', src: '/images/tokens/eth.png' },
+  { symbol: 'BNB', src: '/images/tokens/bnb.png' },
+  { symbol: 'SOL', src: '/images/tokens/sol.png' },
+  { symbol: 'XRP', src: '/images/tokens/xrp.png' },
+  { symbol: 'ADA', src: '/images/tokens/ada.png' },
+  { symbol: 'AVAX', src: '/images/tokens/avax.png' },
+  { symbol: 'DOT', src: '/images/tokens/dot.png' },
+  { symbol: 'ATOM', src: '/images/tokens/atom.png' },
+  { symbol: 'LEMX', src: '/images/lemloans-logo.png' },
+  { symbol: 'USDT', src: '/images/tokens/usdt.png' }
 ] as const
 
 const COLUMNS = [
   { label: 'Time Period', sub: null },
   { label: 'Weight', sub: '(Multiplier)' },
   { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Estimated Total', sub: 'Return* (%)' }
+  { label: 'Estimated Total', sub: 'Return (%)' }
 ] as const
 
 const HEAD_CELL =
@@ -344,15 +274,16 @@ export function DisconnectedLiquidity() {
         </div>
 
         <ul className='mt-5 grid grid-cols-6 gap-y-4 sm:flex sm:flex-wrap sm:justify-between sm:gap-y-5'>
-          {SUPPORTED_ASSETS.map(({ symbol, bg, mark }) => (
+          {SUPPORTED_ASSETS.map(({ symbol, src }) => (
             <li key={symbol} className='flex flex-col items-center gap-1.5'>
-              <span
-                className='flex h-9 w-9 items-center justify-center rounded-full sm:h-11 sm:w-11'
-                style={{ backgroundColor: bg }}
+              <Image
+                src={src}
+                alt=''
+                width={44}
+                height={44}
                 aria-hidden='true'
-              >
-                {mark}
-              </span>
+                className='h-9 w-9 rounded-full object-contain sm:h-11 sm:w-11'
+              />
               <span className='text-[10px] font-bold text-gray-700 sm:text-xs dark:text-gray-300'>
                 {symbol}
               </span>

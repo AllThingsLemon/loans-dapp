@@ -25,9 +25,6 @@ export default function Footer() {
             for determining whether and how to interact with the Protocol.
           </p>
         </div>
-        <p className='text-center text-sm'>
-          &copy; {new Date().getFullYear()} LemLoans. All rights reserved.
-        </p>
       </footer>
     </div>
   )
