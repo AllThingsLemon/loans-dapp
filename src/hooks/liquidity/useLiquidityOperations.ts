@@ -1,5 +1,11 @@
 import { useCallback } from 'react'
-import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from 'wagmi'
+import {
+  useAccount,
+  useChainId,
+  usePublicClient,
+  useReadContract,
+  useWriteContract
+} from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   erc20Abi,
@@ -7,6 +13,7 @@ import {
   BaseError,
   HttpRequestError,
   TimeoutError,
+  WaitForTransactionReceiptTimeoutError
 } from 'viem'
 import {
   useWriteLiquidityPoolDeposit,
@@ -22,20 +29,41 @@ import {
   loansAddress,
   loansAbi,
   liquidityPoolAbi,
-  referralDepositRouterAbi,
+  referralDepositRouterAbi
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 import {
   getReferralRouterAddress,
-  isReferralEnabled,
+  isReferralEnabled
 } from '@/src/config/referral'
 import {
   commissionsAbi,
   parseReferralOutcome,
   REFERRAL_PREFLIGHT_MESSAGES,
   type ReferralOutcome,
-  type ReferralPreflightFailure,
+  type ReferralPreflightFailure
 } from '@/src/utils/referral'
+
+/**
+ * How long to wait for a receipt before handing control back to the user. A
+ * transaction that has been broadcast is out of our hands; waiting on it
+ * forever only means the UI can never recover.
+ */
+const RECEIPT_TIMEOUT_MS = 120_000
+
+/**
+ * The transaction was broadcast but we stopped waiting for its receipt. This is
+ * NOT a failure — it may well be mined a moment later — so callers must report
+ * it as pending rather than as a revert.
+ */
+export class TransactionPendingError extends Error {
+  readonly txHash: `0x${string}`
+  constructor(txHash: `0x${string}`) {
+    super('Transaction is still pending confirmation')
+    this.name = 'TransactionPendingError'
+    this.txHash = txHash
+  }
+}
 
 /**
  * A transport failure (RPC timeout / rate-limit) is not an answer from chain.
@@ -51,7 +79,12 @@ function isTransportError(error: unknown): boolean {
 }
 
 export interface UseLiquidityOperationsReturn {
-  deposit: (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => Promise<`0x${string}` | undefined>
+  deposit: (
+    token: `0x${string}`,
+    amount: bigint,
+    lockDuration: bigint,
+    nonEarning: boolean
+  ) => Promise<`0x${string}` | undefined>
   /**
    * Same deposit, routed through ReferralDepositRouter so the referrer earns a
    * commission. Only reachable when a router is configured for the chain and a
@@ -74,7 +107,11 @@ export interface UseLiquidityOperationsReturn {
   claimWithdrawal: (requestId: bigint) => Promise<`0x${string}` | undefined>
   fundWithdrawalQueue: () => Promise<`0x${string}` | undefined>
   processSwaps: (token: `0x${string}`) => Promise<`0x${string}` | undefined>
-  approveToken: (amount: bigint, tokenAddress: `0x${string}`, spender: `0x${string}`) => Promise<`0x${string}` | undefined>
+  approveToken: (
+    amount: bigint,
+    tokenAddress: `0x${string}`,
+    spender: `0x${string}`
+  ) => Promise<`0x${string}` | undefined>
   depositFeeUSD: bigint | undefined
   withdrawFeeUSD: bigint | undefined
   /** Native (gas-token) fee for deposit/compound, in wei — for display */
@@ -108,13 +145,13 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'depositFeeUSD',
-    query: { enabled: !!lpAddress },
+    query: { enabled: !!lpAddress }
   })
   const { data: withdrawFeeUSDRaw } = useReadContract({
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'withdrawFeeUSD',
-    query: { enabled: !!lpAddress },
+    query: { enabled: !!lpAddress }
   })
   const depositFeeUSD = depositFeeUSDRaw as bigint | undefined
   const withdrawFeeUSD = withdrawFeeUSDRaw as bigint | undefined
@@ -123,19 +160,21 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   // @ts-ignore - wagmi deep type instantiation
   const { data: depositNativeFee } = useReadLoansGetNativeFee({
     args: depositFeeUSD !== undefined ? [depositFeeUSD] : undefined,
-    query: { enabled: depositFeeUSD !== undefined },
+    query: { enabled: depositFeeUSD !== undefined }
   })
   const { data: withdrawNativeFee } = useReadLoansGetNativeFee({
     args: withdrawFeeUSD !== undefined ? [withdrawFeeUSD] : undefined,
-    query: { enabled: withdrawFeeUSD !== undefined },
+    query: { enabled: withdrawFeeUSD !== undefined }
   })
 
   // Write hooks
   const { writeContractAsync: depositFn, isPending: isDepositing } =
     useWriteLiquidityPoolDeposit({ mutation: { retry: false } })
 
-  const { writeContractAsync: requestWithdrawalFn, isPending: isRequestingWithdrawal } =
-    useWriteLiquidityPoolRequestWithdrawal({ mutation: { retry: false } })
+  const {
+    writeContractAsync: requestWithdrawalFn,
+    isPending: isRequestingWithdrawal
+  } = useWriteLiquidityPoolRequestWithdrawal({ mutation: { retry: false } })
 
   const { writeContractAsync: claimEarningsFn, isPending: isClaiming } =
     useWriteLiquidityPoolClaimEarnings({ mutation: { retry: false } })
@@ -146,14 +185,20 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { writeContractAsync: pullEarningsFn, isPending: isPulling } =
     useWriteLiquidityPoolPullEarnings({ mutation: { retry: false } })
 
-  const { writeContractAsync: transferAccountFn, isPending: isTransferringAccount } =
-    useWriteLiquidityPoolTransferAccount({ mutation: { retry: false } })
+  const {
+    writeContractAsync: transferAccountFn,
+    isPending: isTransferringAccount
+  } = useWriteLiquidityPoolTransferAccount({ mutation: { retry: false } })
 
-  const { writeContractAsync: claimWithdrawalFn, isPending: isClaimingWithdrawal } =
-    useWriteLiquidityPoolClaimWithdrawal({ mutation: { retry: false } })
+  const {
+    writeContractAsync: claimWithdrawalFn,
+    isPending: isClaimingWithdrawal
+  } = useWriteLiquidityPoolClaimWithdrawal({ mutation: { retry: false } })
 
-  const { writeContractAsync: fundWithdrawalQueueFn, isPending: isFundingQueue } =
-    useWriteLiquidityPoolFundWithdrawalQueue({ mutation: { retry: false } })
+  const {
+    writeContractAsync: fundWithdrawalQueueFn,
+    isPending: isFundingQueue
+  } = useWriteLiquidityPoolFundWithdrawalQueue({ mutation: { retry: false } })
 
   const { writeContractAsync: processSwapsFn, isPending: isProcessingSwaps } =
     useWriteLiquidityPoolProcessSwaps({ mutation: { retry: false } })
@@ -165,24 +210,53 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   // deep-instantiation limit the same way the LiquidityPool ones do.
   const {
     writeContractAsync: writeReferralDepositFn,
-    isPending: isDepositingWithReferral,
+    isPending: isDepositingWithReferral
   } = useWriteContract({ mutation: { retry: false } })
 
-  const invalidateAll = useCallback(async () => {
-    await queryClient.invalidateQueries()
-    await queryClient.refetchQueries({ type: 'active' })
+  /**
+   * Refresh everything, WITHOUT blocking the caller.
+   *
+   * Both of these resolve only after every active refetch has settled, so a
+   * single stalled or endlessly-retrying read makes them hang forever. Awaiting
+   * that is what left the deposit confirm modal spinning on a transaction that
+   * had already succeeded, with no way to dismiss it. The UI re-renders as each
+   * query settles regardless, so nothing is gained by waiting.
+   */
+  const invalidateAll = useCallback(() => {
+    void queryClient.invalidateQueries()
+    void queryClient.refetchQueries({ type: 'active' })
   }, [queryClient])
+
+  /** Let the node's state settle after the block, then refresh in the background. */
+  const scheduleRefresh = useCallback(() => {
+    setTimeout(invalidateAll, 3000)
+  }, [invalidateAll])
 
   // Returns the receipt when one could be fetched — the referral path reads its
   // logs to tell "commission paid" from "commission skipped". Callers that
   // don't need it can keep ignoring the return value.
   const waitAndInvalidate = useCallback(
     async (txHash: `0x${string}`) => {
-      let receipt: Awaited<
-        ReturnType<NonNullable<typeof publicClient>['waitForTransactionReceipt']>
-      > | undefined
+      let receipt:
+        | Awaited<
+            ReturnType<
+              NonNullable<typeof publicClient>['waitForTransactionReceipt']
+            >
+          >
+        | undefined
       if (publicClient) {
-        receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        try {
+          receipt = await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            timeout: RECEIPT_TIMEOUT_MS
+          })
+        } catch (waitError) {
+          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+            scheduleRefresh()
+            throw new TransactionPendingError(txHash)
+          }
+          throw waitError
+        }
         if (receipt.status === 'reverted') {
           // Re-simulate the exact transaction to extract the real revert reason.
           // We simulate at blockNumber - 1 (just before the block that included the tx)
@@ -196,20 +270,24 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
               value: tx.value,
               account: tx.from,
               gas: tx.gas,
-              blockNumber: receipt.blockNumber > 0n ? receipt.blockNumber - 1n : 0n,
+              blockNumber:
+                receipt.blockNumber > 0n ? receipt.blockNumber - 1n : 0n
             })
           } catch (simErr: unknown) {
             revertError = simErr
           }
-          throw revertError ?? new Error('Transaction was reverted on-chain. The contract rejected the operation.')
+          throw (
+            revertError ??
+            new Error(
+              'Transaction was reverted on-chain. The contract rejected the operation.'
+            )
+          )
         }
       }
-      // Delay to allow RPC node state to propagate after block confirmation
-      await new Promise((resolve) => setTimeout(resolve, 3000))
-      await invalidateAll()
+      scheduleRefresh()
       return receipt
     },
-    [publicClient, invalidateAll]
+    [publicClient, scheduleRefresh]
   )
 
   /**
@@ -222,22 +300,24 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
    */
   const resolveNativeFee = useCallback(
     async (feeKind: 'deposit' | 'withdraw') => {
-      const hookValue = feeKind === 'deposit' ? depositNativeFee : withdrawNativeFee
+      const hookValue =
+        feeKind === 'deposit' ? depositNativeFee : withdrawNativeFee
       const loansAddr = loansAddress[chainId as keyof typeof loansAddress]
       if (!publicClient || !loansAddr || !lpAddress) return hookValue ?? 0n
       try {
-        const feeUSD = await publicClient.readContract({
+        const feeUSD = (await publicClient.readContract({
           address: lpAddress,
           abi: liquidityPoolAbi,
-          functionName: feeKind === 'deposit' ? 'depositFeeUSD' : 'withdrawFeeUSD',
-        }) as bigint
+          functionName:
+            feeKind === 'deposit' ? 'depositFeeUSD' : 'withdrawFeeUSD'
+        })) as bigint
         if (feeUSD === 0n) return 0n
-        return await publicClient.readContract({
+        return (await publicClient.readContract({
           address: loansAddr,
           abi: loansAbi,
           functionName: 'getNativeFee',
-          args: [feeUSD],
-        }) as bigint
+          args: [feeUSD]
+        })) as bigint
       } catch (feeError) {
         // A recently-fetched hook value is an acceptable fallback — including
         // a legitimately-zero fee on chains with the native fee disabled.
@@ -276,7 +356,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           functionName,
           args,
           value,
-          account: address,
+          account: address
         } as any)
         return (estimated * 120n) / 100n
       } catch (estimationError) {
@@ -292,7 +372,12 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   )
 
   const deposit = useCallback(
-    async (token: `0x${string}`, amount: bigint, lockDuration: bigint, nonEarning: boolean) => {
+    async (
+      token: `0x${string}`,
+      amount: bigint,
+      lockDuration: bigint,
+      nonEarning: boolean
+    ) => {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
 
@@ -309,12 +394,19 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         address: lpAddress,
         args: [token, amount, lockDuration, nonEarning],
         value: nativeFee,
-        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, lpAddress, depositFn, resolveNativeFee, estimateGasWithBuffer, waitAndInvalidate]
+    [
+      address,
+      lpAddress,
+      depositFn,
+      resolveNativeFee,
+      estimateGasWithBuffer,
+      waitAndInvalidate
+    ]
   )
 
   /**
@@ -342,7 +434,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       referrer: `0x${string}`,
       commissions: `0x${string}`
     ) => {
-      if (!publicClient || !referralRouterAddress || !lpAddress || !address) return
+      if (!publicClient || !referralRouterAddress || !lpAddress || !address)
+        return
 
       const fail = (kind: ReferralPreflightFailure, detail?: unknown) => {
         // eslint-disable-next-line no-console
@@ -350,7 +443,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           router: referralRouterAddress,
           commissions,
           referrer,
-          ...(detail ? { detail } : {}),
+          ...(detail ? { detail } : {})
         })
         return new Error(REFERRAL_PREFLIGHT_MESSAGES[kind])
       }
@@ -364,25 +457,25 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           publicClient.readContract({
             address: referralRouterAddress,
             abi: referralDepositRouterAbi,
-            functionName: 'pool',
+            functionName: 'pool'
           }),
           publicClient.readContract({
             address: referralRouterAddress,
             abi: referralDepositRouterAbi,
-            functionName: 'paused',
+            functionName: 'paused'
           }),
           publicClient.readContract({
             address: referralRouterAddress,
             abi: referralDepositRouterAbi,
             functionName: 'allowedCommissions',
-            args: [commissions],
+            args: [commissions]
           }),
           publicClient.readContract({
             address: commissions,
             abi: commissionsAbi,
             functionName: 'isRegistered',
-            args: [referrer],
-          }),
+            args: [referrer]
+          })
         ])) as [`0x${string}`, boolean, boolean, boolean]
       } catch (readError) {
         // Could not reach chain. Fall through to the wallet rather than block —
@@ -415,7 +508,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           address: lpAddress,
           abi: liquidityPoolAbi,
           functionName: 'getDepositCredit',
-          args: [token, amount],
+          args: [token, amount]
         })) as bigint
 
         await publicClient.call({
@@ -424,8 +517,8 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           data: encodeFunctionData({
             abi: referralDepositRouterAbi,
             functionName: 'settleCommission',
-            args: [commissions, referrer, address, stableValue],
-          }),
+            args: [commissions, referrer, address, stableValue]
+          })
         })
       } catch (settleError) {
         if (isTransportError(settleError)) return
@@ -459,7 +552,9 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         throw new Error('Referral router is not configured for this network')
       }
       if (!commissions) {
-        throw new Error('No commissions contract was supplied by the referral link')
+        throw new Error(
+          'No commissions contract was supplied by the referral link'
+        )
       }
       if (referrer.toLowerCase() === address.toLowerCase()) {
         throw new Error('You cannot refer yourself')
@@ -477,7 +572,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         lockDuration,
         referrer,
         address, // destination — the connected wallet receives the LP position
-        commissions,
+        commissions
       ] as const
 
       const gasEstimate = await estimateGasWithBuffer(
@@ -493,7 +588,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         functionName: 'depositWithReferral',
         args,
         value: nativeFee,
-        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
       } as any)
 
       const receipt = await waitAndInvalidate(txHash)
@@ -510,7 +605,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       writeReferralDepositFn,
       resolveNativeFee,
       estimateGasWithBuffer,
-      waitAndInvalidate,
+      waitAndInvalidate
     ]
   )
 
@@ -518,7 +613,10 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     async (amount: bigint) => {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-      const txHash = await requestWithdrawalFn({ address: lpAddress, args: [amount] })
+      const txHash = await requestWithdrawalFn({
+        address: lpAddress,
+        args: [amount]
+      })
       await waitAndInvalidate(txHash)
       return txHash
     },
@@ -529,15 +627,26 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     if (!address) throw new Error('Wallet not connected')
     if (!lpAddress) throw new Error('LiquidityPool address not resolved')
     const nativeFee = await resolveNativeFee('withdraw')
-    const gasEstimate = await estimateGasWithBuffer('claimEarnings', undefined, nativeFee)
+    const gasEstimate = await estimateGasWithBuffer(
+      'claimEarnings',
+      undefined,
+      nativeFee
+    )
     const txHash = await claimEarningsFn({
       address: lpAddress,
       value: nativeFee,
-      ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+      ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
     })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [address, lpAddress, claimEarningsFn, resolveNativeFee, estimateGasWithBuffer, waitAndInvalidate])
+  }, [
+    address,
+    lpAddress,
+    claimEarningsFn,
+    resolveNativeFee,
+    estimateGasWithBuffer,
+    waitAndInvalidate
+  ])
 
   const compoundEarnings = useCallback(
     async (lockDuration: bigint) => {
@@ -545,17 +654,28 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
       // Compounding creates a deposit entry, so it charges the deposit fee.
       const nativeFee = await resolveNativeFee('deposit')
-      const gasEstimate = await estimateGasWithBuffer('compoundEarnings', [lockDuration], nativeFee)
+      const gasEstimate = await estimateGasWithBuffer(
+        'compoundEarnings',
+        [lockDuration],
+        nativeFee
+      )
       const txHash = await compoundEarningsFn({
         address: lpAddress,
         args: [lockDuration],
         value: nativeFee,
-        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, lpAddress, compoundEarningsFn, resolveNativeFee, estimateGasWithBuffer, waitAndInvalidate]
+    [
+      address,
+      lpAddress,
+      compoundEarningsFn,
+      resolveNativeFee,
+      estimateGasWithBuffer,
+      waitAndInvalidate
+    ]
   )
 
   const pullEarnings = useCallback(async () => {
@@ -581,17 +701,28 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
       const nativeFee = await resolveNativeFee('withdraw')
-      const gasEstimate = await estimateGasWithBuffer('claimWithdrawal', [requestId], nativeFee)
+      const gasEstimate = await estimateGasWithBuffer(
+        'claimWithdrawal',
+        [requestId],
+        nativeFee
+      )
       const txHash = await claimWithdrawalFn({
         address: lpAddress,
         args: [requestId],
         value: nativeFee,
-        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {}),
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, lpAddress, claimWithdrawalFn, resolveNativeFee, estimateGasWithBuffer, waitAndInvalidate]
+    [
+      address,
+      lpAddress,
+      claimWithdrawalFn,
+      resolveNativeFee,
+      estimateGasWithBuffer,
+      waitAndInvalidate
+    ]
   )
 
   const fundWithdrawalQueue = useCallback(async () => {
@@ -612,26 +743,42 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   )
 
   const approveToken = useCallback(
-    async (amount: bigint, tokenAddress: `0x${string}`, spender: `0x${string}`) => {
+    async (
+      amount: bigint,
+      tokenAddress: `0x${string}`,
+      spender: `0x${string}`
+    ) => {
       if (!address) throw new Error('Wallet not connected')
       const txHash = await approveTokenFn({
         address: tokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
-        args: [spender, amount],
+        args: [spender, amount]
       })
       if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        let receipt
+        try {
+          receipt = await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            timeout: RECEIPT_TIMEOUT_MS
+          })
+        } catch (waitError) {
+          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+            scheduleRefresh()
+            throw new TransactionPendingError(txHash)
+          }
+          throw waitError
+        }
         if (receipt.status === 'reverted') {
           throw new Error(
             'Approval transaction was reverted on-chain. No changes were made — please try again.'
           )
         }
       }
-      await queryClient.invalidateQueries()
+      invalidateAll()
       return txHash
     },
-    [address, approveTokenFn, publicClient, queryClient]
+    [address, approveTokenFn, publicClient, invalidateAll, scheduleRefresh]
   )
 
   const isTransacting =
@@ -665,6 +812,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     depositNativeFee,
     withdrawNativeFee,
     isTransacting,
-    error: null,
+    error: null
   }
 }
