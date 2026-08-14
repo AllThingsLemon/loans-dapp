@@ -673,84 +673,82 @@ export function AddLiquidityCard({
           <DialogHeader>
             <DialogTitle>Confirm Deposit</DialogTitle>
             <DialogDescription>
-              You are about to deposit ${amount} USD (~{tokenEquivalent}{' '}
-              {symbol}) into the liquidity pool.
+              Check the details below, then confirm to sign.
             </DialogDescription>
           </DialogHeader>
-          <div className='space-y-3 py-2'>
-            <p className='text-sm text-muted-foreground'>
-              Your deposit will be locked for{' '}
-              <span className='font-semibold text-foreground'>
-                {formatLockDurationLong(selectedLockDuration)}
-              </span>
-              .
+          <div className='space-y-4 py-2'>
+            {/* The figures are a table of facts, so they read as one — scanning
+                five separate sentences for numbers is what made this hard. */}
+            <dl className='divide-y divide-border overflow-hidden rounded-lg border border-border'>
+              <DetailRow
+                label='You deposit'
+                value={`$${amount} USD`}
+                sub={
+                  tokenEquivalent ? `~${tokenEquivalent} ${symbol}` : undefined
+                }
+              />
+              <DetailRow
+                label='Locked for'
+                value={formatLockDurationLong(selectedLockDuration)}
+              />
               {selectedTier && !effectiveNonEarning && (
-                <>
-                  {' '}
-                  Interest share multiplier:{' '}
-                  <span className='font-semibold text-foreground'>
-                    {Number(selectedTier.interestMultiplier) / 100}x
-                  </span>
-                  .
-                </>
+                <DetailRow
+                  label='Interest multiplier'
+                  value={`${Number(selectedTier.interestMultiplier) / 100}x`}
+                />
               )}
-            </p>
-            {depositFeeApplies && (
-              <p className='text-sm text-muted-foreground'>
-                A{' '}
-                <span className='font-semibold text-foreground'>
-                  {depositFeePct}%
-                </span>{' '}
-                deposit fee applies
-                {depositFeeTokens && (
-                  <>
-                    {' '}
-                    — ~
-                    <span className='font-semibold text-foreground'>
-                      {depositFeeTokens} {symbol}
-                    </span>{' '}
-                    will be taken on top of the deposit amount
-                  </>
+              {depositFeeApplies && (
+                <DetailRow
+                  label={`Deposit fee (${depositFeePct}%)`}
+                  value={
+                    depositFeeTokens
+                      ? `~${depositFeeTokens} ${symbol}`
+                      : 'Applies'
+                  }
+                  sub='Taken on top of the deposit amount'
+                />
+              )}
+              {depositNativeFee !== undefined && depositNativeFee > 0n && (
+                <DetailRow
+                  label='Network fee'
+                  value={`~${Number(
+                    formatEther(depositNativeFee)
+                  ).toLocaleString('en-US', {
+                    maximumFractionDigits: 4
+                  })} ${nativeCurrencySymbol}`}
+                />
+              )}
+              {gate.status === 'ready' && (
+                <DetailRow
+                  label='Referral credited to'
+                  value={truncateAddress(gate.referrer)}
+                  mono
+                />
+              )}
+            </dl>
+
+            {/* Anything that needs a sentence rather than a number. */}
+            {(requiresSwap || gate.status === 'ready') && (
+              <div className='space-y-1.5 text-xs text-muted-foreground'>
+                {requiresSwap && (
+                  <p>
+                    Your {symbol} will be queued for conversion to stablecoins
+                    via the SwapScheduler.
+                  </p>
                 )}
-                .
-              </p>
+                {gate.status === 'ready' && (
+                  <p>
+                    Your liquidity position is unaffected and still goes to your
+                    wallet.
+                  </p>
+                )}
+              </div>
             )}
-            {depositNativeFee !== undefined && depositNativeFee > 0n && (
-              <p className='text-sm text-muted-foreground'>
-                A network fee of ~
-                <span className='font-semibold text-foreground'>
-                  {Number(formatEther(depositNativeFee)).toLocaleString(
-                    'en-US',
-                    {
-                      maximumFractionDigits: 4
-                    }
-                  )}{' '}
-                  {nativeCurrencySymbol}
-                </span>{' '}
-                is charged on deposit.
-              </p>
-            )}
-            {requiresSwap && (
-              <p className='text-sm text-muted-foreground'>
-                Your {symbol} will be queued for conversion to stablecoins via
-                the SwapScheduler.
-              </p>
-            )}
+
             {effectiveNonEarning && (
-              <p className='text-sm text-destructive font-medium'>
+              <p className='rounded-lg bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive'>
                 This is a non-earning deposit. You will not earn interest from
                 borrower payments on this deposit.
-              </p>
-            )}
-            {gate.status === 'ready' && (
-              <p className='text-sm text-muted-foreground'>
-                This deposit will be routed through the referral router,
-                crediting{' '}
-                <span className='font-mono font-semibold text-foreground'>
-                  {truncateAddress(gate.referrer)}
-                </span>
-                . Your liquidity position is unaffected and still goes to your
-                wallet.
               </p>
             )}
           </div>
@@ -779,6 +777,33 @@ export function AddLiquidityCard({
         </DialogContent>
       </Dialog>
     </Card>
+  )
+}
+
+/** One fact in the confirm dialog: label on the left, value on the right. */
+function DetailRow({
+  label,
+  value,
+  sub,
+  mono = false
+}: {
+  label: string
+  value: string
+  sub?: string
+  mono?: boolean
+}) {
+  return (
+    <div className='flex items-start justify-between gap-4 px-3 py-2.5'>
+      <dt className='text-sm text-muted-foreground'>{label}</dt>
+      <dd className='text-right'>
+        <div
+          className={`text-sm font-semibold text-foreground ${mono ? 'font-mono' : ''}`}
+        >
+          {value}
+        </div>
+        {sub && <div className='text-xs text-muted-foreground'>{sub}</div>}
+      </dd>
+    </div>
   )
 }
 
