@@ -7,7 +7,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
+  CardTitle
 } from '@/src/components/ui/card'
 import { Input } from '@/src/components/ui/input'
 import { Button } from '@/src/components/ui/button'
@@ -17,16 +17,17 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
+  DialogFooter
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
 import { Plus, Loader2 } from 'lucide-react'
 import {
   handleContractError,
-  type ContractError,
+  type ContractError
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
+import { TransactionPendingError } from '@/src/hooks/liquidity/useLiquidityOperations'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
@@ -73,13 +74,20 @@ interface AddLiquidityCardProps {
   referral: ReferralState
 }
 
-export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardProps) {
+export function AddLiquidityCard({
+  liquidityPool,
+  referral
+}: AddLiquidityCardProps) {
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [isNonEarning, setIsNonEarning] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const [selectedAssetIndex, setSelectedAssetIndex] = useState<number | null>(null)
-  const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(null)
+  const [selectedAssetIndex, setSelectedAssetIndex] = useState<number | null>(
+    null
+  )
+  const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(
+    null
+  )
   const { toast } = useToast()
   const { address, chain } = useAccount()
   const nativeCurrencySymbol = chain?.nativeCurrency.symbol ?? 'native token'
@@ -93,7 +101,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     deposit,
     depositWithReferral,
     depositNativeFee,
-    refetch,
+    refetch
   } = liquidityPool
 
   // Alias kept for clarity at the read-call sites below
@@ -106,7 +114,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getSupportedAssets',
-    query: { enabled: !!lpAddress },
+    query: { enabled: !!lpAddress }
   })
   const allAssets = useMemo((): `0x${string}`[] => {
     if (!supportedAssetsRaw) return []
@@ -119,26 +127,28 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
       address: lpAddress,
       abi: liquidityPoolAbi as unknown as any[],
       functionName: 'getAssetConfig',
-      args: [asset],
+      args: [asset]
     })) as any[],
-    query: { enabled: allAssets.length > 0 && !!lpAddress },
+    query: { enabled: allAssets.length > 0 && !!lpAddress }
   })
 
   const depositableAssets = useMemo(() => {
     if (!assetConfigsRaw) return []
     return allAssets.filter((_, idx) => {
-      const cfg = assetConfigsRaw[idx]?.result as
-        | { status: number }
-        | undefined
+      const cfg = assetConfigsRaw[idx]?.result as { status: number } | undefined
       return cfg?.status === 1 // AssetStatus.Active
     })
   }, [allAssets, assetConfigsRaw])
 
-  const selectedAsset = selectedAssetIndex !== null ? depositableAssets[selectedAssetIndex] as `0x${string}` | undefined : undefined
+  const selectedAsset =
+    selectedAssetIndex !== null
+      ? (depositableAssets[selectedAssetIndex] as `0x${string}` | undefined)
+      : undefined
 
   // Parse dollar input to stable token units for contract calls
   const parsedDollarAmount = useMemo(() => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return undefined
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
+      return undefined
     try {
       return parseTokenAmount(amount, stableDecimals)
     } catch {
@@ -156,7 +166,8 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
 
   // Referral-only: with a router configured, anything short of a valid link
   // stops the deposit. The banner above carries the reason and the remedy.
-  const isReferralBlocked = gate.status === 'blocked' || gate.status === 'checking'
+  const isReferralBlocked =
+    gate.status === 'blocked' || gate.status === 'checking'
 
   // The router pulls tokens with transferFrom, so on the referral path the
   // ROUTER — not the pool — is the spender that must be approved.
@@ -169,8 +180,11 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getTokensForStableValue',
-    args: selectedAsset && parsedDollarAmount ? [selectedAsset, parsedDollarAmount] : undefined,
-    query: { enabled: !!selectedAsset && !!parsedDollarAmount },
+    args:
+      selectedAsset && parsedDollarAmount
+        ? [selectedAsset, parsedDollarAmount]
+        : undefined,
+    query: { enabled: !!selectedAsset && !!parsedDollarAmount }
   })
 
   // Read lock tiers for selected asset
@@ -179,17 +193,25 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getAssetLockTiers',
     args: selectedAsset ? [selectedAsset] : undefined,
-    query: { enabled: !!selectedAsset },
+    query: { enabled: !!selectedAsset }
   })
   const assetLockTiers = useMemo((): LockDurationTier[] => {
     if (!lockTiersRaw) return []
-    return (lockTiersRaw as readonly { duration: bigint; interestMultiplier: bigint; isEnabled: boolean }[])
-      .map(t => ({
+    return (
+      lockTiersRaw as readonly {
+        duration: bigint
+        interestMultiplier: bigint
+        isEnabled: boolean
+      }[]
+    )
+      .map((t) => ({
         duration: t.duration,
         interestMultiplier: t.interestMultiplier,
-        isEnabled: t.isEnabled,
+        isEnabled: t.isEnabled
       }))
-      .sort((a, b) => (a.duration < b.duration ? -1 : a.duration > b.duration ? 1 : 0))
+      .sort((a, b) =>
+        a.duration < b.duration ? -1 : a.duration > b.duration ? 1 : 0
+      )
   }, [lockTiersRaw])
 
   // Read token metadata for selected asset
@@ -197,14 +219,14 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     address: selectedAsset,
     abi: erc20Abi,
     functionName: 'symbol',
-    query: { enabled: !!selectedAsset },
+    query: { enabled: !!selectedAsset }
   })
 
   const { data: tokenDecimals } = useReadContract({
     address: selectedAsset,
     abi: erc20Abi,
     functionName: 'decimals',
-    query: { enabled: !!selectedAsset },
+    query: { enabled: !!selectedAsset }
   })
 
   const { data: tokenBalance, refetch: refetchBalance } = useReadContract({
@@ -212,7 +234,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!selectedAsset && !!address },
+    query: { enabled: !!selectedAsset && !!address }
   })
 
   const { data: tokenAllowance, refetch: refetchAllowance } = useReadContract({
@@ -220,7 +242,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     abi: erc20Abi,
     functionName: 'allowance',
     args: address && depositSpender ? [address, depositSpender] : undefined,
-    query: { enabled: !!selectedAsset && !!address && !!depositSpender },
+    query: { enabled: !!selectedAsset && !!address && !!depositSpender }
   })
 
   const decimals = tokenDecimals !== undefined ? Number(tokenDecimals) : 18
@@ -233,7 +255,7 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'minimumDepositValue',
-    query: { enabled: !!lpAddress },
+    query: { enabled: !!lpAddress }
   })
   const minimumDepositValue = minimumDepositValueRaw as bigint | undefined
 
@@ -242,8 +264,11 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getDepositCredit',
-    args: selectedAsset && userTokenBalance ? [selectedAsset, userTokenBalance] : undefined,
-    query: { enabled: !!selectedAsset && !!userTokenBalance },
+    args:
+      selectedAsset && userTokenBalance
+        ? [selectedAsset, userTokenBalance]
+        : undefined,
+    query: { enabled: !!selectedAsset && !!userTokenBalance }
   })
 
   // Filter to enabled tiers only
@@ -251,7 +276,8 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     return assetLockTiers.filter((t: LockDurationTier) => t.isEnabled)
   }, [assetLockTiers])
 
-  const selectedTier = selectedTierIndex !== null ? enabledTiers[selectedTierIndex] : undefined
+  const selectedTier =
+    selectedTierIndex !== null ? enabledTiers[selectedTierIndex] : undefined
 
   const selectedLockDuration = useMemo(() => {
     if (selectedTier) return selectedTier.duration
@@ -263,7 +289,10 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
   const tokenEquivalent = useMemo(() => {
     if (!tokenAmount) return undefined
     const formatted = parseFloat(formatTokenAmount(tokenAmount, decimals))
-    return formatted.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return formatted.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
   }, [tokenAmount, decimals])
 
   // Pool deposit fee — same FEE_BPS the contract takes via _takeIncomingFee
@@ -281,10 +310,13 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
   const depositFeeTokens = useMemo(() => {
     if (!depositFeeApplies || !tokenAmount || !feeConfig) return undefined
     const fee = (tokenAmount * feeConfig.feeBps) / 10000n
-    return parseFloat(formatTokenAmount(fee, decimals)).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
+    return parseFloat(formatTokenAmount(fee, decimals)).toLocaleString(
+      'en-US',
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }
+    )
   }, [depositFeeApplies, tokenAmount, feeConfig, decimals])
 
   // Floor the wallet balance to 2 decimals (don't round) so the displayed
@@ -292,9 +324,14 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
   // back into the deposit field shouldn't trip an insufficient-balance check.
   const balanceInUsd = useMemo(() => {
     if (balanceCreditRaw === undefined) return undefined
-    const raw = parseFloat(formatTokenAmount(balanceCreditRaw as unknown as bigint, stableDecimals))
+    const raw = parseFloat(
+      formatTokenAmount(balanceCreditRaw as unknown as bigint, stableDecimals)
+    )
     const floored = Math.floor(raw * 100) / 100
-    return floored.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return floored.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })
   }, [balanceCreditRaw, stableDecimals])
 
   const isBelowMinimum = useMemo(() => {
@@ -304,8 +341,12 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
 
   const minimumForDisplay = useMemo(() => {
     if (!minimumDepositValue) return null
-    return parseFloat(formatTokenAmount(minimumDepositValue, stableDecimals))
-      .toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+    return parseFloat(
+      formatTokenAmount(minimumDepositValue, stableDecimals)
+    ).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    })
   }, [minimumDepositValue, stableDecimals])
 
   const insufficientBalance = useMemo(() => {
@@ -323,12 +364,12 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     if (!tokenAmount || !selectedAsset || !depositSpender) return
     setIsProcessing(true)
     try {
-      const approvalAmount = tokenAmount + (tokenAmount / 10n)
+      const approvalAmount = tokenAmount + tokenAmount / 10n
       await approveToken(approvalAmount, selectedAsset, depositSpender)
       await refetchAllowance()
       toast({
         title: '\u2705 Approval Successful',
-        description: `Approved ${tokenEquivalent} ${symbol}. You can now deposit.`,
+        description: `Approved ${tokenEquivalent} ${symbol}. You can now deposit.`
       })
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Approval Failed')
@@ -337,7 +378,13 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     }
   }
 
-  const canDeposit = !!tokenAmount && !insufficientBalance && !isBelowMinimum && selectedAsset !== undefined && selectedTier !== undefined && !isReferralBlocked
+  const canDeposit =
+    !!tokenAmount &&
+    !insufficientBalance &&
+    !isBelowMinimum &&
+    selectedAsset !== undefined &&
+    selectedTier !== undefined &&
+    !isReferralBlocked
 
   const handleDepositClick = () => {
     if (!canDeposit) return
@@ -372,13 +419,18 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
               : ''
         toast({
           title: '\u2705 Deposit Successful',
-          description: `Deposited $${amount} (${tokenEquivalent} ${symbol}) into the liquidity pool.${commissionNote}`,
+          description: `Deposited $${amount} (${tokenEquivalent} ${symbol}) into the liquidity pool.${commissionNote}`
         })
       } else {
-        await deposit(selectedAsset, tokenAmount, selectedLockDuration, isNonEarning)
+        await deposit(
+          selectedAsset,
+          tokenAmount,
+          selectedLockDuration,
+          isNonEarning
+        )
         toast({
           title: '\u2705 Deposit Successful',
-          description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`,
+          description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`
         })
       }
       setAmount('')
@@ -387,7 +439,19 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
       await refetchAllowance()
       await refetch()
     } catch (err: unknown) {
-      handleContractError(err as ContractError, toast, 'Deposit Failed')
+      // Broadcast but unconfirmed. Claiming failure would be wrong — the
+      // deposit may land seconds later — so say exactly what is known and let
+      // the user out of the dialog either way.
+      if (err instanceof TransactionPendingError) {
+        setShowConfirmDialog(false)
+        toast({
+          title: '\u23F3 Deposit Submitted',
+          description:
+            'Your deposit was sent but is taking longer than usual to confirm. It may still go through — check your wallet or the block explorer before trying again.'
+        })
+      } else {
+        handleContractError(err as ContractError, toast, 'Deposit Failed')
+      }
     } finally {
       setIsProcessing(false)
     }
@@ -399,7 +463,9 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
     setAmount('')
   }
 
-  const requiresSwap = selectedAsset !== undefined && stableTokenAddress !== undefined &&
+  const requiresSwap =
+    selectedAsset !== undefined &&
+    stableTokenAddress !== undefined &&
     selectedAsset.toLowerCase() !== stableTokenAddress.toLowerCase()
 
   return (
@@ -459,7 +525,9 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
         {/* Lock Duration + Interest Multiplier */}
         {enabledTiers.length > 0 && (
           <div className='space-y-1.5'>
-            <label className='text-xs font-medium text-muted-foreground'>Lock Duration · Interest Multiplier</label>
+            <label className='text-xs font-medium text-muted-foreground'>
+              Lock Duration · Interest Multiplier
+            </label>
             <div className='flex gap-2 flex-wrap'>
               {enabledTiers.map((tier, idx) => {
                 const mult = Number(tier.interestMultiplier) / 100
@@ -489,15 +557,20 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
               onChange={(e) => setIsNonEarning(e.target.checked)}
               className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
             />
-            <span className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}>
-              Deposit as non-earning{isNonEarning && ' — will not earn interest from borrower payments'}
+            <span
+              className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              Deposit as non-earning
+              {isNonEarning &&
+                ' — will not earn interest from borrower payments'}
             </span>
           </label>
         )}
 
         {requiresSwap && (
           <p className='text-xs text-muted-foreground'>
-            This token will be converted to stablecoins via DCA swap after deposit.
+            This token will be converted to stablecoins via DCA swap after
+            deposit.
           </p>
         )}
 
@@ -509,7 +582,8 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
           )}
           {insufficientBalance && (
             <p className='text-sm text-destructive'>
-              Insufficient balance. You need ~{tokenEquivalent} {symbol} but your balance is only worth ${balanceInUsd ?? '0'} USD.
+              Insufficient balance. You need ~{tokenEquivalent} {symbol} but
+              your balance is only worth ${balanceInUsd ?? '0'} USD.
             </p>
           )}
           {/* The Deposit button used to sit inexplicably disabled when a
@@ -551,31 +625,40 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
         </div>
 
         <div>
-        {needsApproval && tokenAmount && !insufficientBalance && !isBelowMinimum && !isReferralBlocked ? (
-          <Button
-            onClick={handleApprove}
-            disabled={isProcessing || !tokenAmount}
-            className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
-          >
-            {isProcessing ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving...</>
-            ) : (
-              `Approve ${symbol}`
-            )}
-          </Button>
-        ) : (
-          <Button
-            onClick={handleDepositClick}
-            disabled={isProcessing || !canDeposit}
-            className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
-          >
-            {isProcessing ? (
-              <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing...</>
-            ) : (
-              'Deposit'
-            )}
-          </Button>
-        )}
+          {needsApproval &&
+          tokenAmount &&
+          !insufficientBalance &&
+          !isBelowMinimum &&
+          !isReferralBlocked ? (
+            <Button
+              onClick={handleApprove}
+              disabled={isProcessing || !tokenAmount}
+              className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving...
+                </>
+              ) : (
+                `Approve ${symbol}`
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleDepositClick}
+              disabled={isProcessing || !canDeposit}
+              className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
+                  Depositing...
+                </>
+              ) : (
+                'Deposit'
+              )}
+            </Button>
+          )}
         </div>
       </CardContent>
 
@@ -590,31 +673,58 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
           <DialogHeader>
             <DialogTitle>Confirm Deposit</DialogTitle>
             <DialogDescription>
-              You are about to deposit ${amount} USD (~{tokenEquivalent} {symbol}) into the liquidity pool.
+              You are about to deposit ${amount} USD (~{tokenEquivalent}{' '}
+              {symbol}) into the liquidity pool.
             </DialogDescription>
           </DialogHeader>
           <div className='space-y-3 py-2'>
             <p className='text-sm text-muted-foreground'>
-              Your deposit will be locked for <span className='font-semibold text-foreground'>{formatLockDurationLong(selectedLockDuration)}</span>.
+              Your deposit will be locked for{' '}
+              <span className='font-semibold text-foreground'>
+                {formatLockDurationLong(selectedLockDuration)}
+              </span>
+              .
               {selectedTier && !effectiveNonEarning && (
-                <> Interest share multiplier: <span className='font-semibold text-foreground'>{Number(selectedTier.interestMultiplier) / 100}x</span>.</>
+                <>
+                  {' '}
+                  Interest share multiplier:{' '}
+                  <span className='font-semibold text-foreground'>
+                    {Number(selectedTier.interestMultiplier) / 100}x
+                  </span>
+                  .
+                </>
               )}
             </p>
             {depositFeeApplies && (
               <p className='text-sm text-muted-foreground'>
-                A <span className='font-semibold text-foreground'>{depositFeePct}%</span> deposit fee applies
+                A{' '}
+                <span className='font-semibold text-foreground'>
+                  {depositFeePct}%
+                </span>{' '}
+                deposit fee applies
                 {depositFeeTokens && (
-                  <> — ~<span className='font-semibold text-foreground'>{depositFeeTokens} {symbol}</span> will be taken on top of the deposit amount</>
+                  <>
+                    {' '}
+                    — ~
+                    <span className='font-semibold text-foreground'>
+                      {depositFeeTokens} {symbol}
+                    </span>{' '}
+                    will be taken on top of the deposit amount
+                  </>
                 )}
                 .
               </p>
             )}
             {depositNativeFee !== undefined && depositNativeFee > 0n && (
               <p className='text-sm text-muted-foreground'>
-                A network fee of ~<span className='font-semibold text-foreground'>
-                  {Number(formatEther(depositNativeFee)).toLocaleString('en-US', {
-                    maximumFractionDigits: 4
-                  })}{' '}
+                A network fee of ~
+                <span className='font-semibold text-foreground'>
+                  {Number(formatEther(depositNativeFee)).toLocaleString(
+                    'en-US',
+                    {
+                      maximumFractionDigits: 4
+                    }
+                  )}{' '}
                   {nativeCurrencySymbol}
                 </span>{' '}
                 is charged on deposit.
@@ -622,17 +732,20 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
             )}
             {requiresSwap && (
               <p className='text-sm text-muted-foreground'>
-                Your {symbol} will be queued for conversion to stablecoins via the SwapScheduler.
+                Your {symbol} will be queued for conversion to stablecoins via
+                the SwapScheduler.
               </p>
             )}
             {effectiveNonEarning && (
               <p className='text-sm text-destructive font-medium'>
-                This is a non-earning deposit. You will not earn interest from borrower payments on this deposit.
+                This is a non-earning deposit. You will not earn interest from
+                borrower payments on this deposit.
               </p>
             )}
             {gate.status === 'ready' && (
               <p className='text-sm text-muted-foreground'>
-                This deposit will be routed through the referral router, crediting{' '}
+                This deposit will be routed through the referral router,
+                crediting{' '}
                 <span className='font-mono font-semibold text-foreground'>
                   {truncateAddress(gate.referrer)}
                 </span>
@@ -655,7 +768,9 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
               {isProcessing ? (
-                <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…</>
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…
+                </>
               ) : (
                 'Confirm Deposit'
               )}
@@ -668,7 +783,11 @@ export function AddLiquidityCard({ liquidityPool, referral }: AddLiquidityCardPr
 }
 
 // Small helper component to show asset button with its symbol
-function AssetButton({ address, isSelected, onClick }: {
+function AssetButton({
+  address,
+  isSelected,
+  onClick
+}: {
   address: `0x${string}`
   isSelected: boolean
   onClick: () => void
@@ -677,7 +796,7 @@ function AssetButton({ address, isSelected, onClick }: {
     address,
     abi: erc20Abi,
     functionName: 'symbol',
-    query: { enabled: !!address },
+    query: { enabled: !!address }
   })
 
   return (
