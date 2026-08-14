@@ -31,6 +31,7 @@ import { TransactionPendingError } from '@/src/hooks/liquidity/useLiquidityOpera
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
+import { DetailRow } from '@/src/components/liquidity/DetailRow'
 import { describeSkipReason } from '@/src/utils/referral'
 import { truncateAddress } from '@/src/utils/format'
 
@@ -723,26 +724,16 @@ export function AddLiquidityCard({
                   label='Referral credited to'
                   value={truncateAddress(gate.referrer)}
                   mono
+                  note='Your liquidity position is unaffected and still goes to your wallet.'
                 />
               )}
             </dl>
 
-            {/* Anything that needs a sentence rather than a number. */}
-            {(requiresSwap || gate.status === 'ready') && (
-              <div className='space-y-1.5 text-xs text-muted-foreground'>
-                {requiresSwap && (
-                  <p>
-                    Your {symbol} will be queued for conversion to stablecoins
-                    via the SwapScheduler.
-                  </p>
-                )}
-                {gate.status === 'ready' && (
-                  <p>
-                    Your liquidity position is unaffected and still goes to your
-                    wallet.
-                  </p>
-                )}
-              </div>
+            {requiresSwap && (
+              <p className='text-xs leading-relaxed text-muted-foreground'>
+                Your {symbol} will be queued for conversion to stablecoins via
+                the SwapScheduler.
+              </p>
             )}
 
             {effectiveNonEarning && (
@@ -777,33 +768,6 @@ export function AddLiquidityCard({
         </DialogContent>
       </Dialog>
     </Card>
-  )
-}
-
-/** One fact in the confirm dialog: label on the left, value on the right. */
-function DetailRow({
-  label,
-  value,
-  sub,
-  mono = false
-}: {
-  label: string
-  value: string
-  sub?: string
-  mono?: boolean
-}) {
-  return (
-    <div className='flex items-start justify-between gap-4 px-3 py-2.5'>
-      <dt className='text-sm text-muted-foreground'>{label}</dt>
-      <dd className='text-right'>
-        <div
-          className={`text-sm font-semibold text-foreground ${mono ? 'font-mono' : ''}`}
-        >
-          {value}
-        </div>
-        {sub && <div className='text-xs text-muted-foreground'>{sub}</div>}
-      </dd>
-    </div>
   )
 }
 
