@@ -59,8 +59,8 @@ const RETURN_MODEL = [
 const PILLARS = [
   {
     Icon: ShieldCheck,
-    title: 'Overcollateralized Protection.',
-    lines: ['Capital is protected.', 'Built to safeguard.']
+    title: 'Overcollateralized Lending.',
+    lines: ['Risk controlled on chain.', 'Every loan is backed by collateral.']
   },
   {
     Icon: FileLock2,
@@ -84,14 +84,14 @@ const ASSURANCES = [
   {
     Icon: Users,
     headline: null,
-    label: 'Institutional Borrowers',
-    lines: ['High quality.', 'Vetted.']
+    label: 'Collateralized Borrowers',
+    lines: ['Built for broad participation.', 'Requirements enforced on-chain.']
   },
   {
     Icon: Lock,
     headline: null,
-    label: 'Built for Safety',
-    lines: ['Capital security', 'is our priority.']
+    label: 'Decentralized by design',
+    lines: ['Protocol risk controls.']
   }
 ] as const
 
@@ -291,9 +291,15 @@ export function DisconnectedLiquidity() {
           ))}
         </ul>
 
-        <p className='mt-5 text-center text-[10px] text-gray-500 sm:text-xs dark:text-gray-400'>
-          All assets are accepted as BEP-20 tokens on BNB Smart Chain.
-        </p>
+        <div className='mt-5 space-y-2 text-center text-[10px] text-gray-500 sm:text-xs dark:text-gray-400'>
+          <p>All assets are accepted as BEP-20 tokens on BNB Smart Chain.</p>
+          <p>
+            Where an underlying asset is not native to BSC, its approved wrapped
+            or pegged BEP-20 representation may be used. Eligible collateral is
+            enabled according to protocol-defined risk, liquidity, and
+            collateral parameters.
+          </p>
+        </div>
       </section>
 
       {/* ── Call to action ───────────────────────────────────────── */}

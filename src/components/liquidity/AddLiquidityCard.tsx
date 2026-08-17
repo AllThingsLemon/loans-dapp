@@ -576,9 +576,18 @@ export function AddLiquidityCard({
         )}
 
         <div className='flex-1 space-y-1'>
-          {isBelowMinimum && minimumForDisplay && (
-            <p className='text-sm text-destructive'>
-              Minimum deposit is ${minimumForDisplay} USD.
+          {/* Always shown so the threshold is known before typing, not only
+              after tripping it. Still read from minimumDepositValue on the
+              pool — it turns red once the entered amount is under it. */}
+          {minimumForDisplay && (
+            <p
+              className={
+                isBelowMinimum
+                  ? 'text-sm text-destructive'
+                  : 'text-sm text-muted-foreground'
+              }
+            >
+              Minimum deposit is ${minimumForDisplay} USD equivalent.
             </p>
           )}
           {insufficientBalance && (
