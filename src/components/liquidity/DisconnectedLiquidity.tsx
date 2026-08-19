@@ -120,7 +120,7 @@ const COLUMNS = [
   { label: 'Time Period', sub: null },
   { label: 'Weight', sub: '(Multiplier)' },
   { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Estimated Total', sub: 'Return (%)' }
+  { label: 'Illustrative Total', sub: 'Returns*' }
 ] as const
 
 const HEAD_CELL =
@@ -191,10 +191,10 @@ export function DisconnectedLiquidity() {
           />
           <div className='text-left'>
             <h3 className='text-xl font-extrabold tracking-tight text-gray-900 sm:text-2xl dark:text-gray-100'>
-              ESTIMATED RETURNS
+              ILLUSTRATIVE RETURN SCENARIOS
             </h3>
             <p className='text-sm font-medium italic text-gray-500 dark:text-gray-400'>
-              (Current Model Assumptions)
+              Model Outputs Based on Stated Protocol-Activity Assumptions
             </p>
           </div>
         </div>
@@ -247,7 +247,7 @@ export function DisconnectedLiquidity() {
         {/* Deliberately set smaller than the table it sits under: it has to be
             present and readable without competing with the figures above. */}
         <p className='mt-4 text-left text-[10px] leading-relaxed text-gray-500 sm:text-xs dark:text-gray-400'>
-          Illustrative outcomes are model-generated and are not promised or
+          *Illustrative outcomes are model-generated and are not promised or
           guaranteed. Actual protocol outcomes depend on borrower demand,
           utilization, collateral performance, market conditions, refinancing
           activity, smart-contract execution and other factors. Digital assets

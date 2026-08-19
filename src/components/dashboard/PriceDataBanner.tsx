@@ -3,6 +3,7 @@
 import { usePricing } from '@/src/hooks/usePricing'
 import { Card, CardContent } from '@/src/components/ui/card'
 import { BarChart } from 'lucide-react'
+import { useIsWrongNetwork } from '@/src/hooks/useIsWrongNetwork'
 
 function PriceDataBannerSkeleton() {
   return (
@@ -55,6 +56,10 @@ function PriceDataBannerError({ error }: { error: Error }) {
 }
 
 export function PriceDataBanner() {
+  // On the wrong network every read fails, so "Price Data Unavailable" would be
+  // a symptom competing with the one banner that can actually be acted on.
+  const isWrongNetwork = useIsWrongNetwork()
+
   const {
     spotPrice,
     monthlyAverage,
@@ -65,6 +70,9 @@ export function PriceDataBanner() {
     error
   } = usePricing()
 
+  // Suppressed entirely on the wrong network: the failure is the network, and
+  // ProtocolStatusBanner is already saying so with the switch CTA.
+  if (isWrongNetwork) return null
   if (isLoading) return <PriceDataBannerSkeleton />
   if (error) return <PriceDataBannerError error={error} />
 

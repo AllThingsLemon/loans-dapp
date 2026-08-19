@@ -6,10 +6,7 @@ import type { UseLoansReturn } from '../../hooks/types'
 import { formatUnits, parseUnits } from 'viem'
 import { useContractTokenConfiguration } from '../../hooks/useContractTokenConfiguration'
 import { useToast } from '../../hooks/use-toast'
-import {
-  formatPercentage,
-  formatTokenAmount
-} from '../../utils/decimals'
+import { formatPercentage, formatTokenAmount } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import { LoanParameters } from '../calculator/LoanParameters'
 import { LoanSummary } from '../calculator/LoanSummary'
@@ -19,6 +16,7 @@ import {
   isUserRejection,
   type ContractError
 } from '../../utils/errorHandling'
+import { useIsWrongNetwork } from '../../hooks/useIsWrongNetwork'
 import { useCollateralManager } from '../../hooks/useCollateralManager'
 import { useLoanConfig } from '../../hooks/loans/useLoanConfig'
 import { useDelegateValidation } from '../../hooks/loans/useDelegateValidation'
@@ -226,7 +224,13 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       duration: selectedDuration,
       ltv: selectedLtvOption.ltv
     }
-  }, [selectedCollateral, loanAmount, selectedDuration, selectedLtvOption, tokenConfig])
+  }, [
+    selectedCollateral,
+    loanAmount,
+    selectedDuration,
+    selectedLtvOption,
+    tokenConfig
+  ])
 
   // Validate the typed payer address (format + on-chain delegation). Balance
   // and allowance shortfalls are surfaced by LoanSummary's existing
@@ -238,9 +242,13 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
   // even before the delegation check completes — so balance/allowance reads
   // start firing against the right wallet immediately.
   const effectiveOriginationPayer =
-    !isPayerLocked && payerValidation.normalizedAddress && !payerValidation.isSelf
+    !isPayerLocked &&
+    payerValidation.normalizedAddress &&
+    !payerValidation.isSelf
       ? payerValidation.normalizedAddress
       : undefined
+
+  const isWrongNetwork = useIsWrongNetwork()
 
   const loanOperations = useLoans({
     loanRequest,
@@ -262,7 +270,10 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     operationError &&
     loanRequest &&
     !loanOperations.calculationData &&
-    !loanOperations.isSimulating
+    !loanOperations.isSimulating &&
+    // On the wrong network every simulation fails; that is not a loan problem
+    // and the network banner already carries the fix.
+    !isWrongNetwork
       ? extractErrorMessage(operationError as unknown as ContractError)
       : undefined
 
@@ -298,7 +309,11 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     // contract config is still loading or the user hasn't picked a collateral.
     // Either way, render a neutral em-dash to match the "no calc yet" branch
     // below; the form surfaces actionable validation elsewhere.
-    if (!tokenConfig || !selectedCollateral || perAssetConfig.interestAprConfigs.length === 0) {
+    if (
+      !tokenConfig ||
+      !selectedCollateral ||
+      perAssetConfig.interestAprConfigs.length === 0
+    ) {
       return {
         ...baseWithDials,
         priceError: '—'
@@ -334,9 +349,12 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
     }
 
     // Calculate loan cycles
-    const loanCycles = formatted.loanCycleDuration && formatted.loanCycleDuration > 0n
-      ? Math.ceil(Number(selectedDuration) / Number(formatted.loanCycleDuration))
-      : 0
+    const loanCycles =
+      formatted.loanCycleDuration && formatted.loanCycleDuration > 0n
+        ? Math.ceil(
+            Number(selectedDuration) / Number(formatted.loanCycleDuration)
+          )
+        : 0
 
     // Build the final calculation with all values
     const isValid =
@@ -347,15 +365,17 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
       !loanOperations.hasInsufficientLiquidity &&
       payerValidation.isValid
 
-    const priceError = buildPriceError(
-      loanOperations.isSimulating,
-      loanOperations.hasInsufficientLmln,
-      formatted.originationFeeLmln,
-      loanOperations.userLmlnBalance,
-      tokenConfig
-    ) || (loanOperations.hasInsufficientLiquidity
-      ? 'Insufficient pool liquidity for this loan amount'
-      : undefined)
+    const priceError =
+      buildPriceError(
+        loanOperations.isSimulating,
+        loanOperations.hasInsufficientLmln,
+        formatted.originationFeeLmln,
+        loanOperations.userLmlnBalance,
+        tokenConfig
+      ) ||
+      (loanOperations.hasInsufficientLiquidity
+        ? 'Insufficient pool liquidity for this loan amount'
+        : undefined)
 
     return {
       ...baseWithDials,
@@ -418,7 +438,11 @@ const CalculatorSection = ({ isDashboard = false }: CalculatorSectionProps) => {
 
   // Handle collateral ERC20 approval (WLEMX → CollateralManager)
   const handleApproveCollateral = async () => {
-    if (!selectedCollateral || !loanOperations.calculationData?.collateralAmount) return
+    if (
+      !selectedCollateral ||
+      !loanOperations.calculationData?.collateralAmount
+    )
+      return
     setIsApprovingCollateral(true)
     try {
       await loanOperations.approveCollateral(
