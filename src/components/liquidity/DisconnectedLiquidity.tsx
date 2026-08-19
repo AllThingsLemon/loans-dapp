@@ -120,7 +120,7 @@ const COLUMNS = [
   { label: 'Time Period', sub: null },
   { label: 'Weight', sub: '(Multiplier)' },
   { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Estimated Total', sub: 'Return (%)' }
+  { label: 'Illustrative Total', sub: 'Returns*' }
 ] as const
 
 const HEAD_CELL =
@@ -191,10 +191,10 @@ export function DisconnectedLiquidity() {
           />
           <div className='text-left'>
             <h3 className='text-xl font-extrabold tracking-tight text-gray-900 sm:text-2xl dark:text-gray-100'>
-              ESTIMATED RETURNS
+              ILLUSTRATIVE RETURN SCENARIOS
             </h3>
             <p className='text-sm font-medium italic text-gray-500 dark:text-gray-400'>
-              (Current Model Assumptions)
+              Model Outputs Based on Stated Protocol-Activity Assumptions
             </p>
           </div>
         </div>
