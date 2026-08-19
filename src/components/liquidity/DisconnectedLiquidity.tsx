@@ -247,7 +247,7 @@ export function DisconnectedLiquidity() {
         {/* Deliberately set smaller than the table it sits under: it has to be
             present and readable without competing with the figures above. */}
         <p className='mt-4 text-left text-[10px] leading-relaxed text-gray-500 sm:text-xs dark:text-gray-400'>
-          Illustrative outcomes are model-generated and are not promised or
+          *Illustrative outcomes are model-generated and are not promised or
           guaranteed. Actual protocol outcomes depend on borrower demand,
           utilization, collateral performance, market conditions, refinancing
           activity, smart-contract execution and other factors. Digital assets
