@@ -28,37 +28,38 @@ const REFERRER = getAddress(REFERRER_LOWER)
 const OTHER = getAddress('0xc6e1cc44bbc9e047b5c25966dffe7ea673e913e0')
 
 describe('referral param parsing', () => {
-  it('accepts ?ref=', () => {
-    expect(parseReferrerFromSearch(`?ref=${REFERRER}`)).toBe(REFERRER)
+  it('ignores the legacy ?ref= key', () => {
+    // Dropped in favour of ?affiliate=, which is what the affiliate dapp emits.
+    expect(parseReferrerFromSearch(`?ref=${REFERRER}`)).toBeNull()
   })
 
   it('accepts ?affiliate= — the sibling affiliate dapp generates these links', () => {
     expect(parseReferrerFromSearch(`?affiliate=${REFERRER}`)).toBe(REFERRER)
   })
 
-  it('prefers ref over affiliate when both are present', () => {
-    expect(parseReferrerFromSearch(`?affiliate=${OTHER}&ref=${REFERRER}`)).toBe(
+  it('reads affiliate even when a legacy ref is also present', () => {
+    expect(parseReferrerFromSearch(`?ref=${OTHER}&affiliate=${REFERRER}`)).toBe(
       REFERRER
     )
   })
 
   it('checksums a lowercase address', () => {
-    const parsed = parseReferrerFromSearch(`?ref=${REFERRER_LOWER}`)
+    const parsed = parseReferrerFromSearch(`?affiliate=${REFERRER_LOWER}`)
     expect(parsed).toBe(REFERRER)
     expect(parsed).not.toBe(REFERRER_LOWER)
   })
 
   it('accepts a URLSearchParams instance as well as a raw string', () => {
-    const params = new URLSearchParams({ ref: REFERRER })
+    const params = new URLSearchParams({ affiliate: REFERRER })
     expect(parseReferrerFromSearch(params)).toBe(REFERRER)
   })
 
   it('returns null for malformed values — the gate turns that into a block', () => {
-    expect(parseReferrerFromSearch('?ref=0x123')).toBeNull()
-    expect(parseReferrerFromSearch('?ref=not-an-address')).toBeNull()
-    expect(parseReferrerFromSearch('?ref=')).toBeNull()
+    expect(parseReferrerFromSearch('?affiliate=0x123')).toBeNull()
+    expect(parseReferrerFromSearch('?affiliate=not-an-address')).toBeNull()
+    expect(parseReferrerFromSearch('?affiliate=')).toBeNull()
     // Right length, invalid characters
-    expect(parseReferrerFromSearch(`?ref=0x${'z'.repeat(40)}`)).toBeNull()
+    expect(parseReferrerFromSearch(`?affiliate=0x${'z'.repeat(40)}`)).toBeNull()
   })
 
   it('returns null when the param is missing entirely', () => {
@@ -242,9 +243,15 @@ describe('commissions param parsing', () => {
 
 describe('hasReferralParams', () => {
   it('is true whenever a referral key is present, even if the value is junk', () => {
-    expect(hasReferralParams('?ref=nonsense')).toBe(true)
+    expect(hasReferralParams('?affiliate=nonsense')).toBe(true)
     expect(hasReferralParams('?affiliate=')).toBe(true)
     expect(hasReferralParams('?commissions=0x123')).toBe(true)
+  })
+
+  it('treats a legacy ?ref= only link as no link at all', () => {
+    // It no longer counts as a referral key, so the visitor is told a link is
+    // required rather than that their link is broken.
+    expect(hasReferralParams(`?ref=${REFERRER}`)).toBe(false)
   })
 
   it('is false for an unrelated or empty query string', () => {

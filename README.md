@@ -53,7 +53,7 @@ A referral link carries **two** halves, and both are required:
 https://<app>/liquidity?affiliate=0xAFFILIATE&commissions=0xCOMMISSIONS
 ```
 
-- `?affiliate=` (or `?ref=`) — the affiliate's wallet, credited with the commission.
+- `?affiliate=` — the affiliate's wallet, credited with the commission.
 - `?commissions=` — the **per-company** commissions contract, which must appear in the
   router's `allowedCommissionsList()`. This is why it travels in the link rather than in
   build config: one build serves every partner.
