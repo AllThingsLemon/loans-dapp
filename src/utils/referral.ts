@@ -8,8 +8,8 @@ import { getAddress, isAddress, decodeEventLog } from 'viem'
 import type { Abi, Log } from 'viem'
 import referralDepositRouterAbiJson from '@/src/abis/ReferralDepositRouter.json'
 
-/** Query-string keys that may carry a referrer, in priority order. */
-export const REFERRAL_PARAM_KEYS = ['ref', 'affiliate'] as const
+/** Query-string key carrying the affiliate. Matches what the affiliate dapp emits. */
+export const REFERRAL_PARAM_KEYS = ['affiliate'] as const
 
 /**
  * Query-string keys carrying the commissions contract. This is per-company, so
@@ -58,10 +58,9 @@ function firstValue(
 }
 
 /**
- * Pull a referrer out of a query string, accepting both `?ref=` (this dapp) and
- * `?affiliate=` (the links royal-citadel-affiliate-dapp generates). `ref` wins
- * when both are present. Returns null for a missing OR malformed value — the
- * caller distinguishes the two via `hasReferralParams`.
+ * Pull the affiliate out of a query string (`?affiliate=`, the parameter
+ * royal-citadel-affiliate-dapp generates). Returns null for a missing OR
+ * malformed value — the caller distinguishes the two via `hasReferralParams`.
  */
 export function parseReferrerFromSearch(
   search: string | URLSearchParams | null | undefined

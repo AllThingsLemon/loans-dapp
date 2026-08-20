@@ -51,7 +51,7 @@ function writeStored(pair: StoredPair | null) {
 /**
  * Captures the referral link and remembers it for the visit.
  *
- * A link carries two halves — the affiliate (`?ref=` or `?affiliate=`) and the
+ * A link carries two halves — the affiliate (`?affiliate=`) and the
  * per-company commissions contract (`?commissions=`) — and they are treated as
  * a PAIR throughout:
  *
