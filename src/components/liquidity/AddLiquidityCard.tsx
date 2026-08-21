@@ -715,7 +715,7 @@ export function AddLiquidityCard({
                       ? `~${depositFeeTokens} ${symbol}`
                       : 'Applies'
                   }
-                  sub='Taken on top of the deposit amount'
+                  note='Taken on top of the deposit amount'
                 />
               )}
               {depositNativeFee !== undefined && depositNativeFee > 0n && (
