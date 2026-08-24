@@ -63,6 +63,7 @@ import {
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
+import { useReadLoansCalculateLoanDetails } from '@/src/generated'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -142,6 +143,39 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [extensionDuration, setExtensionDuration] = useState(0)
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
+
+  // The tier fee is priced in USD and converted to LMLN at charge time, so the
+  // creation-time amount stored in loan.originationFee can be STALE by the time
+  // the loan is extended. Trusting it for the approval leaves the borrower in
+  // an approve-then-still-blocked loop whenever the LMLN price has fallen since
+  // creation. Re-quote with the loan's own parameters and use whichever of the
+  // two amounts is larger — correct under either contract semantic (charges the
+  // stored amount, or re-prices at the current rate).
+  const loanForExtension = activeLoans.find(
+    (l) => l.id === selectedLoanForExtension
+  )
+  const { data: extensionQuote } = useReadLoansCalculateLoanDetails({
+    args: loanForExtension
+      ? [
+          loanForExtension.collateralToken,
+          loanForExtension.originalDuration,
+          loanForExtension.loanAmount,
+          loanForExtension.ltv
+        ]
+      : undefined,
+    query: { enabled: !!loanForExtension }
+  })
+  const freshExtensionFee = extensionQuote?.[2]
+  const extensionFeeForLoan = (loan: Loan): bigint => {
+    if (
+      loan.id === selectedLoanForExtension &&
+      freshExtensionFee !== undefined &&
+      freshExtensionFee > loan.originationFee
+    ) {
+      return freshExtensionFee
+    }
+    return loan.originationFee
+  }
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
   const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
     useState<`0x${string}` | null>(null)
@@ -297,7 +331,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   }
 
   const handleExtensionApproval = async (loan: Loan) => {
-    if (!loan.originationFee) {
+    const extensionFee = extensionFeeForLoan(loan)
+    if (!extensionFee) {
       toast({
         title: 'Invalid Fee',
         description: 'Origination fee not found for this loan',
@@ -308,7 +343,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
     setIsApprovingExtension(true)
     try {
-      await approveLoanFee(loan.originationFee)
+      await approveLoanFee(extensionFee)
 
       toast({
         title: '\u2705 Approval Successful',
@@ -1155,8 +1190,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         // currentLmlnAllowance + userLmlnBalance are auto-redirected to the
                         // delegate's wallet when one is unlocked + valid (see useLoans options
                         // wired up at top of this component). Same comparisons work either way.
-                        const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < loan.originationFee
-                        const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < loan.originationFee
+                        // extensionFee is max(stored fee, freshly-quoted fee) — see
+                        // extensionFeeForLoan. Judging the allowance against the stale
+                        // stored amount can hide the Approve button from a borrower whose
+                        // extension would still revert on allowance.
+                        const extensionFee = extensionFeeForLoan(loan)
+                        const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < extensionFee
+                        const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < extensionFee
                         // Block the CTA if the borrower has unlocked the field but
                         // hasn't supplied a verified delegate yet (red text in the
                         // OriginationPayerField surfaces the reason).
@@ -1211,11 +1251,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                 <span className='text-muted-foreground'>New Due Date</span>
                                 <span className='font-medium'>{newDueDate}</span>
                               </div>
-                              {loan.originationFee > 0n && (
+                              {extensionFee > 0n && (
                                 <div className='flex justify-between text-sm pt-2 border-t'>
                                   <span className='text-muted-foreground'>Extension Fee</span>
                                   <span className='font-medium'>
-                                    {formatAmountWithSymbol(loan.originationFee, tokenConfig?.feeToken.symbol || 'LMLN')}
+                                    {formatAmountWithSymbol(extensionFee, tokenConfig?.feeToken.symbol || 'LMLN')}
                                   </span>
                                 </div>
                               )}
@@ -1256,7 +1296,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               !extensionPayerValidation.isSelf &&
                               extensionPayerValidation.isValid &&
                               needsApproval &&
-                              loan.originationFee > 0n &&
+                              extensionFee > 0n &&
                               !hasInsufficientBalance && (
                                 <p className='text-sm text-destructive flex items-center gap-2'>
                                   <AlertCircle className='h-4 w-4 shrink-0' />
@@ -1294,7 +1334,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   </span>
                                 </div>
                               ) : needsApproval &&
-                                loan.originationFee > 0n &&
+                                extensionFee > 0n &&
                                 (isExtensionPayerLocked || extensionPayerValidation.isSelf) ? (
                                 <Button
                                   onClick={() => handleExtensionApproval(loan)}
@@ -1315,7 +1355,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                     (!isExtensionPayerLocked &&
                                       !extensionPayerValidation.isSelf &&
                                       needsApproval &&
-                                      loan.originationFee > 0n)
+                                      extensionFee > 0n)
                                   }
                                   className='flex-1'
                                 >
