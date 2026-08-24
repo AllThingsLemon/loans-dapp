@@ -33,6 +33,10 @@ import {
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 import {
+  RECEIPT_TIMEOUT_MS,
+  TransactionPendingError
+} from '@/src/utils/errorHandling'
+import {
   getReferralRouterAddress,
   isReferralEnabled
 } from '@/src/config/referral'
@@ -44,26 +48,10 @@ import {
   type ReferralPreflightFailure
 } from '@/src/utils/referral'
 
-/**
- * How long to wait for a receipt before handing control back to the user. A
- * transaction that has been broadcast is out of our hands; waiting on it
- * forever only means the UI can never recover.
- */
-const RECEIPT_TIMEOUT_MS = 120_000
-
-/**
- * The transaction was broadcast but we stopped waiting for its receipt. This is
- * NOT a failure — it may well be mined a moment later — so callers must report
- * it as pending rather than as a revert.
- */
-export class TransactionPendingError extends Error {
-  readonly txHash: `0x${string}`
-  constructor(txHash: `0x${string}`) {
-    super('Transaction is still pending confirmation')
-    this.name = 'TransactionPendingError'
-    this.txHash = txHash
-  }
-}
+// Both moved to errorHandling.ts so the loan operations share them and
+// handleContractError can recognise the pending case for every call site;
+// re-exported so existing imports keep working.
+export { RECEIPT_TIMEOUT_MS, TransactionPendingError }
 
 /**
  * A transport failure (RPC timeout / rate-limit) is not an answer from chain.
