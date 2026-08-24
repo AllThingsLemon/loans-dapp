@@ -2,9 +2,8 @@
 import { useEffect, useState } from 'react'
 import {
   REFERRAL_STORAGE_KEY,
-  hasReferralParams,
-  normalizeReferrer,
-  parseReferralLink
+  captureReferral,
+  type StoredReferralPair
 } from '@/src/utils/referral'
 
 export interface UseReferralParamReturn {
@@ -35,7 +34,7 @@ function readStored(): StoredPair | null {
   }
 }
 
-function writeStored(pair: StoredPair | null) {
+function writeStored(pair: StoredReferralPair | null) {
   try {
     if (pair) {
       window.sessionStorage.setItem(REFERRAL_STORAGE_KEY, JSON.stringify(pair))
@@ -52,17 +51,10 @@ function writeStored(pair: StoredPair | null) {
  * Captures the referral link and remembers it for the visit.
  *
  * A link carries two halves — the affiliate (`?affiliate=`) and the
- * per-company commissions contract (`?commissions=`) — and they are treated as
- * a PAIR throughout:
- *
- *  - If the URL carries ANY referral key, the URL is authoritative for BOTH.
- *    A link with an affiliate but no commissions contract is broken, and must
- *    not silently fall back to whatever a previous link left in storage.
- *  - A broken URL therefore also CLEARS storage. Otherwise the visitor would be
- *    blocked while a stale-but-valid pair sat in storage waiting to reappear on
- *    the next navigation, which is impossible to explain.
- *  - Only a fully valid pair is persisted, so what comes back out of storage is
- *    always usable.
+ * per-company commissions contract (`?commissions=`) — treated as a PAIR, and
+ * the FIRST valid pair of the visit wins; a later link never replaces or
+ * clears it. The policy itself lives in captureReferral (pure, unit-tested);
+ * this hook only wires it to window.location and sessionStorage.
  *
  * Session (not local) storage keeps the attribution scoped to the visit, and
  * survives the navigation and wallet-connect round-trip that drop the query
@@ -82,29 +74,12 @@ export function useReferralParam(): UseReferralParamReturn {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const search = window.location.search
-
-    if (hasReferralParams(search)) {
-      const { referrer, commissions } = parseReferralLink(search)
-      writeStored(referrer && commissions ? { referrer, commissions } : null)
-      setCaptured({ referrer, commissions, hasLink: true })
-      return
-    }
-
-    const stored = readStored()
-    if (!stored) {
-      setCaptured({
-        referrer: null,
-        commissions: null,
-        hasLink: false
-      })
-      return
-    }
-
-    // Re-validate on the way out: storage is user-writable.
-    const referrer = normalizeReferrer(stored.referrer)
-    const commissions = normalizeReferrer(stored.commissions)
-    setCaptured({ referrer, commissions, hasLink: true })
+    const { referrer, commissions, hasLink, store } = captureReferral(
+      window.location.search,
+      readStored()
+    )
+    writeStored(store)
+    setCaptured({ referrer, commissions, hasLink })
   }, [])
 
   return captured

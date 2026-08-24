@@ -115,6 +115,62 @@ export function parseReferralLink(
   }
 }
 
+/** A validated pair as it is persisted for the visit. */
+export interface StoredReferralPair {
+  referrer: `0x${string}`
+  commissions: `0x${string}`
+}
+
+export interface ReferralCapture extends ReferralLink {
+  /** True when the visitor has a referral link, from this URL or earlier in the visit. */
+  hasLink: boolean
+  /** What storage should hold afterwards: a valid pair, or null to clear. */
+  store: StoredReferralPair | null
+}
+
+/**
+ * Decide what this visit's referral pair is, given the URL and whatever an
+ * earlier page view left in storage.
+ *
+ * FIRST LINK WINS. Attribution on the commissions contracts is
+ * first-affiliate-wins and permanent, and the business rule is the same
+ * off-chain: once a valid pair has been captured for the visit, a later link —
+ * valid, different, or broken — neither replaces nor clears it. The affiliate
+ * who brought the visitor keeps the referral.
+ *
+ * Storage is user-writable, so the stored pair is re-validated on the way out;
+ * junk is discarded (store: null) rather than honoured, and only a fully valid
+ * pair is ever persisted — a broken link is surfaced (hasLink true, halves
+ * null) but never stored.
+ */
+export function captureReferral(
+  search: string | URLSearchParams | null | undefined,
+  stored: { referrer?: string | null; commissions?: string | null } | null
+): ReferralCapture {
+  const storedReferrer = normalizeReferrer(stored?.referrer)
+  const storedCommissions = normalizeReferrer(stored?.commissions)
+  if (storedReferrer && storedCommissions) {
+    return {
+      referrer: storedReferrer,
+      commissions: storedCommissions,
+      hasLink: true,
+      store: { referrer: storedReferrer, commissions: storedCommissions }
+    }
+  }
+
+  if (hasReferralParams(search)) {
+    const { referrer, commissions } = parseReferralLink(search)
+    return {
+      referrer,
+      commissions,
+      hasLink: true,
+      store: referrer && commissions ? { referrer, commissions } : null
+    }
+  }
+
+  return { referrer: null, commissions: null, hasLink: false, store: null }
+}
+
 /**
  * Attribution on a Commissions contract is first-affiliate-wins and permanent.
  * Once a wallet has been credited to a sponsor, `_registerAffiliateIfNeeded`
