@@ -30,6 +30,29 @@ export interface ContractError {
 }
 
 /**
+ * How long to wait for a receipt before handing control back to the user. A
+ * transaction that has been broadcast is out of our hands; waiting on it
+ * forever only means the UI can never recover.
+ */
+export const RECEIPT_TIMEOUT_MS = 120_000
+
+/**
+ * The transaction was broadcast but we stopped waiting for its receipt. This is
+ * NOT a failure — it may well be mined a moment later — so it must be reported
+ * as pending rather than as a revert. handleContractError does this for every
+ * call site; callers that also need to close a dialog or reset form state catch
+ * it themselves first.
+ */
+export class TransactionPendingError extends Error {
+  readonly txHash: `0x${string}`
+  constructor(txHash: `0x${string}`) {
+    super('Transaction is still pending confirmation')
+    this.name = 'TransactionPendingError'
+    this.txHash = txHash
+  }
+}
+
+/**
  * Human-readable descriptions for all known contract custom errors.
  */
 const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
@@ -457,6 +480,18 @@ export const handleContractError = (
 ): void => {
   // Don't show error toast for user rejections - user knows they cancelled
   if (isUserRejection(error)) {
+    return
+  }
+
+  // Broadcast but unconfirmed is not a failure. Claiming one would be wrong —
+  // the transaction may land seconds later — and a "Failed" toast invites a
+  // retry that double-submits. Say exactly what is known.
+  if (error instanceof TransactionPendingError) {
+    showToast({
+      title: '⏳ Transaction Submitted',
+      description:
+        'Your transaction was sent but is taking longer than usual to confirm. It may still go through — check your wallet or the block explorer before trying again.'
+    })
     return
   }
 
