@@ -63,7 +63,10 @@ import {
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
-import { useReadLoansCalculateLoanDetails } from '@/src/generated'
+import {
+  useReadLoansCalculateLoanDetails,
+  useReadLoansGetAllInterestAprConfigs
+} from '@/src/generated'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -108,7 +111,6 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLoanTokenBalance,
     userLmlnBalance,
     loanConfig,
-    interestAprConfigs,
     paymentFeeBps,
     bpsDenominator,
     getGrossPaymentAmount,
@@ -154,6 +156,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const loanForExtension = activeLoans.find(
     (l) => l.id === selectedLoanForExtension
   )
+  // @ts-ignore - wagmi deep type instantiation
   const { data: extensionQuote } = useReadLoansCalculateLoanDetails({
     args: loanForExtension
       ? [
@@ -166,6 +169,23 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     query: { enabled: !!loanForExtension }
   })
   const freshExtensionFee = extensionQuote?.[2]
+
+  // APR tiers are configured per collateral asset, and the useLoans call above
+  // passes no loanRequest — so the tier list it returns is permanently empty
+  // in this component, which left the dialog's Estimated APR reading '—' for
+  // every loan. Read the tiers for the open dialog's loan instead.
+  // @ts-ignore - wagmi deep type instantiation
+  const { data: extensionAprConfigsRaw } = useReadLoansGetAllInterestAprConfigs(
+    {
+      args: loanForExtension ? [loanForExtension.collateralToken] : undefined,
+      query: { enabled: !!loanForExtension }
+    }
+  )
+  const extensionAprConfigs = (extensionAprConfigsRaw ?? []) as readonly {
+    minDuration: bigint
+    maxDuration: bigint
+    interestApr: bigint
+  }[]
   const extensionFeeForLoan = (loan: Loan): bigint => {
     if (
       loan.id === selectedLoanForExtension &&
@@ -1175,7 +1195,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         const minDur = loanConfig ? Number(loanConfig.minLoanDuration) : 0
                         const maxDur = Number(loan.originalDuration)
                         const stepDur = loanConfig ? Number(loanConfig.loanCycleDuration) : 1
-                        const aprConfig = interestAprConfigs.find(
+                        const aprConfig = extensionAprConfigs.find(
                           (c) => extensionDuration >= Number(c.minDuration) && extensionDuration <= Number(c.maxDuration)
                         )
                         const aprPct = aprConfig && tokenConfig
