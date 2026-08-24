@@ -21,8 +21,16 @@ import {
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
-import { erc20Abi, formatEther } from 'viem'
+import {
+  erc20Abi,
+  formatEther,
+  WaitForTransactionReceiptTimeoutError
+} from 'viem'
 import { grossPaymentAmount } from '@/src/utils/fees'
+import {
+  RECEIPT_TIMEOUT_MS,
+  TransactionPendingError
+} from '@/src/utils/errorHandling'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { useProtocolAddresses } from '../useProtocolAddresses'
 
@@ -370,19 +378,52 @@ export const useLoanOperations = (
       ? userCollateralBalance < collateralAmount
       : false
 
+  /**
+   * Refresh everything, WITHOUT blocking the caller.
+   *
+   * `invalidateQueries` resolves only after every active refetch has settled,
+   * so a single stalled or endlessly-retrying read makes an await on it hang
+   * forever. That is what left the deposit confirm modal spinning on a
+   * transaction that had already succeeded (fixed on the liquidity side in
+   * e02ed34) — and the loan modals block dismissal mid-tx, so a hang here traps
+   * the user outright. The UI re-renders as each query settles regardless, so
+   * nothing is gained by waiting.
+   */
+  const invalidateAll = useCallback(() => {
+    void queryClient.invalidateQueries()
+    void queryClient.refetchQueries({ type: 'active' })
+  }, [queryClient])
+
+  /** Let the node's state settle after the block, then refresh in the background. */
+  const scheduleRefresh = useCallback(() => {
+    setTimeout(invalidateAll, 3000)
+  }, [invalidateAll])
+
   // Wait for a tx to land and throw if it reverted on-chain — a reverted
   // approval must never surface as a success toast.
   const waitForSuccess = useCallback(
     async (txHash: `0x${string}`, label: string) => {
       if (!publicClient) return
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+      let receipt
+      try {
+        receipt = await publicClient.waitForTransactionReceipt({
+          hash: txHash,
+          timeout: RECEIPT_TIMEOUT_MS
+        })
+      } catch (waitError) {
+        if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+          scheduleRefresh()
+          throw new TransactionPendingError(txHash)
+        }
+        throw waitError
+      }
       if (receipt.status === 'reverted') {
         throw new Error(
           `${label} transaction was reverted on-chain. No changes were made — please try again.`
         )
       }
     },
-    [publicClient]
+    [publicClient, scheduleRefresh]
   )
 
   // Payable loan operations attach a native fee as msg.value. Nothing else in
@@ -493,7 +534,19 @@ export const useLoanOperations = (
   const waitAndInvalidate = useCallback(
     async (txHash: `0x${string}`) => {
       if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        let receipt
+        try {
+          receipt = await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            timeout: RECEIPT_TIMEOUT_MS
+          })
+        } catch (waitError) {
+          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+            scheduleRefresh()
+            throw new TransactionPendingError(txHash)
+          }
+          throw waitError
+        }
         if (receipt.status === 'reverted') {
           let revertError: unknown = null
           try {
@@ -512,9 +565,9 @@ export const useLoanOperations = (
           throw revertError ?? new Error('Transaction was reverted on-chain. The contract rejected the operation.')
         }
       }
-      await queryClient.invalidateQueries()
+      scheduleRefresh()
     },
-    [publicClient, queryClient]
+    [publicClient, scheduleRefresh]
   )
 
   const createLoan = useCallback(
