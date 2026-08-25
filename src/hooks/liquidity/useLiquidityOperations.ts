@@ -355,7 +355,12 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         nativeFee
       )
 
+      // Every write pins chainId: the addresses and preflight reads resolve
+      // against the wagmi chain, so a wallet mid-network-switch must be told
+      // to switch back rather than sign this calldata against another chain's
+      // address slot. Same on every write below.
       const txHash = await depositFn({
+        chainId,
         address: lpAddress,
         args: [token, amount, lockDuration, nonEarning],
         value: nativeFee,
@@ -549,6 +554,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       )
 
       const txHash = await writeReferralDepositFn({
+        chainId,
         address: referralRouterAddress,
         abi: referralDepositRouterAbi,
         functionName: 'depositWithReferral',
@@ -561,9 +567,13 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       // settleCommission is a gas-capped self-call, so the deposit can succeed
       // while the commission is skipped. The receipt is the only place that
       // distinction is recorded.
-      return { txHash, outcome: parseReferralOutcome(receipt?.logs) }
+      return {
+        txHash,
+        outcome: parseReferralOutcome(receipt?.logs, referralRouterAddress)
+      }
     },
     [
+      chainId,
       address,
       lpAddress,
       referralRouterAddress,
@@ -580,13 +590,14 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
       const txHash = await requestWithdrawalFn({
+        chainId,
         address: lpAddress,
         args: [amount]
       })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, lpAddress, requestWithdrawalFn, waitAndInvalidate]
+    [chainId, address, lpAddress, requestWithdrawalFn, waitAndInvalidate]
   )
 
   const claimEarnings = useCallback(async () => {
@@ -599,6 +610,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       nativeFee
     )
     const txHash = await claimEarningsFn({
+      chainId,
       address: lpAddress,
       value: nativeFee,
       ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
@@ -606,6 +618,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     await waitAndInvalidate(txHash)
     return txHash
   }, [
+    chainId,
     address,
     lpAddress,
     claimEarningsFn,
@@ -626,6 +639,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         nativeFee
       )
       const txHash = await compoundEarningsFn({
+        chainId,
         address: lpAddress,
         args: [lockDuration],
         value: nativeFee,
@@ -635,6 +649,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       return txHash
     },
     [
+      chainId,
       address,
       lpAddress,
       compoundEarningsFn,
@@ -646,20 +661,24 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   const pullEarnings = useCallback(async () => {
     if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-    const txHash = await pullEarningsFn({ address: lpAddress })
+    const txHash = await pullEarningsFn({ chainId, address: lpAddress })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [lpAddress, pullEarningsFn, waitAndInvalidate])
+  }, [chainId, lpAddress, pullEarningsFn, waitAndInvalidate])
 
   const transferAccount = useCallback(
     async (to: `0x${string}`) => {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-      const txHash = await transferAccountFn({ address: lpAddress, args: [to] })
+      const txHash = await transferAccountFn({
+        chainId,
+        address: lpAddress,
+        args: [to]
+      })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, lpAddress, transferAccountFn, waitAndInvalidate]
+    [chainId, address, lpAddress, transferAccountFn, waitAndInvalidate]
   )
 
   const claimWithdrawal = useCallback(
@@ -673,6 +692,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         nativeFee
       )
       const txHash = await claimWithdrawalFn({
+        chainId,
         address: lpAddress,
         args: [requestId],
         value: nativeFee,
@@ -682,6 +702,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       return txHash
     },
     [
+      chainId,
       address,
       lpAddress,
       claimWithdrawalFn,
@@ -693,19 +714,23 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   const fundWithdrawalQueue = useCallback(async () => {
     if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-    const txHash = await fundWithdrawalQueueFn({ address: lpAddress })
+    const txHash = await fundWithdrawalQueueFn({ chainId, address: lpAddress })
     await waitAndInvalidate(txHash)
     return txHash
-  }, [lpAddress, fundWithdrawalQueueFn, waitAndInvalidate])
+  }, [chainId, lpAddress, fundWithdrawalQueueFn, waitAndInvalidate])
 
   const processSwaps = useCallback(
     async (token: `0x${string}`) => {
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
-      const txHash = await processSwapsFn({ address: lpAddress, args: [token] })
+      const txHash = await processSwapsFn({
+        chainId,
+        address: lpAddress,
+        args: [token]
+      })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [lpAddress, processSwapsFn, waitAndInvalidate]
+    [chainId, lpAddress, processSwapsFn, waitAndInvalidate]
   )
 
   const approveToken = useCallback(
@@ -716,6 +741,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     ) => {
       if (!address) throw new Error('Wallet not connected')
       const txHash = await approveTokenFn({
+        chainId,
         address: tokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
@@ -736,7 +762,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       invalidateAll()
       return txHash
     },
-    [address, approveTokenFn, publicClient, invalidateAll, scheduleRefresh]
+    [chainId, address, approveTokenFn, publicClient, invalidateAll, scheduleRefresh]
   )
 
   const isTransacting =

@@ -501,12 +501,20 @@ export type ReferralOutcome =
  * deposit itself succeeds — the router then emits `ReferralSkipped` instead of
  * `ReferralCommissionPaid`. "Deposit succeeded, commission skipped" is a real
  * outcome the user must be told about, not an error.
+ *
+ * Only logs EMITTED BY THE ROUTER are considered: any other contract in the
+ * call tree (a deposit token, the pool) could emit an event with a matching
+ * signature and misreport the outcome — the toast is the user's only record
+ * of whether the commission was paid.
  */
 export function parseReferralOutcome(
-  logs: readonly Log[] | undefined
+  logs: readonly Log[] | undefined,
+  routerAddress: `0x${string}`
 ): ReferralOutcome {
   if (!logs) return { kind: 'none' }
+  const router = routerAddress.toLowerCase()
   for (const log of logs) {
+    if (log.address.toLowerCase() !== router) continue
     let decoded: { eventName?: string; args?: unknown }
     try {
       decoded = decodeEventLog({
@@ -515,7 +523,7 @@ export function parseReferralOutcome(
         topics: log.topics
       }) as { eventName?: string; args?: unknown }
     } catch {
-      continue // logs from the pool/token contracts won't match — expected
+      continue // non-matching router logs — expected
     }
     if (decoded.eventName === 'ReferralCommissionPaid') {
       const args = decoded.args as {

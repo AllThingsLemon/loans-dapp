@@ -115,15 +115,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   } = useLoans({ originationPayer: effectiveExtensionPayer })
   const { tokenConfig } = useContractTokenConfiguration()
   const { getCollateralByAddress } = useCollateralManager()
-  const {
-    isLoanOverdue,
-    isLoanInGracePeriod,
-    getPaymentProgress,
-    minimumPayment,
-    isPaymentRequired,
-    isCollateralWithdrawable,
-    getPaymentStatus
-  } = useLoanPayment(undefined, tokenConfig?.loanToken.decimals)
+  const { isLoanOverdue, isLoanInGracePeriod, getPaymentProgress } =
+    useLoanPayment()
 
   const { toast } = useToast()
   const [selectedLoan, setSelectedLoan] = useState<`0x${string}` | null>(null)
@@ -159,9 +152,22 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [openInfoLoanId, setOpenInfoLoanId] = useState<string | null>(null)
 
   const handleCopyLoanId = (id: string) => {
-    navigator.clipboard.writeText(id)
-    setCopiedLoanId(id)
-    setTimeout(() => setCopiedLoanId(null), 2000)
+    // Clipboard access can be denied — only show the copied check mark once
+    // the write actually succeeded, and say so when it didn't.
+    navigator.clipboard
+      .writeText(id)
+      .then(() => {
+        setCopiedLoanId(id)
+        setTimeout(() => setCopiedLoanId(null), 2000)
+      })
+      .catch(() => {
+        toast({
+          title: 'Copy Failed',
+          description:
+            'Could not access the clipboard. Copy the loan ID manually.',
+          variant: 'destructive'
+        })
+      })
   }
 
   // Helper function to format minimum payment with rounding (to nearest 0.10)

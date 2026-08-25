@@ -44,6 +44,15 @@ export interface UseLoanOperationsOptions {
   originationPayer?: `0x${string}`
 }
 
+// LMLN token charges a transfer fee. Selector 0x9d11aaaa returns 10.
+// The value is in basis points (BPS), denominator = 10000, so 10 BPS = 0.1%.
+// approveLoanFee adds a 10% buffer on top of origFee so the transferFrom always
+// succeeds even with minor LMLN price movement between approval and creation.
+// Module constants (not component state) so they never belong in dep arrays.
+const LMLN_FEE_DENOMINATOR = 10000n
+const LMLN_FEE_RATE_FALLBACK = 10n // 10 BPS = 0.1%
+const LMLN_FEE_RATE_SELECTOR = '0x9d11aaaa' as `0x${string}`
+
 export interface UseLoanOperationsReturn {
   // Operations
   createLoan: (loanRequest: LoanRequest) => Promise<`0x${string}` | undefined>
@@ -124,7 +133,9 @@ export const useLoanOperations = (
   // address — keeping `hasInsufficientLmln` and the allowance check honest
   // regardless of who is paying.
   const effectivePayer = originationPayer ?? address
-  const chainId = useChainId()
+  // Narrowed to the deployed chain ids so it can be passed straight to the
+  // generated write hooks' chainId parameter.
+  const chainId = useChainId() as keyof typeof loansAddress
   const publicClient = usePublicClient()
 
   // Get loans contract address for current chain
@@ -207,14 +218,6 @@ export const useLoanOperations = (
         enabled: !!feeTokenAddress && !!effectivePayer && !!loansContractAddress
       }
     })
-
-  // LMLN token charges a transfer fee. Selector 0x9d11aaaa returns 10.
-  // The value is in basis points (BPS), denominator = 10000, so 10 BPS = 0.1%.
-  // approveLoanFee adds a 10% buffer on top of origFee so the transferFrom always succeeds
-  // even with minor LMLN price movement between approval and loan creation.
-  const LMLN_FEE_DENOMINATOR = 10000n
-  const LMLN_FEE_RATE_FALLBACK = 10n // 10 BPS = 0.1%
-  const LMLN_FEE_RATE_SELECTOR = '0x9d11aaaa' as `0x${string}`
 
   // Get current collateral token allowance for CollateralManager
   const { data: currentCollateralAllowance, refetch: refetchCollateralAllowance } =
@@ -450,8 +453,11 @@ export const useLoanOperations = (
         throw new Error(`Insufficient LMLN balance. You need ${requiredFormatted} LMLN but only have ${availableFormatted} LMLN.`)
       }
 
-      // Approve the gross amount so the transferFrom (fee + tax) succeeds
+      // Approve the gross amount so the transferFrom (fee + tax) succeeds.
+      // chainId pinned on every write — a wallet mid-network-switch must be
+      // told to switch back, not sign against another chain's address slot.
       const approvalTxHash = await approveToken({
+        chainId,
         address: feeTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
@@ -468,11 +474,15 @@ export const useLoanOperations = (
     },
     [
       address,
+      chainId,
       originationFee,
       feeTokenAddress,
       loansContractAddress,
       approveToken,
       publicClient,
+      // The balance guard's error message must reflect the CURRENT balance,
+      // not a stale closure value.
+      userLmlnBalance,
       waitForSuccess,
       refetchLmlnAllowance
     ]
@@ -484,6 +494,7 @@ export const useLoanOperations = (
       if (!cmAddress) throw new Error('CollateralManager address not found')
 
       const txHash = await approveToken({
+        chainId,
         address: collateralToken,
         abi: erc20Abi,
         functionName: 'approve',
@@ -496,7 +507,7 @@ export const useLoanOperations = (
 
       return txHash
     },
-    [address, cmAddress, approveToken, waitForSuccess, refetchCollateralAllowance]
+    [chainId, address, cmAddress, approveToken, waitForSuccess, refetchCollateralAllowance]
   )
 
   const waitAndInvalidate = useCallback(
@@ -585,6 +596,7 @@ export const useLoanOperations = (
 
       // Execute the transaction — collateral is pre-approved to CollateralManager via ERC20
       const txHash = await initiateLoan({
+        chainId,
         args: [loanRequest.collateralToken, loanRequest.duration, loanRequest.loanAmount, loanRequest.ltv, payer],
         value: nativeFee,
       })
@@ -595,6 +607,7 @@ export const useLoanOperations = (
     },
     [
       address,
+      chainId,
       originationPayer,
       initiateLoan,
       collateralAmount,
@@ -605,6 +618,8 @@ export const useLoanOperations = (
       publicClient,
       initiateNativeFee,
       ensureNativeFeeBalance,
+      // Same stale-closure guard as approveLoanFee.
+      userLmlnBalance,
       waitAndInvalidate,
     ]
   )
@@ -623,6 +638,7 @@ export const useLoanOperations = (
       const grossAmount = getGrossPaymentAmount(amount)
 
       const txHash = await approveToken({
+        chainId,
         address: loanTokenAddress,
         abi: erc20Abi,
         functionName: 'approve',
@@ -638,6 +654,7 @@ export const useLoanOperations = (
       return txHash
     },
     [
+      chainId,
       address,
       loanTokenAddress,
       loansContractAddress,
@@ -714,6 +731,7 @@ export const useLoanOperations = (
       }
 
       const txHash = await makeLoanPayment({
+        chainId,
         args: [loanId, amount],
         value: nativeFee,
       })
@@ -726,6 +744,7 @@ export const useLoanOperations = (
       return txHash
     },
     [
+      chainId,
       address,
       makeLoanPayment,
       loanTokenAddress,
@@ -748,6 +767,7 @@ export const useLoanOperations = (
       }
 
       const txHash = await withdrawCollateral({
+        chainId,
         args: [loanId]
       })
 
@@ -757,7 +777,7 @@ export const useLoanOperations = (
 
       return txHash
     },
-    [address, withdrawCollateral, waitAndInvalidate]
+    [chainId, address, withdrawCollateral, waitAndInvalidate]
   )
 
   // Function to extend a loan by max allowed extension
@@ -779,11 +799,14 @@ export const useLoanOperations = (
         })
       }
 
-      const txHash = await extendLoanContract({ args: [loanId, extendTime, payer] })
+      const txHash = await extendLoanContract({
+        chainId,
+        args: [loanId, extendTime, payer]
+      })
       await waitAndInvalidate(txHash)
       return txHash
     },
-    [address, originationPayer, extendLoanContract, publicClient, loansContractAddress, waitAndInvalidate]
+    [chainId, address, originationPayer, extendLoanContract, publicClient, loansContractAddress, waitAndInvalidate]
   )
 
   return {

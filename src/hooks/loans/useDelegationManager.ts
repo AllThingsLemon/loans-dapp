@@ -46,10 +46,12 @@ export function useDelegationManager(
   candidate: string
 ): UseDelegationManagerResult {
   const { address } = useAccount()
-  const chainId = useChainId()
+  // Narrowed to the deployed chain ids so it can be passed straight to the
+  // generated write hooks' chainId parameter.
+  const chainId = useChainId() as keyof typeof loansAddress
   const publicClient = usePublicClient()
   const queryClient = useQueryClient()
-  const loansContractAddress = loansAddress[chainId as keyof typeof loansAddress]
+  const loansContractAddress = loansAddress[chainId]
   const { data: feeTokenAddress } = useReadLoansOriginationFeeToken()
 
   const trimmed = candidate.trim()
@@ -160,7 +162,9 @@ export function useDelegationManager(
       if (!hasMaxLmlnAllowance) {
         setIsApprovingLmln(true)
         try {
+          // chainId pinned on every write — see useLoanOperations.
           const approvalHash = await approveLmln({
+            chainId,
             address: feeTokenAddress,
             abi: erc20Abi,
             functionName: 'approve',
@@ -175,7 +179,7 @@ export function useDelegationManager(
 
       setIsWritingDelegation(true)
       try {
-        const hash = await setDelegate({ args: [borrower, true] })
+        const hash = await setDelegate({ chainId, args: [borrower, true] })
         await waitForSuccess(hash, 'Delegation')
         await refreshAfterTx()
       } finally {
@@ -183,6 +187,7 @@ export function useDelegationManager(
       }
     },
     [
+      chainId,
       address,
       loansContractAddress,
       feeTokenAddress,
@@ -200,14 +205,14 @@ export function useDelegationManager(
       if (!address) throw new Error('Connect a wallet first.')
       setIsWritingDelegation(true)
       try {
-        const hash = await setDelegate({ args: [borrower, false] })
+        const hash = await setDelegate({ chainId, args: [borrower, false] })
         await waitForSuccess(hash, 'Revocation')
         await refreshAfterTx()
       } finally {
         setIsWritingDelegation(false)
       }
     },
-    [address, setDelegate, waitForSuccess, refreshAfterTx]
+    [chainId, address, setDelegate, waitForSuccess, refreshAfterTx]
   )
 
   const state: DelegationFormState =

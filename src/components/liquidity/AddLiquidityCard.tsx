@@ -267,16 +267,18 @@ export function AddLiquidityCard({
   })
   const minimumDepositValue = minimumDepositValueRaw as bigint | undefined
 
-  // What is the user's token balance worth in stable terms?
+  // What is the user's token balance worth in stable terms? A zero balance is
+  // a real answer, not a missing one — `!== undefined`, never bigint
+  // truthiness, or a zero-balance wallet renders a blank instead of $0.00.
   const { data: balanceCreditRaw } = useReadContract({
     address: lpAddress,
     abi: liquidityPoolAbi as unknown as any[],
     functionName: 'getDepositCredit',
     args:
-      selectedAsset && userTokenBalance
+      selectedAsset && userTokenBalance !== undefined
         ? [selectedAsset, userTokenBalance]
         : undefined,
-    query: { enabled: !!selectedAsset && !!userTokenBalance }
+    query: { enabled: !!selectedAsset && userTokenBalance !== undefined }
   })
 
   // Filter to enabled tiers only
@@ -362,6 +364,12 @@ export function AddLiquidityCard({
     return grossTokenAmount > userTokenBalance
   }, [grossTokenAmount, userTokenBalance])
 
+  // Undefined allowance means UNKNOWN (read in flight — e.g. right after the
+  // spender flips pool↔router), not insufficient. The Approve button stays
+  // visible so the layout doesn't jump, but is held disabled until the read
+  // resolves — an eager click here would fire a redundant approval.
+  const allowanceUnknown =
+    !!grossTokenAmount && currentAllowance === undefined
   const needsApproval = useMemo(() => {
     if (!grossTokenAmount) return false
     if (currentAllowance === undefined) return true
@@ -377,7 +385,9 @@ export function AddLiquidityCard({
       await refetchAllowance()
       toast({
         title: '\u2705 Approval Successful',
-        description: `Approved ${tokenEquivalent} ${symbol}. You can now deposit.`
+        // No amount quoted: the approval carries headroom over the typed
+        // amount (fee + price buffer), so naming a figure would misstate it.
+        description: `Approved ${symbol} spending. You can now deposit.`
       })
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Approval Failed')
@@ -458,9 +468,12 @@ export function AddLiquidityCard({
       }
       setAmount('')
       setShowConfirmDialog(false)
-      await refetchBalance()
-      await refetchAllowance()
-      await refetch()
+      // Fire-and-forget: the dialog is already closed and scheduleRefresh
+      // covers a full refresh moments later — awaiting these only held the
+      // Deposit button in its busy state.
+      void refetchBalance()
+      void refetchAllowance()
+      void refetch()
     } catch (err: unknown) {
       // Broadcast but unconfirmed. Claiming failure would be wrong — the
       // deposit may land seconds later — so say exactly what is known and let
@@ -528,6 +541,10 @@ export function AddLiquidityCard({
               className='pl-7 pr-16'
               min='0'
               step='any'
+              // An amount typed before the stable token's decimals resolve
+              // would parse at the 18-decimal fallback — wrong scale on a
+              // 6-decimal token. Hold input until the read lands.
+              disabled={stableTokenDecimals === undefined}
             />
             <span className='absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground'>
               USD
@@ -665,12 +682,17 @@ export function AddLiquidityCard({
           !isReferralBlocked ? (
             <Button
               onClick={handleApprove}
-              disabled={isProcessing || !tokenAmount}
+              disabled={isProcessing || !tokenAmount || allowanceUnknown}
               className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
               {isProcessing ? (
                 <>
                   <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving...
+                </>
+              ) : allowanceUnknown ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Checking
+                  approval...
                 </>
               ) : (
                 `Approve ${symbol}`

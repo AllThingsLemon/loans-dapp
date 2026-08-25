@@ -121,7 +121,8 @@ export function RemoveLiquidityCard({
       })
       setAmount('')
       setShowConfirmDialog(false)
-      await refetch()
+      // Fire-and-forget — scheduleRefresh covers a full refresh moments later.
+      void refetch()
     } catch (err: unknown) {
       handleContractError(
         err as ContractError,
@@ -190,7 +191,7 @@ export function RemoveLiquidityCard({
         description: `${claimNetDisplay} ${symbol} sent to your wallet.`
       })
       setClaimModal({ open: false, requestId: null, amount: 0n })
-      await refetch()
+      void refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Claim Failed')
     } finally {
@@ -207,7 +208,7 @@ export function RemoveLiquidityCard({
         description: `Withdrawal queue has been funded with available principal.`
       })
       setFundQueueModal(false)
-      await refetch()
+      void refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Fund Queue Failed')
     } finally {
@@ -240,12 +241,17 @@ export function RemoveLiquidityCard({
               className='pr-24'
               min='0'
               step='any'
+              // An amount typed (or MAX clicked) before the stable token's
+              // decimals resolve would parse at the 18-decimal fallback —
+              // wrong raw amount on a 6-decimal token. Hold until it lands.
+              disabled={stableTokenDecimals === undefined}
             />
             <div className='absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1'>
               <button
                 type='button'
                 onClick={handleMax}
-                className='text-xs font-semibold text-yellow-600 hover:text-yellow-700 transition-colors'
+                disabled={stableTokenDecimals === undefined}
+                className='text-xs font-semibold text-yellow-600 hover:text-yellow-700 transition-colors disabled:opacity-50'
               >
                 MAX
               </button>

@@ -91,9 +91,11 @@ export function useReferralRouter({
   const { data: pausedRaw, isLoading: pausedLoading } = useReadContract(
     routerRead('paused')
   )
-  const { data: allowedRaw, isLoading: allowedLoading } = useReadContract(
-    routerRead('allowedCommissionsList')
-  )
+  const {
+    data: allowedRaw,
+    isLoading: allowedLoading,
+    error: allowedError
+  } = useReadContract(routerRead('allowedCommissionsList'))
   // Who, if anyone, already owns this wallet on this commissions contract?
   // Attribution is permanent, so this beats whatever the link says.
   const { data: sponsorRaw, isLoading: sponsorLoading } = useReadContract({
@@ -140,7 +142,12 @@ export function useReferralRouter({
 
   // Left undefined while pending on purpose: evaluateReferralGate returns
   // 'checking' rather than judging a link against a list it hasn't read yet.
-  const allowedCommissions = allowedRaw as readonly `0x${string}`[] | undefined
+  // A read that has definitively ERRORED is different — leaving it undefined
+  // would hold the gate on 'checking' forever. Fail closed with an empty list
+  // (→ 'commissions-not-allowed'), mirroring the isRegistered handling below.
+  const allowedCommissions = allowedError
+    ? ([] as readonly `0x${string}`[])
+    : (allowedRaw as readonly `0x${string}`[] | undefined)
 
   const routerPool = poolRaw as `0x${string}` | undefined
 
