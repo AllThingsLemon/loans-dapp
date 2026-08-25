@@ -483,30 +483,84 @@ export function LiquidityPerformance({
     </div>
   )
 
+  // Shared confirmation modal. Must render in BOTH views below: the
+  // Distribute Earnings button appears in the no-position view too (anyone
+  // may trigger a distribution), and a button whose only job is to open this
+  // dialog does nothing at all in a branch that doesn't render it — which is
+  // exactly the bug this used to be.
+  const confirmDialog = (
+    <Dialog
+      open={confirmModal.open}
+      onOpenChange={(open) => {
+        if (!open && isProcessing !== null) return
+        if (!open) setConfirmModal((m) => ({ ...m, open: false }))
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{confirmModal.title}</DialogTitle>
+        </DialogHeader>
+        <div className='py-2'>
+          <p className='text-sm text-muted-foreground'>
+            {confirmModal.description}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button
+            variant='outline'
+            onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}
+            disabled={isProcessing !== null}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={isProcessing !== null}
+            onClick={async () => {
+              const { actionName, action, successMsg } = confirmModal
+              const ok = await handleAction(actionName, action, successMsg)
+              if (ok) setConfirmModal((m) => ({ ...m, open: false }))
+            }}
+          >
+            {isProcessing === confirmModal.actionName ? (
+              <>
+                <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…
+              </>
+            ) : (
+              'Confirm'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
   // No position view
   if (!hasPosition) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className='flex items-center gap-2'>
-            <TrendingUp className='h-5 w-5' />
-            Liquidity Performance
-          </CardTitle>
-          <CardDescription>Pool performance overview</CardDescription>
-        </CardHeader>
-        <CardContent className='space-y-6'>
-          <PoolOverview />
-          <div className='border-t pt-4'>
-            <EarningsDistribution />
-          </div>
-          <div className='border-t pt-4 text-center'>
-            <p className='text-sm text-muted-foreground'>
-              Deposit liquidity to start earning from borrower interest
-              payments.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <TrendingUp className='h-5 w-5' />
+              Liquidity Performance
+            </CardTitle>
+            <CardDescription>Pool performance overview</CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-6'>
+            <PoolOverview />
+            <div className='border-t pt-4'>
+              <EarningsDistribution />
+            </div>
+            <div className='border-t pt-4 text-center'>
+              <p className='text-sm text-muted-foreground'>
+                Deposit liquidity to start earning from borrower interest
+                payments.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        {confirmDialog}
+      </>
     )
   }
 
@@ -963,50 +1017,7 @@ export function LiquidityPerformance({
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Modal */}
-      <Dialog
-        open={confirmModal.open}
-        onOpenChange={(open) => {
-          if (!open && isProcessing !== null) return
-          if (!open) setConfirmModal((m) => ({ ...m, open: false }))
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{confirmModal.title}</DialogTitle>
-          </DialogHeader>
-          <div className='py-2'>
-            <p className='text-sm text-muted-foreground'>
-              {confirmModal.description}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant='outline'
-              onClick={() => setConfirmModal((m) => ({ ...m, open: false }))}
-              disabled={isProcessing !== null}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={isProcessing !== null}
-              onClick={async () => {
-                const { actionName, action, successMsg } = confirmModal
-                const ok = await handleAction(actionName, action, successMsg)
-                if (ok) setConfirmModal((m) => ({ ...m, open: false }))
-              }}
-            >
-              {isProcessing === confirmModal.actionName ? (
-                <>
-                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…
-                </>
-              ) : (
-                'Confirm'
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {confirmDialog}
     </>
   )
 }
