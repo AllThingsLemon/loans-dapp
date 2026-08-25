@@ -27,7 +27,7 @@ import {
   type ContractError
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
-import { TransactionPendingError } from '@/src/hooks/liquidity/useLiquidityOperations'
+import { TransactionPendingError } from '@/src/utils/errorHandling'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
@@ -39,6 +39,13 @@ import { truncateAddress } from '@/src/utils/format'
 // 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
 // 10-year tier to "9yr".
 const SECONDS_PER_YEAR = 360 * 24 * 3600
+
+/** The card's shared 2-decimal token-amount display format. */
+const fmt2 = (value: bigint, tokenDecimals: number) =>
+  parseFloat(formatTokenAmount(value, tokenDecimals)).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
 
 function formatLockDuration(duration: bigint): string {
   const s = Number(duration)
@@ -287,14 +294,7 @@ export function AddLiquidityCard({
 
   const tokenAmount = tokenAmountRaw as unknown as bigint | undefined
 
-  const tokenEquivalent = useMemo(() => {
-    if (!tokenAmount) return undefined
-    const formatted = parseFloat(formatTokenAmount(tokenAmount, decimals))
-    return formatted.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }, [tokenAmount, decimals])
+  const tokenEquivalent = tokenAmount ? fmt2(tokenAmount, decimals) : undefined
 
   // Pool deposit fee — same FEE_BPS the contract takes via _takeIncomingFee
   // for earning deposits. Skipped for non-earning deposits (contract path
@@ -308,17 +308,24 @@ export function AddLiquidityCard({
   const effectiveNonEarning = useReferralPath ? false : isNonEarning
   const depositFeeApplies = !!depositFeePct && !effectiveNonEarning
 
-  const depositFeeTokens = useMemo(() => {
-    if (!depositFeeApplies || !tokenAmount || !feeConfig) return undefined
-    const fee = (tokenAmount * feeConfig.feeBps) / 10000n
-    return parseFloat(formatTokenAmount(fee, decimals)).toLocaleString(
-      'en-US',
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }
-    )
-  }, [depositFeeApplies, tokenAmount, feeConfig, decimals])
+  // Raw fee in token units. The fee is taken ON TOP of the deposit — the
+  // contract pulls amount + fee — so everything that asks "can this wallet
+  // cover the deposit" (balance, allowance, approval) must use the gross
+  // amount, not the amount alone.
+  const depositFeeRaw =
+    depositFeeApplies && tokenAmount && feeConfig
+      ? (tokenAmount * feeConfig.feeBps) / 10000n
+      : 0n
+
+  const grossTokenAmount =
+    tokenAmount === undefined ? undefined : tokenAmount + depositFeeRaw
+
+  const grossTokenEquivalent = grossTokenAmount
+    ? fmt2(grossTokenAmount, decimals)
+    : undefined
+
+  const depositFeeTokens =
+    depositFeeRaw === 0n ? undefined : fmt2(depositFeeRaw, decimals)
 
   // Floor the wallet balance to 2 decimals (don't round) so the displayed
   // value never exceeds what the user actually has — typing the shown value
@@ -351,21 +358,21 @@ export function AddLiquidityCard({
   }, [minimumDepositValue, stableDecimals])
 
   const insufficientBalance = useMemo(() => {
-    if (!tokenAmount || userTokenBalance === undefined) return false
-    return tokenAmount > userTokenBalance
-  }, [tokenAmount, userTokenBalance])
+    if (!grossTokenAmount || userTokenBalance === undefined) return false
+    return grossTokenAmount > userTokenBalance
+  }, [grossTokenAmount, userTokenBalance])
 
   const needsApproval = useMemo(() => {
-    if (!tokenAmount) return false
+    if (!grossTokenAmount) return false
     if (currentAllowance === undefined) return true
-    return currentAllowance < tokenAmount
-  }, [tokenAmount, currentAllowance])
+    return currentAllowance < grossTokenAmount
+  }, [grossTokenAmount, currentAllowance])
 
   const handleApprove = async () => {
-    if (!tokenAmount || !selectedAsset || !depositSpender) return
+    if (!grossTokenAmount || !selectedAsset || !depositSpender) return
     setIsProcessing(true)
     try {
-      const approvalAmount = tokenAmount + tokenAmount / 10n
+      const approvalAmount = grossTokenAmount + grossTokenAmount / 10n
       await approveToken(approvalAmount, selectedAsset, depositSpender)
       await refetchAllowance()
       toast({
@@ -422,7 +429,8 @@ export function AddLiquidityCard({
           title: '\u2705 Deposit Successful',
           description: `Deposited $${amount} (${tokenEquivalent} ${symbol}) into the liquidity pool.${commissionNote}`
         })
-      } else {
+      } else if (gate.status === 'disabled') {
+        // No router on this chain \u2014 the plain deposit path applies unchanged.
         await deposit(
           selectedAsset,
           tokenAmount,
@@ -433,6 +441,20 @@ export function AddLiquidityCard({
           title: '\u2705 Deposit Successful',
           description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ' into the liquidity pool'}.`
         })
+      } else {
+        // The gate left 'ready' while the dialog was open (account switch,
+        // background refetch flipping paused/allowlist/registration). On a
+        // referral-only chain that must never fall through to a direct pool
+        // deposit \u2014 no commission would be paid and the referral requirement
+        // would be bypassed. Refuse instead; the gate re-evaluates on its own.
+        setShowConfirmDialog(false)
+        toast({
+          title: 'Deposit Not Sent',
+          description:
+            'Your referral could no longer be verified, so the deposit was stopped. No transaction was sent \u2014 please try again.',
+          variant: 'destructive'
+        })
+        return
       }
       setAmount('')
       setShowConfirmDialog(false)
@@ -592,8 +614,9 @@ export function AddLiquidityCard({
           )}
           {insufficientBalance && (
             <p className='text-sm text-destructive'>
-              Insufficient balance. You need ~{tokenEquivalent} {symbol} but
-              your balance is only worth ${balanceInUsd ?? '0'} USD.
+              Insufficient balance. You need ~{grossTokenEquivalent} {symbol}
+              {depositFeeApplies ? ' (deposit + fee)' : ''} but your balance is
+              only worth ${balanceInUsd ?? '0'} USD.
             </p>
           )}
           {/* The Deposit button used to sit inexplicably disabled when a

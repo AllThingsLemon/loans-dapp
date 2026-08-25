@@ -2,7 +2,11 @@
  * Utility functions for consistent error handling across the application
  */
 
-import { decodeErrorResult, toFunctionSelector } from 'viem'
+import {
+  decodeErrorResult,
+  toFunctionSelector,
+  WaitForTransactionReceiptTimeoutError
+} from 'viem'
 import type { Abi } from 'viem'
 
 /** The `error` entries of an ABI (viem doesn't re-export abitype's AbiError). */
@@ -26,6 +30,64 @@ export interface ContractError {
     message?: string
     errorName?: string
     args?: readonly unknown[]
+  }
+}
+
+/**
+ * How long to wait for a receipt before handing control back to the user. A
+ * transaction that has been broadcast is out of our hands; waiting on it
+ * forever only means the UI can never recover.
+ */
+export const RECEIPT_TIMEOUT_MS = 120_000
+
+/**
+ * The transaction was broadcast but we stopped waiting for its receipt. This is
+ * NOT a failure — it may well be mined a moment later — so it must be reported
+ * as pending rather than as a revert. handleContractError does this for every
+ * call site; callers that also need to close a dialog or reset form state catch
+ * it themselves first.
+ */
+export class TransactionPendingError extends Error {
+  readonly txHash: `0x${string}`
+  constructor(txHash: `0x${string}`) {
+    super('Transaction is still pending confirmation')
+    this.name = 'TransactionPendingError'
+    this.txHash = txHash
+  }
+}
+
+/**
+ * Wait for a receipt with the shared timeout, translating expiry into
+ * TransactionPendingError — the single place the timeout policy lives, used by
+ * every operation hook. `onTimeout` runs before the throw so callers can kick
+ * off a background refresh for when the transaction does land.
+ *
+ * The client is typed structurally so this file doesn't take on viem's deep
+ * PublicClient generics; any viem public client satisfies it.
+ */
+export async function waitForReceiptOrPending<
+  TClient extends {
+    waitForTransactionReceipt: (args: {
+      hash: `0x${string}`
+      timeout?: number
+    }) => Promise<unknown>
+  }
+>(
+  publicClient: TClient,
+  txHash: `0x${string}`,
+  onTimeout?: () => void
+): Promise<Awaited<ReturnType<TClient['waitForTransactionReceipt']>>> {
+  try {
+    return (await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      timeout: RECEIPT_TIMEOUT_MS
+    })) as Awaited<ReturnType<TClient['waitForTransactionReceipt']>>
+  } catch (waitError) {
+    if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+      onTimeout?.()
+      throw new TransactionPendingError(txHash)
+    }
+    throw waitError
   }
 }
 
@@ -457,6 +519,18 @@ export const handleContractError = (
 ): void => {
   // Don't show error toast for user rejections - user knows they cancelled
   if (isUserRejection(error)) {
+    return
+  }
+
+  // Broadcast but unconfirmed is not a failure. Claiming one would be wrong —
+  // the transaction may land seconds later — and a "Failed" toast invites a
+  // retry that double-submits. Say exactly what is known.
+  if (error instanceof TransactionPendingError) {
+    showToast({
+      title: '⏳ Transaction Submitted',
+      description:
+        'Your transaction was sent but is taking longer than usual to confirm. It may still go through — check your wallet or the block explorer before trying again.'
+    })
     return
   }
 

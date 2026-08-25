@@ -6,14 +6,12 @@ import {
   useReadContract,
   useWriteContract
 } from 'wagmi'
-import { useQueryClient } from '@tanstack/react-query'
 import {
   erc20Abi,
   encodeFunctionData,
   BaseError,
   HttpRequestError,
-  TimeoutError,
-  WaitForTransactionReceiptTimeoutError
+  TimeoutError
 } from 'viem'
 import {
   useWriteLiquidityPoolDeposit,
@@ -32,6 +30,8 @@ import {
   referralDepositRouterAbi
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
+import { useBackgroundRefresh } from '@/src/hooks/query/useBackgroundRefresh'
+import { waitForReceiptOrPending } from '@/src/utils/errorHandling'
 import {
   getReferralRouterAddress,
   isReferralEnabled
@@ -44,26 +44,6 @@ import {
   type ReferralPreflightFailure
 } from '@/src/utils/referral'
 
-/**
- * How long to wait for a receipt before handing control back to the user. A
- * transaction that has been broadcast is out of our hands; waiting on it
- * forever only means the UI can never recover.
- */
-const RECEIPT_TIMEOUT_MS = 120_000
-
-/**
- * The transaction was broadcast but we stopped waiting for its receipt. This is
- * NOT a failure — it may well be mined a moment later — so callers must report
- * it as pending rather than as a revert.
- */
-export class TransactionPendingError extends Error {
-  readonly txHash: `0x${string}`
-  constructor(txHash: `0x${string}`) {
-    super('Transaction is still pending confirmation')
-    this.name = 'TransactionPendingError'
-    this.txHash = txHash
-  }
-}
 
 /**
  * A transport failure (RPC timeout / rate-limit) is not an answer from chain.
@@ -126,7 +106,6 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   const { address } = useAccount()
   const chainId = useChainId()
   const publicClient = usePublicClient()
-  const queryClient = useQueryClient()
 
   // LiquidityPool address resolved from Loans.liquidityPool()
   const { liquidityPool: lpAddress } = useProtocolAddresses()
@@ -213,24 +192,9 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     isPending: isDepositingWithReferral
   } = useWriteContract({ mutation: { retry: false } })
 
-  /**
-   * Refresh everything, WITHOUT blocking the caller.
-   *
-   * Both of these resolve only after every active refetch has settled, so a
-   * single stalled or endlessly-retrying read makes them hang forever. Awaiting
-   * that is what left the deposit confirm modal spinning on a transaction that
-   * had already succeeded, with no way to dismiss it. The UI re-renders as each
-   * query settles regardless, so nothing is gained by waiting.
-   */
-  const invalidateAll = useCallback(() => {
-    void queryClient.invalidateQueries()
-    void queryClient.refetchQueries({ type: 'active' })
-  }, [queryClient])
-
-  /** Let the node's state settle after the block, then refresh in the background. */
-  const scheduleRefresh = useCallback(() => {
-    setTimeout(invalidateAll, 3000)
-  }, [invalidateAll])
+  // Shared non-blocking refresh — see useBackgroundRefresh for the rationale
+  // (and liquidity-refresh.test.ts, which pins the mechanism).
+  const { invalidateAll, scheduleRefresh } = useBackgroundRefresh()
 
   // Returns the receipt when one could be fetched — the referral path reads its
   // logs to tell "commission paid" from "commission skipped". Callers that
@@ -245,18 +209,11 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
           >
         | undefined
       if (publicClient) {
-        try {
-          receipt = await publicClient.waitForTransactionReceipt({
-            hash: txHash,
-            timeout: RECEIPT_TIMEOUT_MS
-          })
-        } catch (waitError) {
-          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
-            scheduleRefresh()
-            throw new TransactionPendingError(txHash)
-          }
-          throw waitError
-        }
+        receipt = await waitForReceiptOrPending(
+          publicClient,
+          txHash,
+          scheduleRefresh
+        )
         if (receipt.status === 'reverted') {
           // Re-simulate the exact transaction to extract the real revert reason.
           // We simulate at blockNumber - 1 (just before the block that included the tx)
@@ -380,6 +337,14 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     ) => {
       if (!address) throw new Error('Wallet not connected')
       if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      // Referral-enabled chains are referral-ONLY: a direct pool deposit pays
+      // no commission and bypasses the policy. The UI enforces this too, but
+      // the invariant belongs to the deposit itself, not to a component branch.
+      if (isReferralEnabled(chainId)) {
+        throw new Error(
+          'Deposits on this network must go through the referral router'
+        )
+      }
 
       // deposit() is payable — resolve the required native fee fresh from chain.
       const nativeFee = await resolveNativeFee('deposit')
@@ -402,6 +367,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     [
       address,
       lpAddress,
+      chainId,
       depositFn,
       resolveNativeFee,
       estimateGasWithBuffer,
@@ -756,19 +722,11 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
         args: [spender, amount]
       })
       if (publicClient) {
-        let receipt
-        try {
-          receipt = await publicClient.waitForTransactionReceipt({
-            hash: txHash,
-            timeout: RECEIPT_TIMEOUT_MS
-          })
-        } catch (waitError) {
-          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
-            scheduleRefresh()
-            throw new TransactionPendingError(txHash)
-          }
-          throw waitError
-        }
+        const receipt = await waitForReceiptOrPending(
+          publicClient,
+          txHash,
+          scheduleRefresh
+        )
         if (receipt.status === 'reverted') {
           throw new Error(
             'Approval transaction was reverted on-chain. No changes were made — please try again.'

@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
-import { useQueryClient } from '@tanstack/react-query'
 import { LOAN_STATUS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
@@ -23,6 +22,8 @@ import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
 import { erc20Abi, formatEther } from 'viem'
 import { grossPaymentAmount } from '@/src/utils/fees'
+import { waitForReceiptOrPending } from '@/src/utils/errorHandling'
+import { useBackgroundRefresh } from '@/src/hooks/query/useBackgroundRefresh'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { useProtocolAddresses } from '../useProtocolAddresses'
 
@@ -125,7 +126,6 @@ export const useLoanOperations = (
   const effectivePayer = originationPayer ?? address
   const chainId = useChainId()
   const publicClient = usePublicClient()
-  const queryClient = useQueryClient()
 
   // Get loans contract address for current chain
   const loansContractAddress =
@@ -370,19 +370,28 @@ export const useLoanOperations = (
       ? userCollateralBalance < collateralAmount
       : false
 
+  // Shared non-blocking refresh — see useBackgroundRefresh for the rationale
+  // (the loan modals block dismissal mid-tx, so an awaited refresh here would
+  // trap the user on a stalled read).
+  const { invalidateAll, scheduleRefresh } = useBackgroundRefresh()
+
   // Wait for a tx to land and throw if it reverted on-chain — a reverted
   // approval must never surface as a success toast.
   const waitForSuccess = useCallback(
     async (txHash: `0x${string}`, label: string) => {
       if (!publicClient) return
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+      const receipt = await waitForReceiptOrPending(
+        publicClient,
+        txHash,
+        scheduleRefresh
+      )
       if (receipt.status === 'reverted') {
         throw new Error(
           `${label} transaction was reverted on-chain. No changes were made — please try again.`
         )
       }
     },
-    [publicClient]
+    [publicClient, scheduleRefresh]
   )
 
   // Payable loan operations attach a native fee as msg.value. Nothing else in
@@ -493,7 +502,11 @@ export const useLoanOperations = (
   const waitAndInvalidate = useCallback(
     async (txHash: `0x${string}`) => {
       if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
+        const receipt = await waitForReceiptOrPending(
+          publicClient,
+          txHash,
+          scheduleRefresh
+        )
         if (receipt.status === 'reverted') {
           let revertError: unknown = null
           try {
@@ -512,9 +525,9 @@ export const useLoanOperations = (
           throw revertError ?? new Error('Transaction was reverted on-chain. The contract rejected the operation.')
         }
       }
-      await queryClient.invalidateQueries()
+      scheduleRefresh()
     },
-    [publicClient, queryClient]
+    [publicClient, scheduleRefresh]
   )
 
   const createLoan = useCallback(
