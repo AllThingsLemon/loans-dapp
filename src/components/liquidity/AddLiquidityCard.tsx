@@ -27,7 +27,7 @@ import {
   type ContractError
 } from '@/src/utils/errorHandling'
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
-import { TransactionPendingError } from '@/src/hooks/liquidity/useLiquidityOperations'
+import { TransactionPendingError } from '@/src/utils/errorHandling'
 import type { LockDurationTier } from '@/src/types/liquidity'
 import { liquidityPoolAbi } from '@/src/generated'
 import type { ReferralState } from '@/src/hooks/referral/useReferralState'
@@ -39,6 +39,13 @@ import { truncateAddress } from '@/src/utils/format'
 // 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
 // 10-year tier to "9yr".
 const SECONDS_PER_YEAR = 360 * 24 * 3600
+
+/** The card's shared 2-decimal token-amount display format. */
+const fmt2 = (value: bigint, tokenDecimals: number) =>
+  parseFloat(formatTokenAmount(value, tokenDecimals)).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
 
 function formatLockDuration(duration: bigint): string {
   const s = Number(duration)
@@ -287,14 +294,7 @@ export function AddLiquidityCard({
 
   const tokenAmount = tokenAmountRaw as unknown as bigint | undefined
 
-  const tokenEquivalent = useMemo(() => {
-    if (!tokenAmount) return undefined
-    const formatted = parseFloat(formatTokenAmount(tokenAmount, decimals))
-    return formatted.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }, [tokenAmount, decimals])
+  const tokenEquivalent = tokenAmount ? fmt2(tokenAmount, decimals) : undefined
 
   // Pool deposit fee — same FEE_BPS the contract takes via _takeIncomingFee
   // for earning deposits. Skipped for non-earning deposits (contract path
@@ -312,36 +312,20 @@ export function AddLiquidityCard({
   // contract pulls amount + fee — so everything that asks "can this wallet
   // cover the deposit" (balance, allowance, approval) must use the gross
   // amount, not the amount alone.
-  const depositFeeRaw = useMemo(() => {
-    if (!depositFeeApplies || !tokenAmount || !feeConfig) return 0n
-    return (tokenAmount * feeConfig.feeBps) / 10000n
-  }, [depositFeeApplies, tokenAmount, feeConfig])
+  const depositFeeRaw =
+    depositFeeApplies && tokenAmount && feeConfig
+      ? (tokenAmount * feeConfig.feeBps) / 10000n
+      : 0n
 
-  const grossTokenAmount = useMemo(
-    () => (tokenAmount === undefined ? undefined : tokenAmount + depositFeeRaw),
-    [tokenAmount, depositFeeRaw]
-  )
+  const grossTokenAmount =
+    tokenAmount === undefined ? undefined : tokenAmount + depositFeeRaw
 
-  const grossTokenEquivalent = useMemo(() => {
-    if (!grossTokenAmount) return undefined
-    return parseFloat(
-      formatTokenAmount(grossTokenAmount, decimals)
-    ).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })
-  }, [grossTokenAmount, decimals])
+  const grossTokenEquivalent = grossTokenAmount
+    ? fmt2(grossTokenAmount, decimals)
+    : undefined
 
-  const depositFeeTokens = useMemo(() => {
-    if (depositFeeRaw === 0n) return undefined
-    return parseFloat(formatTokenAmount(depositFeeRaw, decimals)).toLocaleString(
-      'en-US',
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }
-    )
-  }, [depositFeeRaw, decimals])
+  const depositFeeTokens =
+    depositFeeRaw === 0n ? undefined : fmt2(depositFeeRaw, decimals)
 
   // Floor the wallet balance to 2 decimals (don't round) so the displayed
   // value never exceeds what the user actually has — typing the shown value

@@ -83,8 +83,9 @@ const STEPS = [
   }
 ] as const
 
-const TRIPLET_ROW =
-  'grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'
+// Rendered as two six-row halves so the full schedule fits without a tall
+// single column on desktop; the halves stack naturally on narrow screens.
+const APR_HALVES = [APR_SCHEDULE.slice(0, 6), APR_SCHEDULE.slice(6)] as const
 
 const HEAD_CELL =
   'px-3 py-3 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:text-xs'
@@ -121,7 +122,7 @@ export function DisconnectedDashboard() {
       </div>
 
       {/* ── Three pillars ────────────────────────────────────────── */}
-      <div className={TRIPLET_ROW}>
+      <div className='grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'>
         {PILLARS.map(({ Icon, title, lines }) => (
           <div
             key={title}
@@ -203,11 +204,8 @@ export function DisconnectedDashboard() {
           </div>
         </div>
 
-        {/* Two six-row halves side by side: the full 12-row schedule stays
-            visible without a tall single column on desktop, and the halves
-            stack naturally on narrow screens. */}
         <div className='mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2'>
-          {[APR_SCHEDULE.slice(0, 6), APR_SCHEDULE.slice(6)].map(
+          {APR_HALVES.map(
             (half, halfIndex) => (
               <div key={halfIndex} className='overflow-x-auto'>
                 <table className='w-full border-collapse overflow-hidden rounded-lg'>

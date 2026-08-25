@@ -2,7 +2,11 @@
  * Utility functions for consistent error handling across the application
  */
 
-import { decodeErrorResult, toFunctionSelector } from 'viem'
+import {
+  decodeErrorResult,
+  toFunctionSelector,
+  WaitForTransactionReceiptTimeoutError
+} from 'viem'
 import type { Abi } from 'viem'
 
 /** The `error` entries of an ABI (viem doesn't re-export abitype's AbiError). */
@@ -49,6 +53,41 @@ export class TransactionPendingError extends Error {
     super('Transaction is still pending confirmation')
     this.name = 'TransactionPendingError'
     this.txHash = txHash
+  }
+}
+
+/**
+ * Wait for a receipt with the shared timeout, translating expiry into
+ * TransactionPendingError — the single place the timeout policy lives, used by
+ * every operation hook. `onTimeout` runs before the throw so callers can kick
+ * off a background refresh for when the transaction does land.
+ *
+ * The client is typed structurally so this file doesn't take on viem's deep
+ * PublicClient generics; any viem public client satisfies it.
+ */
+export async function waitForReceiptOrPending<
+  TClient extends {
+    waitForTransactionReceipt: (args: {
+      hash: `0x${string}`
+      timeout?: number
+    }) => Promise<unknown>
+  }
+>(
+  publicClient: TClient,
+  txHash: `0x${string}`,
+  onTimeout?: () => void
+): Promise<Awaited<ReturnType<TClient['waitForTransactionReceipt']>>> {
+  try {
+    return (await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      timeout: RECEIPT_TIMEOUT_MS
+    })) as Awaited<ReturnType<TClient['waitForTransactionReceipt']>>
+  } catch (waitError) {
+    if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
+      onTimeout?.()
+      throw new TransactionPendingError(txHash)
+    }
+    throw waitError
   }
 }
 

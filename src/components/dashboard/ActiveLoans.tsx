@@ -63,10 +63,7 @@ import {
 } from 'lucide-react'
 import { LoanCompletionModal } from '../common/LoanCompletionModal'
 import { useCollateralManager } from '@/src/hooks/useCollateralManager'
-import {
-  useReadLoansCalculateLoanDetails,
-  useReadLoansGetAllInterestAprConfigs
-} from '@/src/generated'
+import { useExtensionQuote } from '@/src/hooks/loans/useExtensionQuote'
 
 interface ActiveLoansProps {
   compact?: boolean
@@ -146,56 +143,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const [isApprovingExtension, setIsApprovingExtension] = useState(false)
   const [isProcessingExtension, setIsProcessingExtension] = useState(false)
 
-  // The tier fee is priced in USD and converted to LMLN at charge time, so the
-  // creation-time amount stored in loan.originationFee can be STALE by the time
-  // the loan is extended. Trusting it for the approval leaves the borrower in
-  // an approve-then-still-blocked loop whenever the LMLN price has fallen since
-  // creation. Re-quote with the loan's own parameters and use whichever of the
-  // two amounts is larger — correct under either contract semantic (charges the
-  // stored amount, or re-prices at the current rate).
+  // Fee re-quote + per-asset APR tiers for the loan whose extension dialog is
+  // open — see useExtensionQuote for why the stored fee alone can't be trusted
+  // and why the tiers must be read here rather than through useLoans.
   const loanForExtension = activeLoans.find(
     (l) => l.id === selectedLoanForExtension
   )
-  // @ts-ignore - wagmi deep type instantiation
-  const { data: extensionQuote } = useReadLoansCalculateLoanDetails({
-    args: loanForExtension
-      ? [
-          loanForExtension.collateralToken,
-          loanForExtension.originalDuration,
-          loanForExtension.loanAmount,
-          loanForExtension.ltv
-        ]
-      : undefined,
-    query: { enabled: !!loanForExtension }
-  })
-  const freshExtensionFee = extensionQuote?.[2]
-
-  // APR tiers are configured per collateral asset, and the useLoans call above
-  // passes no loanRequest — so the tier list it returns is permanently empty
-  // in this component, which left the dialog's Estimated APR reading '—' for
-  // every loan. Read the tiers for the open dialog's loan instead.
-  // @ts-ignore - wagmi deep type instantiation
-  const { data: extensionAprConfigsRaw } = useReadLoansGetAllInterestAprConfigs(
-    {
-      args: loanForExtension ? [loanForExtension.collateralToken] : undefined,
-      query: { enabled: !!loanForExtension }
-    }
-  )
-  const extensionAprConfigs = (extensionAprConfigsRaw ?? []) as readonly {
-    minDuration: bigint
-    maxDuration: bigint
-    interestApr: bigint
-  }[]
-  const extensionFeeForLoan = (loan: Loan): bigint => {
-    if (
-      loan.id === selectedLoanForExtension &&
-      freshExtensionFee !== undefined &&
-      freshExtensionFee > loan.originationFee
-    ) {
-      return freshExtensionFee
-    }
-    return loan.originationFee
-  }
+  const { extensionFee: quotedExtensionFee, aprConfigs: extensionAprConfigs } =
+    useExtensionQuote(loanForExtension)
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
   const [selectedLoanIdForWithdrawal, setSelectedLoanIdForWithdrawal] =
     useState<`0x${string}` | null>(null)
@@ -350,8 +305,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     }
   }
 
-  const handleExtensionApproval = async (loan: Loan) => {
-    const extensionFee = extensionFeeForLoan(loan)
+  const handleExtensionApproval = async () => {
+    // Only reachable from the open extension dialog, so the quote is for the
+    // right loan.
+    const extensionFee = quotedExtensionFee
     if (!extensionFee) {
       toast({
         title: 'Invalid Fee',
@@ -1211,10 +1168,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         // delegate's wallet when one is unlocked + valid (see useLoans options
                         // wired up at top of this component). Same comparisons work either way.
                         // extensionFee is max(stored fee, freshly-quoted fee) — see
-                        // extensionFeeForLoan. Judging the allowance against the stale
+                        // useExtensionQuote. Judging the allowance against the stale
                         // stored amount can hide the Approve button from a borrower whose
-                        // extension would still revert on allowance.
-                        const extensionFee = extensionFeeForLoan(loan)
+                        // extension would still revert on allowance. Falls back to the
+                        // stored fee while the quote is in flight.
+                        const extensionFee = quotedExtensionFee ?? loan.originationFee
                         const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < extensionFee
                         const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < extensionFee
                         // Block the CTA if the borrower has unlocked the field but
@@ -1357,7 +1315,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                 extensionFee > 0n &&
                                 (isExtensionPayerLocked || extensionPayerValidation.isSelf) ? (
                                 <Button
-                                  onClick={() => handleExtensionApproval(loan)}
+                                  onClick={() => handleExtensionApproval()}
                                   disabled={isApprovingExtension || isProcessingExtension}
                                   className='flex-1'
                                 >

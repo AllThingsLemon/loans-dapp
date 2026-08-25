@@ -15,21 +15,18 @@ export interface UseReferralParamReturn {
   hasLink: boolean
 }
 
-interface StoredPair {
-  referrer: string
-  commissions: string
-}
-
-function readStored(): StoredPair | null {
+// Parse only — captureReferral re-validates every field, so junk (including a
+// value written by an older build) comes out as store: null downstream.
+function readStored(): Partial<StoredReferralPair> | null {
   try {
     const raw = window.sessionStorage.getItem(REFERRAL_STORAGE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<StoredPair>
-    if (!parsed || typeof parsed !== 'object') return null
-    if (!parsed.referrer || !parsed.commissions) return null
-    return { referrer: parsed.referrer, commissions: parsed.commissions }
+    const parsed = JSON.parse(raw) as unknown
+    return parsed && typeof parsed === 'object'
+      ? (parsed as Partial<StoredReferralPair>)
+      : null
   } catch {
-    // Private-mode storage, or a value written by an older build.
+    // Private-mode storage, or unparseable contents.
     return null
   }
 }

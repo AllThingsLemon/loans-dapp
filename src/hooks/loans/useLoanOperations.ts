@@ -1,6 +1,5 @@
 import { useCallback } from 'react'
 import { useAccount, useChainId } from 'wagmi'
-import { useQueryClient } from '@tanstack/react-query'
 import { LOAN_STATUS } from '@/src/constants'
 import {
   useWriteLoansInitiateLoan,
@@ -21,16 +20,10 @@ import {
 } from '@/src/generated'
 import { useReadContract, useWriteContract, usePublicClient } from 'wagmi'
 import { config } from '@/src/config/wagmi'
-import {
-  erc20Abi,
-  formatEther,
-  WaitForTransactionReceiptTimeoutError
-} from 'viem'
+import { erc20Abi, formatEther } from 'viem'
 import { grossPaymentAmount } from '@/src/utils/fees'
-import {
-  RECEIPT_TIMEOUT_MS,
-  TransactionPendingError
-} from '@/src/utils/errorHandling'
+import { waitForReceiptOrPending } from '@/src/utils/errorHandling'
+import { useBackgroundRefresh } from '@/src/hooks/query/useBackgroundRefresh'
 import { useContractTokenConfiguration } from '../useContractTokenConfiguration'
 import { useProtocolAddresses } from '../useProtocolAddresses'
 
@@ -133,7 +126,6 @@ export const useLoanOperations = (
   const effectivePayer = originationPayer ?? address
   const chainId = useChainId()
   const publicClient = usePublicClient()
-  const queryClient = useQueryClient()
 
   // Get loans contract address for current chain
   const loansContractAddress =
@@ -378,45 +370,21 @@ export const useLoanOperations = (
       ? userCollateralBalance < collateralAmount
       : false
 
-  /**
-   * Refresh everything, WITHOUT blocking the caller.
-   *
-   * `invalidateQueries` resolves only after every active refetch has settled,
-   * so a single stalled or endlessly-retrying read makes an await on it hang
-   * forever. That is what left the deposit confirm modal spinning on a
-   * transaction that had already succeeded (fixed on the liquidity side in
-   * e02ed34) — and the loan modals block dismissal mid-tx, so a hang here traps
-   * the user outright. The UI re-renders as each query settles regardless, so
-   * nothing is gained by waiting.
-   */
-  const invalidateAll = useCallback(() => {
-    void queryClient.invalidateQueries()
-    void queryClient.refetchQueries({ type: 'active' })
-  }, [queryClient])
-
-  /** Let the node's state settle after the block, then refresh in the background. */
-  const scheduleRefresh = useCallback(() => {
-    setTimeout(invalidateAll, 3000)
-  }, [invalidateAll])
+  // Shared non-blocking refresh — see useBackgroundRefresh for the rationale
+  // (the loan modals block dismissal mid-tx, so an awaited refresh here would
+  // trap the user on a stalled read).
+  const { invalidateAll, scheduleRefresh } = useBackgroundRefresh()
 
   // Wait for a tx to land and throw if it reverted on-chain — a reverted
   // approval must never surface as a success toast.
   const waitForSuccess = useCallback(
     async (txHash: `0x${string}`, label: string) => {
       if (!publicClient) return
-      let receipt
-      try {
-        receipt = await publicClient.waitForTransactionReceipt({
-          hash: txHash,
-          timeout: RECEIPT_TIMEOUT_MS
-        })
-      } catch (waitError) {
-        if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
-          scheduleRefresh()
-          throw new TransactionPendingError(txHash)
-        }
-        throw waitError
-      }
+      const receipt = await waitForReceiptOrPending(
+        publicClient,
+        txHash,
+        scheduleRefresh
+      )
       if (receipt.status === 'reverted') {
         throw new Error(
           `${label} transaction was reverted on-chain. No changes were made — please try again.`
@@ -534,19 +502,11 @@ export const useLoanOperations = (
   const waitAndInvalidate = useCallback(
     async (txHash: `0x${string}`) => {
       if (publicClient) {
-        let receipt
-        try {
-          receipt = await publicClient.waitForTransactionReceipt({
-            hash: txHash,
-            timeout: RECEIPT_TIMEOUT_MS
-          })
-        } catch (waitError) {
-          if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
-            scheduleRefresh()
-            throw new TransactionPendingError(txHash)
-          }
-          throw waitError
-        }
+        const receipt = await waitForReceiptOrPending(
+          publicClient,
+          txHash,
+          scheduleRefresh
+        )
         if (receipt.status === 'reverted') {
           let revertError: unknown = null
           try {
