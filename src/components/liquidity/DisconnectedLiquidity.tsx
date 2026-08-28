@@ -28,31 +28,31 @@ const RETURN_MODEL = [
     period: '1 Year',
     multiplier: '1.00x',
     lock: '0 – 1 Year',
-    total: '28% – 35%'
+    total: '28%* – 35%*'
   },
   {
     period: '2 Years',
     multiplier: '1.25x',
     lock: '1 – 2 Years',
-    total: '70% – 90%'
+    total: '70%* – 90%*'
   },
   {
     period: '3 Years',
     multiplier: '1.50x',
     lock: '2 – 3 Years',
-    total: '130% – 170%'
+    total: '130%* – 170%*'
   },
   {
     period: '4 Years',
     multiplier: '1.75x',
     lock: '3 – 4 Years',
-    total: '220% – 280%'
+    total: '220%* – 280%*'
   },
   {
     period: '5 Years',
     multiplier: '2.00x',
     lock: '4 – 5 Years',
-    total: '350% – 500%'
+    total: '350%* – 500%*'
   }
 ] as const
 
@@ -247,12 +247,13 @@ export function DisconnectedLiquidity() {
         {/* Deliberately set smaller than the table it sits under: it has to be
             present and readable without competing with the figures above. */}
         <p className='mt-4 text-left text-[10px] leading-relaxed text-gray-500 sm:text-xs dark:text-gray-400'>
-          *Illustrative outcomes are model-generated and are not promised or
-          guaranteed. Actual protocol outcomes depend on borrower demand,
-          utilization, collateral performance, market conditions, refinancing
-          activity, smart-contract execution and other factors. Digital assets
-          deposited into the protocol may lose value, including the possible
-          loss of some or all assets supplied.
+          *NOT BASED ON HISTORICAL RETURNS. Illustrative outcomes are
+          model-generated and are not promised or guaranteed. Actual protocol
+          outcomes depend on borrower demand, utilization, collateral
+          performance, market conditions, refinancing activity, smart-contract
+          execution and other factors. Digital assets deposited into the
+          protocol may lose value, including the possible loss of some or all
+          assets supplied.
         </p>
       </section>
 
