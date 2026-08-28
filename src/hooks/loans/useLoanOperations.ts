@@ -11,6 +11,7 @@ import {
   useReadLoansLoanPaymentFeeUsd,
   useReadLoansGetNativeFee,
   useReadLoansFeeBps,
+  useReadLoansFeeReceiver,
   useReadLoansBpsDenominator,
   loansAddress,
   loansAbi,
@@ -305,9 +306,17 @@ export const useLoanOperations = (
 
   // Protocol payment fee, read from chain so a governance change to FEE_BPS
   // can't silently desync the UI's balance/allowance math from the contract.
+  // FEE_BPS is a contract constant; the actual off-switch is
+  // feeReceiver == address(0), which skips the fee transfer (same
+  // receiver-gate as the LiquidityPool, verified on BSC prod). While the
+  // receiver is still loading, keep the conservative non-zero rate so
+  // approvals never undershoot.
   const { data: feeBpsRaw } = useReadLoansFeeBps()
   const { data: bpsDenominatorRaw } = useReadLoansBpsDenominator()
-  const paymentFeeBps = feeBpsRaw ?? 25n
+  const { data: paymentFeeReceiverRaw } = useReadLoansFeeReceiver()
+  const paymentFeeDisabled =
+    paymentFeeReceiverRaw === '0x0000000000000000000000000000000000000000'
+  const paymentFeeBps = paymentFeeDisabled ? 0n : (feeBpsRaw ?? 25n)
   const bpsDenominator = bpsDenominatorRaw ?? 10000n
 
   // Gross amount the contract pulls on makeLoanPayment: amount + fee, with the

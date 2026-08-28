@@ -300,9 +300,17 @@ export function useLiquidityData(): UseLiquidityDataReturn {
 
   const feeConfig = useMemo((): FeeConfig | undefined => {
     if (feeBps === undefined || feeReceiverRaw === undefined) return undefined
+    const feeReceiver = feeReceiverRaw as unknown as `0x${string}`
+    // FEE_BPS is a contract constant that can never be zeroed — the contract's
+    // actual off-switch is feeReceiver == address(0), which skips the fee
+    // transfer entirely (verified on BSC prod: with a zero receiver a deposit
+    // pulls exactly `amount`). Surface the EFFECTIVE rate so every consumer's
+    // `feeBps === 0n` check tracks what the contract really charges.
+    const receiverDisabled =
+      feeReceiver === '0x0000000000000000000000000000000000000000'
     return {
-      feeBps: feeBps as unknown as bigint,
-      feeReceiver: feeReceiverRaw as unknown as `0x${string}`,
+      feeBps: receiverDisabled ? 0n : (feeBps as unknown as bigint),
+      feeReceiver,
     }
   }, [feeBps, feeReceiverRaw])
 
