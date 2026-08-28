@@ -74,8 +74,11 @@ export interface UseLiquidityDataReturn {
   refetch: () => Promise<void>
 }
 
+// Arg names must track the deployed ABI: the contract calls this field
+// `expiresAt`, while getUserDepositEntries still calls the same value
+// `unlockTime` — the dedup key below relies on them being equal.
 const DEPOSITED_EVENT = parseAbiItem(
-  'event Deposited(address indexed user, address indexed token, uint256 tokenAmount, uint256 stableTokenValue, uint256 liquidityShares, uint256 interestShares, uint256 unlockTime, uint256 lockDuration, bool nonEarning)'
+  'event Deposited(address indexed user, address indexed token, uint256 tokenAmount, uint256 stableTokenValue, uint256 liquidityShares, uint256 interestShares, uint256 expiresAt, uint256 lockDuration, bool nonEarning)'
 )
 
 export function useLiquidityData(): UseLiquidityDataReturn {
@@ -275,9 +278,9 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     const map = new Map<string, bigint>()
     if (!depositedLogs) return map
     for (const log of depositedLogs) {
-      const { token, stableTokenValue, unlockTime, lockDuration } = log.args
-      if (token && stableTokenValue !== undefined && unlockTime !== undefined && lockDuration !== undefined) {
-        const key = `${token.toLowerCase()}:${unlockTime}:${lockDuration}`
+      const { token, stableTokenValue, expiresAt, lockDuration } = log.args
+      if (token && stableTokenValue !== undefined && expiresAt !== undefined && lockDuration !== undefined) {
+        const key = `${token.toLowerCase()}:${expiresAt}:${lockDuration}`
         map.set(key, (map.get(key) ?? 0n) + stableTokenValue)
       }
     }

@@ -4,6 +4,7 @@ import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
 import { formatDuration } from '../../utils/format'
+import { formatPercentage } from '../../utils/decimals'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
@@ -38,7 +39,7 @@ interface LoanSummaryProps {
    *  credit the wrong wallet. */
   delegateNeedsAllowance?: boolean
   isDashboard?: boolean
-  selectedLtvOption?: { ltv: bigint; fee: bigint }
+  selectedLtvOption?: { ltv: bigint; feePct: bigint }
   // Origination-fee payer field (shown only in dashboard mode where the CTA exists).
   originationPayerInput: string
   onOriginationPayerChange: (value: string) => void
@@ -154,9 +155,13 @@ export function LoanSummary({
                 <span
                   className={`font-medium ${!isDashboard ? 'text-white' : ''} ${hasInsufficientLmln ? 'text-red-500' : ''}`}
                 >
-                  {selectedLtvOption ? 
-                    `$${Number(selectedLtvOption.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` : 
-                    '$0.00 USD'}
+                  {selectedLtvOption && tokenConfig
+                    ? `${formatPercentage(selectedLtvOption.feePct, tokenConfig.ltvDecimals)}% ($${(
+                        (calculation.loanAmount *
+                          Number(selectedLtvOption.feePct)) /
+                        10 ** tokenConfig.ltvDecimals
+                      ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)`
+                    : '—'}
                 </span>
                 <div
                   className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} ${hasInsufficientLmln ? 'text-red-500' : ''} mt-0.5`}

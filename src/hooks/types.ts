@@ -6,7 +6,7 @@ import type {
 
 export interface UseLoansOptions {
   loanRequest?: LoanRequest
-  selectedLtvOption?: { ltv: bigint; fee: bigint }
+  selectedLtvOption?: { ltv: bigint; feePct: bigint }
   /** Address that will be charged the LMLN origination fee. Defaults to the
    *  connected wallet (borrower self-pays). */
   originationPayer?: `0x${string}`
@@ -79,7 +79,7 @@ export interface UseLoansReturn {
 
   // Loan configuration
   loanConfig: LoanConfiguration | undefined
-  ltvOptions: Array<{ ltv: bigint; fee: bigint }>
+  ltvOptions: Array<{ ltv: bigint; feePct: bigint }>
   interestAprConfigs: InterestAprConfig[]
   durationRange: { min: number; max: number }
 

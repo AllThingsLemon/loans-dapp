@@ -203,6 +203,22 @@
     "type": "error"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "role",
+        "type": "bytes32"
+      }
+    ],
+    "name": "MissingRole",
+    "type": "error"
+  },
+  {
     "inputs": [],
     "name": "NoFeePrice",
     "type": "error"
@@ -296,54 +312,11 @@
       {
         "indexed": true,
         "internalType": "address",
-        "name": "executor",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "bytes32",
-        "name": "loanId",
-        "type": "bytes32"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "borrower",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "collateralAmount",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "receiver",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "CollateralForfeited",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
         "name": "collateralManager",
         "type": "address"
       }
     ],
-    "name": "CollateralManagerSet",
+    "name": "CollateralManagerUpdated",
     "type": "event"
   },
   {
@@ -360,15 +333,9 @@
         "internalType": "uint256",
         "name": "newPrice",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
-    "name": "CollateralTokenPriceSet",
+    "name": "CollateralTokenPriceUpdated",
     "type": "event"
   },
   {
@@ -381,22 +348,16 @@
         "type": "address"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "oldToken",
         "type": "address"
       },
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
         "name": "newToken",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "CollateralTokenUpdated",
@@ -422,53 +383,9 @@
         "internalType": "uint256",
         "name": "collateralAmount",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "CollateralWithdrawn",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "pausedBy",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "ContractPaused",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "unpausedBy",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "ContractUnpaused",
     "type": "event"
   },
   {
@@ -491,24 +408,24 @@
         "internalType": "address",
         "name": "newReceiver",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
-    "name": "DefaultCollateralReceiverSet",
+    "name": "DefaultCollateralReceiverUpdated",
     "type": "event"
   },
   {
     "anonymous": false,
     "inputs": [
       {
-        "indexed": false,
+        "indexed": true,
         "internalType": "address",
-        "name": "feeReceiver",
+        "name": "oldReceiver",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newReceiver",
         "type": "address"
       }
     ],
@@ -559,12 +476,6 @@
         "internalType": "struct Loans.InterestAprConfig[]",
         "name": "aprConfigs",
         "type": "tuple[]"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "InterestAprConfigAdded",
@@ -607,12 +518,6 @@
         "internalType": "struct Loans.InterestAprConfig",
         "name": "aprConfig",
         "type": "tuple"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "InterestAprConfigRemoved",
@@ -643,12 +548,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "newAvailableInterest",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -681,12 +580,6 @@
         "internalType": "address",
         "name": "receiver",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "InterestWithdrawn",
@@ -736,12 +629,6 @@
         "internalType": "uint256",
         "name": "availablePrincipalAfter",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "LiquidationDeposited",
@@ -766,12 +653,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "totalDeposited",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -798,15 +679,9 @@
         "internalType": "address",
         "name": "newLiquidityPool",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
-    "name": "LiquidityPoolSet",
+    "name": "LiquidityPoolUpdated",
     "type": "event"
   },
   {
@@ -847,15 +722,40 @@
         "internalType": "uint256",
         "name": "loanCycleDuration",
         "type": "uint256"
+      }
+    ],
+    "name": "LoanConfigurationUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "loanId",
+        "type": "bytes32"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "timestamp",
+        "name": "principalLost",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "collateralForfeited",
         "type": "uint256"
       }
     ],
-    "name": "LoanConfigurationSet",
+    "name": "LoanDefaulted",
     "type": "event"
   },
   {
@@ -901,12 +801,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "extensionFee",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -963,12 +857,6 @@
         "internalType": "uint256",
         "name": "duration",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "LoanInitiated",
@@ -1012,15 +900,28 @@
         "internalType": "uint256",
         "name": "remainingPrincipal",
         "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "LoanPaymentMade",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "loanId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "LoanUnlocked",
     "type": "event"
   },
   {
@@ -1043,15 +944,34 @@
         "internalType": "uint256",
         "name": "newMaxLoanAmount",
         "type": "uint256"
+      }
+    ],
+    "name": "MaxLoanAmountUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "updater",
+        "type": "address"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
+        "internalType": "uint256[]",
+        "name": "ltvs",
+        "type": "uint256[]"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256[]",
+        "name": "feePcts",
+        "type": "uint256[]"
       }
     ],
-    "name": "MaxLoanAmountSet",
+    "name": "OriginationFeePctsAdded",
     "type": "event"
   },
   {
@@ -1099,15 +1019,9 @@
         "internalType": "address",
         "name": "newReceiver",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
-    "name": "OriginationFeeReceiverSet",
+    "name": "OriginationFeeReceiverUpdated",
     "type": "event"
   },
   {
@@ -1143,43 +1057,6 @@
         "internalType": "uint256[]",
         "name": "ltvs",
         "type": "uint256[]"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256[]",
-        "name": "fees",
-        "type": "uint256[]"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "OriginationFeesAdded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "updater",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256[]",
-        "name": "ltvs",
-        "type": "uint256[]"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "OriginationFeesRemoved",
@@ -1218,12 +1095,6 @@
         "internalType": "address",
         "name": "newPriceFeed",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "PriceFeedUpdated",
@@ -1255,12 +1126,6 @@
         "internalType": "address",
         "name": "receiver",
         "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
       }
     ],
     "name": "PrincipalWithdrawn",
@@ -1309,12 +1174,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "availablePrincipalAfter",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -1441,12 +1300,6 @@
         "indexed": false,
         "internalType": "uint256",
         "name": "availablePrincipalAfter",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -1593,11 +1446,11 @@
       },
       {
         "internalType": "uint256[]",
-        "name": "fees",
+        "name": "feePcts",
         "type": "uint256[]"
       }
     ],
-    "name": "addOriginationFees",
+    "name": "addOriginationFeePcts",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1899,7 +1752,7 @@
         "type": "address"
       }
     ],
-    "name": "getAllOriginationFees",
+    "name": "getAllOriginationFeePcts",
     "outputs": [
       {
         "internalType": "uint256[]",
@@ -1908,7 +1761,7 @@
       },
       {
         "internalType": "uint256[]",
-        "name": "fees",
+        "name": "feePcts",
         "type": "uint256[]"
       }
     ],
@@ -2485,6 +2338,30 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "originationFeePctByAsset",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "originationFeeReceiver",
     "outputs": [
@@ -2523,30 +2400,6 @@
         "internalType": "contract IERC20",
         "name": "",
         "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "originationFeesByAsset",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
       }
     ],
     "stateMutability": "view",

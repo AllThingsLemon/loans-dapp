@@ -62,6 +62,7 @@ export function RemoveLiquidityCard({
     stableTokenDecimals,
     userStatus,
     feeConfig,
+    minimumWithdrawalValue,
     requestWithdrawal,
     claimWithdrawal,
     fundWithdrawalQueue,
@@ -93,6 +94,25 @@ export function RemoveLiquidityCard({
     return parsedAmount > withdrawableBalance
   }, [parsedAmount, withdrawableBalance])
 
+  // Contract-enforced minimum (BelowMinimumWithdrawal). A full-balance
+  // withdrawal is deliberately NOT blocked here even when it's below the
+  // minimum — if the contract allows full exits the block would strand small
+  // accounts, and if it doesn't the revert maps to a clear error message.
+  const isFullWithdrawal =
+    parsedAmount !== undefined && parsedAmount === withdrawableBalance
+  const belowMinimumWithdrawal = useMemo(() => {
+    if (!parsedAmount || !minimumWithdrawalValue) return false
+    return parsedAmount < minimumWithdrawalValue
+  }, [parsedAmount, minimumWithdrawalValue])
+  const blockedByMinimum = belowMinimumWithdrawal && !isFullWithdrawal
+
+  const minimumWithdrawalDisplay = useMemo(() => {
+    if (!minimumWithdrawalValue) return null
+    return parseFloat(
+      formatTokenAmount(minimumWithdrawalValue, decimals)
+    ).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  }, [minimumWithdrawalValue, decimals])
+
   const withdrawalFeePct = useMemo(() => {
     if (!feeConfig || feeConfig.feeBps === 0n) return null
     return Number(feeConfig.feeBps) / 100
@@ -103,7 +123,7 @@ export function RemoveLiquidityCard({
   }
 
   const handleRequestClick = () => {
-    if (!parsedAmount || insufficientBalance) return
+    if (!parsedAmount || insufficientBalance || blockedByMinimum) return
     setShowConfirmDialog(true)
   }
 
@@ -286,10 +306,20 @@ export function RemoveLiquidityCard({
           </p>
         )}
 
+        {blockedByMinimum && !insufficientBalance && minimumWithdrawalDisplay && (
+          <p className='text-sm text-destructive'>
+            The minimum withdrawal is {minimumWithdrawalDisplay} {symbol} —
+            increase the amount or withdraw your full unlocked balance.
+          </p>
+        )}
+
         <Button
           onClick={handleRequestClick}
           disabled={
-            isProcessing !== null || !parsedAmount || insufficientBalance
+            isProcessing !== null ||
+            !parsedAmount ||
+            insufficientBalance ||
+            blockedByMinimum
           }
           className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
         >

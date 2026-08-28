@@ -94,6 +94,8 @@ export interface UseLiquidityOperationsReturn {
   ) => Promise<`0x${string}` | undefined>
   depositFeeUSD: bigint | undefined
   withdrawFeeUSD: bigint | undefined
+  /** Contract minimum for a withdrawal request, in stable-token units */
+  minimumWithdrawalValue: bigint | undefined
   /** Native (gas-token) fee for deposit/compound, in wei — for display */
   depositNativeFee: bigint | undefined
   /** Native (gas-token) fee for claims/withdrawals, in wei — for display */
@@ -134,6 +136,14 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   })
   const depositFeeUSD = depositFeeUSDRaw as bigint | undefined
   const withdrawFeeUSD = withdrawFeeUSDRaw as bigint | undefined
+
+  const { data: minimumWithdrawalValueRaw } = useReadContract({
+    address: lpAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'minimumWithdrawalValue',
+    query: { enabled: !!lpAddress }
+  })
+  const minimumWithdrawalValue = minimumWithdrawalValueRaw as bigint | undefined
 
   // Get native fee conversion: pass USD amount, get native wei amount
   // @ts-ignore - wagmi deep type instantiation
@@ -793,6 +803,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
     approveToken,
     depositFeeUSD,
     withdrawFeeUSD,
+    minimumWithdrawalValue,
     depositNativeFee,
     withdrawNativeFee,
     isTransacting,

@@ -21,6 +21,7 @@ export function useLiquidityPool() {
     approveToken: operations.approveToken,
     depositFeeUSD: operations.depositFeeUSD,
     withdrawFeeUSD: operations.withdrawFeeUSD,
+    minimumWithdrawalValue: operations.minimumWithdrawalValue,
     depositNativeFee: operations.depositNativeFee,
     withdrawNativeFee: operations.withdrawNativeFee,
     isTransacting: operations.isTransacting,

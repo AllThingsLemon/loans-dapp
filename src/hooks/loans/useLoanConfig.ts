@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import {
   useReadLoansLoanConfig,
   useReadLoansGetAllInterestAprConfigs,
-  useReadLoansGetAllOriginationFees
+  useReadLoansGetAllOriginationFeePcts
 } from '@/src/generated'
 import { type LoanConfigResponse, parseLoanConfig } from '@/src/types/contracts'
 
@@ -56,19 +56,21 @@ export const useLoanConfig = (asset?: `0x${string}`) => {
     data: originationFeesRaw,
     isLoading: loadingOriginationFees,
     error: originationFeesError
-  } = useReadLoansGetAllOriginationFees({
+  } = useReadLoansGetAllOriginationFeePcts({
     args: asset ? [asset] : undefined,
     query: { enabled: !!asset }
   })
 
   const ltvOptions = useMemo(() => {
     if (!originationFeesRaw) return []
-    const [ltvs = [], fees = []] = originationFeesRaw || []
+    const [ltvs = [], feePcts = []] = originationFeesRaw || []
     // Every configured tier is selectable — a zero fee is a legitimate
     // configuration (free origination at that LTV), not a missing entry.
+    // feePct is a fraction of the loan amount on the same 8-decimal scale
+    // as LTV (100000 = 0.1%), not a USD amount.
     return ltvs.map((ltv, index) => ({
       ltv,
-      fee: fees[index] ?? 0n
+      feePct: feePcts[index] ?? 0n
     }))
   }, [originationFeesRaw])
 

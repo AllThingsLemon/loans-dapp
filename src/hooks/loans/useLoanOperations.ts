@@ -36,7 +36,7 @@ export interface LoanRequest {
 
 export interface UseLoanOperationsOptions {
   loanRequest?: LoanRequest
-  selectedLtvOption?: { ltv: bigint; fee: bigint }
+  selectedLtvOption?: { ltv: bigint; feePct: bigint }
   /** Address that will be charged the LMLN origination fee. Defaults to the
    *  connected wallet (borrower self-pays). Pass a delegate address to route
    *  LMLN balance/allowance reads to that wallet and to forward it as the
