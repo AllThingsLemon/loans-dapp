@@ -143,6 +143,7 @@ export const useLoans = (options?: UseLoansOptions): UseLoansReturn => {
 
     // Protocol fees
     paymentFeeBps: operations.paymentFeeBps,
+    paymentFeeKnown: operations.paymentFeeKnown,
     bpsDenominator: operations.bpsDenominator,
     getGrossPaymentAmount: operations.getGrossPaymentAmount,
     initiateNativeFee: operations.initiateNativeFee,

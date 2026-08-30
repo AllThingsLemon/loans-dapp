@@ -108,6 +108,9 @@ export interface UseLoanOperationsReturn {
   // Protocol fees (read from chain)
   /** makeLoanPayment protocol fee rate in basis points (FEE_BPS) */
   paymentFeeBps: bigint
+  /** True once FEE_BPS and feeReceiver have both loaded — until then
+   *  paymentFeeBps is a conservative fallback fit for approvals only */
+  paymentFeeKnown: boolean
   /** Basis-point denominator (BPS_DENOMINATOR) */
   bpsDenominator: bigint
   /** Gross amount the contract pulls for a payment: amount + protocol fee */
@@ -317,6 +320,13 @@ export const useLoanOperations = (
   const paymentFeeDisabled =
     paymentFeeReceiverRaw === '0x0000000000000000000000000000000000000000'
   const paymentFeeBps = paymentFeeDisabled ? 0n : (feeBpsRaw ?? 25n)
+  // The conservative fallback above is right for APPROVALS (over-approving is
+  // harmless; under-approving reverts) but wrong for balance checks and fee
+  // disclosure, which would block/misinform an exact-balance payer while the
+  // reads are in flight. Consumers use this flag to apply the fallback only
+  // where it is safe.
+  const paymentFeeKnown =
+    feeBpsRaw !== undefined && paymentFeeReceiverRaw !== undefined
   const bpsDenominator = bpsDenominatorRaw ?? 10000n
 
   // Gross amount the contract pulls on makeLoanPayment: amount + fee, with the
@@ -870,6 +880,7 @@ export const useLoanOperations = (
 
     // Protocol fees
     paymentFeeBps,
+    paymentFeeKnown,
     bpsDenominator,
     getGrossPaymentAmount,
     initiateNativeFee,

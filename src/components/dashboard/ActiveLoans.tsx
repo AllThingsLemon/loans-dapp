@@ -109,6 +109,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     userLmlnBalance,
     loanConfig,
     paymentFeeBps,
+    paymentFeeKnown,
     bpsDenominator,
     getGrossPaymentAmount,
     paymentNativeFee,
@@ -208,6 +209,22 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         return customAmount
       default:
         return '0'
+    }
+  }
+
+  // parseTokenAmount throws on strings viem's parseUnits can't digest — e.g.
+  // the '1e5' exponent form a number input happily accepts. In render paths a
+  // throw unmounts the whole dashboard, so unparseable input degrades to 0n
+  // (which the paymentWei <= 0n guards already treat as "no amount").
+  const safeParsePaymentWei = (
+    amount: string,
+    decimals: number | undefined
+  ): bigint => {
+    if (!amount || decimals === undefined) return 0n
+    try {
+      return parseTokenAmount(amount, decimals)
+    } catch {
+      return 0n
     }
   }
 
@@ -404,15 +421,18 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         tokenConfig.loanToken.decimals
       )
 
-      // Check if user has sufficient token balance for the gross debit
-      // (payment + protocol fee) the contract will pull.
-      if (
-        userLoanTokenBalance !== undefined &&
-        getGrossPaymentAmount(paymentWei) > userLoanTokenBalance
-      ) {
+      // Check if user has sufficient token balance for the debit the
+      // contract will pull — the gross (payment + protocol fee) once the fee
+      // reads have landed, the bare amount while they load so the
+      // conservative fallback can't block an exact-balance payment.
+      const requiredWei = paymentFeeKnown
+        ? getGrossPaymentAmount(paymentWei)
+        : paymentWei
+      if (userLoanTokenBalance !== undefined && requiredWei > userLoanTokenBalance) {
+        const feeApplies = paymentFeeKnown && paymentFeeBps > 0n
         toast({
           title: 'Insufficient Balance',
-          description: `Including the protocol fee you need ${formatTokenAmount(getGrossPaymentAmount(paymentWei), tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
+          description: `${feeApplies ? 'Including the protocol fee you' : 'You'} need ${formatTokenAmount(requiredWei, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol} but only have ${formatTokenAmount(userLoanTokenBalance, tokenConfig.loanToken.decimals)} ${tokenConfig?.loanToken.symbol}`,
           variant: 'destructive'
         })
         setIsProcessingPayment(false)
@@ -958,24 +978,27 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               network fee. Both must be visible pre-sign. */}
                           {(() => {
                             const currentPaymentAmount = getPaymentAmount(loan)
-                            const paymentWei =
-                              currentPaymentAmount && tokenConfig?.loanToken.decimals
-                                ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
-                                : 0n
+                            const paymentWei = safeParsePaymentWei(
+                              currentPaymentAmount,
+                              tokenConfig?.loanToken.decimals
+                            )
                             if (paymentWei <= 0n) return null
-                            const grossWei = getGrossPaymentAmount(paymentWei)
-                            const feePercent =
-                              Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
-                            // With the protocol fee disabled and no network
-                            // fee there is nothing to disclose.
+                            // Disclose the protocol fee only once the fee
+                            // reads have landed — the loading-time fallback
+                            // is an approval safeguard, not a real fee.
+                            const showProtocolFee =
+                              paymentFeeKnown && paymentFeeBps > 0n
                             if (
-                              paymentFeeBps === 0n &&
+                              !showProtocolFee &&
                               !(paymentNativeFee !== undefined && paymentNativeFee > 0n)
                             )
                               return null
+                            const grossWei = getGrossPaymentAmount(paymentWei)
+                            const feePercent =
+                              Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
                             return (
                               <div className='rounded-md bg-muted p-3 text-sm space-y-1'>
-                                {paymentFeeBps > 0n && (
+                                {showProtocolFee && (
                                   <>
                                     <div className='flex justify-between'>
                                       <span className='text-muted-foreground'>
@@ -1045,21 +1068,29 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             // "Confirm Payment" and the tx reverts with
                             // insufficient allowance.
                             const currentPaymentAmount = getPaymentAmount(loan)
-                            const paymentWei =
-                              currentPaymentAmount && tokenConfig?.loanToken.decimals
-                                ? parseTokenAmount(currentPaymentAmount, tokenConfig.loanToken.decimals)
-                                : 0n
+                            const paymentWei = safeParsePaymentWei(
+                              currentPaymentAmount,
+                              tokenConfig?.loanToken.decimals
+                            )
                             const contractPullWei = getGrossPaymentAmount(paymentWei)
                             const needsApproval =
                               !currentAllowance || currentAllowance < contractPullWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0
+                            // Balance is checked against the gross only once
+                            // the fee reads have landed — the conservative
+                            // loading fallback must inflate approvals, never
+                            // block an exact-balance payment on a
+                            // fee-disabled deployment.
+                            const balanceRequiredWei = paymentFeeKnown
+                              ? contractPullWei
+                              : paymentWei
                             const hasInsufficientPaymentBalance =
                               userLoanTokenBalance !== undefined &&
                               hasValidAmount &&
                               paymentWei > 0n &&
-                              userLoanTokenBalance < contractPullWei
+                              userLoanTokenBalance < balanceRequiredWei
 
                             if (hasInsufficientPaymentBalance) {
                               return (

@@ -98,8 +98,19 @@ export function RemoveLiquidityCard({
   // withdrawal is deliberately NOT blocked here even when it's below the
   // minimum — if the contract allows full exits the block would strand small
   // accounts, and if it doesn't the revert maps to a clear error message.
+  // "Full" is matched to display precision, not exact wei: the balance shown
+  // to the user is floored to 2 decimals, so typing that figure must count —
+  // exact equality would make the MAX button the only way to take the
+  // exemption this card's own message advertises.
+  const fullWithdrawalFloorWei =
+    decimals >= 2
+      ? (withdrawableBalance / 10n ** BigInt(decimals - 2)) *
+        10n ** BigInt(decimals - 2)
+      : withdrawableBalance
   const isFullWithdrawal =
-    parsedAmount !== undefined && parsedAmount === withdrawableBalance
+    parsedAmount !== undefined &&
+    parsedAmount >= fullWithdrawalFloorWei &&
+    parsedAmount <= withdrawableBalance
   const belowMinimumWithdrawal = useMemo(() => {
     if (!parsedAmount || !minimumWithdrawalValue) return false
     return parsedAmount < minimumWithdrawalValue
@@ -309,7 +320,8 @@ export function RemoveLiquidityCard({
         {blockedByMinimum && !insufficientBalance && minimumWithdrawalDisplay && (
           <p className='text-sm text-destructive'>
             The minimum withdrawal is {minimumWithdrawalDisplay} {symbol} —
-            increase the amount or withdraw your full unlocked balance.
+            increase the amount, or use MAX to withdraw your full unlocked
+            balance.
           </p>
         )}
 

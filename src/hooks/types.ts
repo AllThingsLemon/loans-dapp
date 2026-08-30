@@ -69,6 +69,7 @@ export interface UseLoansReturn {
 
   // Protocol fees (read from chain)
   paymentFeeBps: bigint
+  paymentFeeKnown: boolean
   bpsDenominator: bigint
   getGrossPaymentAmount: (amount: bigint) => bigint
   initiateNativeFee: bigint | undefined
