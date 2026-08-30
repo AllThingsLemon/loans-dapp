@@ -319,7 +319,9 @@ export function LiquidityPerformance({
       // Split camelCase names ("TransferAccount" \u2192 "Transfer Account").
       const title = actionName.replace(/([a-z])([A-Z])/g, '$1 $2')
       toast({ title: `\u2705 ${title} Successful`, description: successMsg })
-      await refetch()
+      // Fire-and-forget \u2014 the operation already scheduled a background
+      // refresh; awaiting here only held every action button in its busy state.
+      void refetch()
       return true
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, `${actionName} Failed`)
@@ -709,7 +711,12 @@ export function LiquidityPerformance({
                       description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
                       actionName: 'Claim',
                       action: () => claimEarnings(),
-                      successMsg: `${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} claimed successfully.`
+                      // Report the NET amount — the gross figure overstated
+                      // the payout by the earnings fee.
+                      successMsg:
+                        feeConfig && feeConfig.feeBps > 0n
+                          ? `${formatCurrency(userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig.feeBps) / 10000n, decimals, symbol)} sent to your wallet (after the earnings fee).`
+                          : `${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} claimed successfully.`
                     })
                   }
                   disabled={isProcessing !== null}

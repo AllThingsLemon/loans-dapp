@@ -57,10 +57,30 @@ export class TransactionPendingError extends Error {
 }
 
 /**
+ * The transaction was replaced by a wallet-level cancellation (speed-up
+ * cancel). The cancel transaction's receipt reports `success`, so without
+ * this the UI would toast "Successful" for an operation that never happened.
+ */
+export class TransactionCancelledError extends Error {
+  readonly txHash: `0x${string}`
+  constructor(txHash: `0x${string}`) {
+    super('Transaction was cancelled in the wallet')
+    this.name = 'TransactionCancelledError'
+    this.txHash = txHash
+  }
+}
+
+/**
  * Wait for a receipt with the shared timeout, translating expiry into
  * TransactionPendingError — the single place the timeout policy lives, used by
  * every operation hook. `onTimeout` runs before the throw so callers can kick
  * off a background refresh for when the transaction does land.
+ *
+ * Replacements: viem follows a replaced transaction and resolves with the
+ * REPLACEMENT's receipt. For `repriced`/`replaced` (speed-up) that is the
+ * same operation and the receipt is genuine; for `cancelled` the "successful"
+ * receipt belongs to the cancel transaction, so it is translated into
+ * TransactionCancelledError instead of being returned as a success.
  *
  * The client is typed structurally so this file doesn't take on viem's deep
  * PublicClient generics; any viem public client satisfies it.
@@ -70,6 +90,7 @@ export async function waitForReceiptOrPending<
     waitForTransactionReceipt: (args: {
       hash: `0x${string}`
       timeout?: number
+      onReplaced?: (replacement: { reason: string }) => void
     }) => Promise<unknown>
   }
 >(
@@ -77,10 +98,15 @@ export async function waitForReceiptOrPending<
   txHash: `0x${string}`,
   onTimeout?: () => void
 ): Promise<Awaited<ReturnType<TClient['waitForTransactionReceipt']>>> {
+  let replacedReason: string | undefined
+  let receipt: Awaited<ReturnType<TClient['waitForTransactionReceipt']>>
   try {
-    return (await publicClient.waitForTransactionReceipt({
+    receipt = (await publicClient.waitForTransactionReceipt({
       hash: txHash,
-      timeout: RECEIPT_TIMEOUT_MS
+      timeout: RECEIPT_TIMEOUT_MS,
+      onReplaced: (replacement) => {
+        replacedReason = replacement.reason
+      }
     })) as Awaited<ReturnType<TClient['waitForTransactionReceipt']>>
   } catch (waitError) {
     if (waitError instanceof WaitForTransactionReceiptTimeoutError) {
@@ -89,6 +115,10 @@ export async function waitForReceiptOrPending<
     }
     throw waitError
   }
+  if (replacedReason === 'cancelled') {
+    throw new TransactionCancelledError(txHash)
+  }
+  return receipt
 }
 
 /**
@@ -98,9 +128,13 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   // LiquidityPool
   AccountEmpty: 'Your account has no liquidity to transfer.',
   AccountNotEmpty: 'The recipient account must be empty before transferring.',
+  ActiveBoostsPending:
+    'Your account still has active lock boosts — wait for them to expire before this action.',
   AddressZero: 'Invalid address provided.',
   AssetNotSupported: 'This token is not supported.',
   BelowMinimumDeposit: 'Amount is below the minimum required — please increase your amount and try again.',
+  BelowMinimumWithdrawal:
+    'Amount is below the minimum withdrawal — please increase your amount and try again.',
   EarningsTooEarly: 'Earnings distribution is not available yet — please wait for the cooldown period.',
   InsufficientNativeFee: 'Insufficient network fee — this operation requires a small TLEMX fee. Please try again.',
   InsufficientUnlocked: 'Insufficient unlocked liquidity — your deposit may still be in its lock period.',
@@ -110,9 +144,18 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   InvalidTierMultiplier: 'Invalid interest multiplier for lock tier.',
   LockDurationNotAvailable: 'The selected lock duration is not available.',
   LockTierDisabled: 'The selected lock tier is currently disabled.',
+  MigrationIncomplete:
+    'The pool is completing a migration — please try again shortly.',
+  MissingRole: 'Your wallet does not have permission for this action.',
   NativeFeeTransferFailed: 'Failed to transfer the required network fee.',
   NoEarningsAvailable: 'No earnings available to claim.',
   NotRequestOwner: 'You do not own this withdrawal request.',
+  SweepRequired:
+    'The pool needs its expired boosts processed first — please try again in a moment.',
+  TooManyDepositBuckets:
+    'Your account has too many separate deposits — consolidate or withdraw before depositing again.',
+  TooManyOpenRequests:
+    'You have too many open withdrawal requests — claim or wait for existing ones first.',
   Unauthorized: 'You are not authorized to perform this action.',
   UtilizationBelowThreshold: 'Pool utilization is below the required threshold for this action.',
   WithdrawalAlreadyClaimed: 'This withdrawal has already been claimed.',
@@ -367,8 +410,23 @@ function collectErrorText(err: unknown, depth = 0): string {
 
 /**
  * Scan collected error text for any known contract error name.
+ *
+ * Two tiers. The signature form ("InsufficientNativeFee()") is how viem
+ * prints an undecoded custom error and cannot be prose, so it always wins.
+ * The bare-word fallback is skipped when the text reads as transport/HTTP
+ * prose: generic names like `Unauthorized` or `TooLarge` appear verbatim in
+ * RPC-gateway errors, and matching them there would dress an infrastructure
+ * failure up as a contract revert.
  */
 function findErrorNameInText(text: string): string | null {
+  for (const errorName of Object.keys(CONTRACT_ERROR_MESSAGES)) {
+    if (new RegExp(`\\b${errorName}\\(`).test(text)) {
+      return errorName
+    }
+  }
+  if (/\bhttp\b|https?:\/\/|status code|rate.?limit|gateway|econnre/i.test(text)) {
+    return null
+  }
   for (const errorName of Object.keys(CONTRACT_ERROR_MESSAGES)) {
     // Match as a whole word to avoid false partial matches
     if (new RegExp(`\\b${errorName}\\b`).test(text)) {
@@ -422,6 +480,9 @@ function messageForDecodedError(
     if (typeof reason === 'string' && reason.length > 0) {
       return translateTokenRevert(reason) ?? reason
     }
+    // Empty revert reason — there is nothing to show, so say so generically
+    // instead of falling through to a "Contract error: Error" lookup miss.
+    return 'The transaction was reverted by the contract.'
   }
   // Standard Solidity `Panic(uint256)` — internal compiler-emitted reverts.
   if (errorName === 'Panic') {
@@ -517,8 +578,26 @@ export const handleContractError = (
   }) => void,
   errorTitle: string = 'Operation Failed'
 ): void => {
-  // Don't show error toast for user rejections - user knows they cancelled
+  // Don't show error toast for user rejections - user knows they cancelled.
+  // Logged in dev so a rejection-pattern false positive (a node-side decline
+  // matching the wallet phrasing) is diagnosable rather than silently eaten.
   if (isUserRejection(error)) {
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.debug('[tx] suppressed as user rejection', error)
+    }
+    return
+  }
+
+  // A wallet-level speed-up cancel: the user chose this, so it is not a
+  // failure — but unlike a pre-signing rejection they watched a spinner,
+  // so confirm that nothing happened.
+  if (error instanceof TransactionCancelledError) {
+    showToast({
+      title: 'Transaction Cancelled',
+      description:
+        'Your transaction was cancelled in your wallet. No changes were made.'
+    })
     return
   }
 

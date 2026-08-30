@@ -62,6 +62,7 @@ export function RemoveLiquidityCard({
     stableTokenDecimals,
     userStatus,
     feeConfig,
+    minimumWithdrawalValue,
     requestWithdrawal,
     claimWithdrawal,
     fundWithdrawalQueue,
@@ -93,6 +94,36 @@ export function RemoveLiquidityCard({
     return parsedAmount > withdrawableBalance
   }, [parsedAmount, withdrawableBalance])
 
+  // Contract-enforced minimum (BelowMinimumWithdrawal). A full-balance
+  // withdrawal is deliberately NOT blocked here even when it's below the
+  // minimum — if the contract allows full exits the block would strand small
+  // accounts, and if it doesn't the revert maps to a clear error message.
+  // "Full" is matched to display precision, not exact wei: the balance shown
+  // to the user is floored to 2 decimals, so typing that figure must count —
+  // exact equality would make the MAX button the only way to take the
+  // exemption this card's own message advertises.
+  const fullWithdrawalFloorWei =
+    decimals >= 2
+      ? (withdrawableBalance / 10n ** BigInt(decimals - 2)) *
+        10n ** BigInt(decimals - 2)
+      : withdrawableBalance
+  const isFullWithdrawal =
+    parsedAmount !== undefined &&
+    parsedAmount >= fullWithdrawalFloorWei &&
+    parsedAmount <= withdrawableBalance
+  const belowMinimumWithdrawal = useMemo(() => {
+    if (!parsedAmount || !minimumWithdrawalValue) return false
+    return parsedAmount < minimumWithdrawalValue
+  }, [parsedAmount, minimumWithdrawalValue])
+  const blockedByMinimum = belowMinimumWithdrawal && !isFullWithdrawal
+
+  const minimumWithdrawalDisplay = useMemo(() => {
+    if (!minimumWithdrawalValue) return null
+    return parseFloat(
+      formatTokenAmount(minimumWithdrawalValue, decimals)
+    ).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  }, [minimumWithdrawalValue, decimals])
+
   const withdrawalFeePct = useMemo(() => {
     if (!feeConfig || feeConfig.feeBps === 0n) return null
     return Number(feeConfig.feeBps) / 100
@@ -103,7 +134,7 @@ export function RemoveLiquidityCard({
   }
 
   const handleRequestClick = () => {
-    if (!parsedAmount || insufficientBalance) return
+    if (!parsedAmount || insufficientBalance || blockedByMinimum) return
     setShowConfirmDialog(true)
   }
 
@@ -121,7 +152,8 @@ export function RemoveLiquidityCard({
       })
       setAmount('')
       setShowConfirmDialog(false)
-      await refetch()
+      // Fire-and-forget — scheduleRefresh covers a full refresh moments later.
+      void refetch()
     } catch (err: unknown) {
       handleContractError(
         err as ContractError,
@@ -190,7 +222,7 @@ export function RemoveLiquidityCard({
         description: `${claimNetDisplay} ${symbol} sent to your wallet.`
       })
       setClaimModal({ open: false, requestId: null, amount: 0n })
-      await refetch()
+      void refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Claim Failed')
     } finally {
@@ -207,7 +239,7 @@ export function RemoveLiquidityCard({
         description: `Withdrawal queue has been funded with available principal.`
       })
       setFundQueueModal(false)
-      await refetch()
+      void refetch()
     } catch (err: unknown) {
       handleContractError(err as ContractError, toast, 'Fund Queue Failed')
     } finally {
@@ -240,12 +272,17 @@ export function RemoveLiquidityCard({
               className='pr-24'
               min='0'
               step='any'
+              // An amount typed (or MAX clicked) before the stable token's
+              // decimals resolve would parse at the 18-decimal fallback —
+              // wrong raw amount on a 6-decimal token. Hold until it lands.
+              disabled={stableTokenDecimals === undefined}
             />
             <div className='absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1'>
               <button
                 type='button'
                 onClick={handleMax}
-                className='text-xs font-semibold text-yellow-600 hover:text-yellow-700 transition-colors'
+                disabled={stableTokenDecimals === undefined}
+                className='text-xs font-semibold text-yellow-600 hover:text-yellow-700 transition-colors disabled:opacity-50'
               >
                 MAX
               </button>
@@ -280,10 +317,21 @@ export function RemoveLiquidityCard({
           </p>
         )}
 
+        {blockedByMinimum && !insufficientBalance && minimumWithdrawalDisplay && (
+          <p className='text-sm text-destructive'>
+            The minimum withdrawal is {minimumWithdrawalDisplay} {symbol} —
+            increase the amount, or use MAX to withdraw your full unlocked
+            balance.
+          </p>
+        )}
+
         <Button
           onClick={handleRequestClick}
           disabled={
-            isProcessing !== null || !parsedAmount || insufficientBalance
+            isProcessing !== null ||
+            !parsedAmount ||
+            insufficientBalance ||
+            blockedByMinimum
           }
           className='w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
         >

@@ -1,5 +1,4 @@
-import { useCallback, useMemo } from 'react'
-import { parseUnits } from 'viem'
+import { useCallback } from 'react'
 import type { Loan } from '../useLoans'
 import { LOAN_STATUS } from '@/src/constants'
 
@@ -7,88 +6,16 @@ import { LOAN_STATUS } from '@/src/constants'
 const PERCENTAGE_DECIMALS = 2 // Support 2 decimal places (e.g., 12.34%)
 const PERCENTAGE_SCALE = 10n ** BigInt(PERCENTAGE_DECIMALS + 2) // Scale factor for BigInt math
 
-interface PaymentValidation {
-  isValid: boolean
-  error?: string
-}
-
-export const useLoanPayment = (
-  loan: Loan | undefined,
-  loanTokenDecimals: number = 18
-) => {
-  // Status-based flags
-  const isPaymentRequired = useMemo(() => {
-    return loan?.status === LOAN_STATUS.ACTIVE
-  }, [loan?.status])
-
-  const isCollateralWithdrawable = useMemo(() => {
-    return loan?.status === LOAN_STATUS.UNLOCKED
-  }, [loan?.status])
-  // Calculate maximum payment (remaining balance)
-  const maxPayment = useMemo(() => {
-    return loan?.remainingBalance ?? 0n
-  }, [loan?.remainingBalance])
-
-  // Convert payment string to BigInt wei. Must use parseUnits — float
-  // multiplication exceeds IEEE-754 precision at 18 decimals (1.1 * 1e18 =
-  // 1100000000000000128) and would produce a wrong payment amount.
-  const parsePaymentAmount = useCallback(
-    (paymentString: string): bigint => {
-      if (!paymentString || isNaN(parseFloat(paymentString))) return 0n
-      try {
-        return parseUnits(paymentString.trim(), loanTokenDecimals)
-      } catch {
-        return 0n
-      }
-    },
-    [loanTokenDecimals]
-  )
-
-  // Validate payment amount
-  const validatePayment = useCallback(
-    (paymentString: string): PaymentValidation => {
-      if (!loan) {
-        return { isValid: false, error: 'No loan selected' }
-      }
-
-      if (!paymentString || paymentString.trim() === '') {
-        return { isValid: false, error: 'Payment amount is required' }
-      }
-
-      const numericValue = parseFloat(paymentString)
-      if (isNaN(numericValue) || numericValue <= 0) {
-        return {
-          isValid: false,
-          error: 'Payment amount must be greater than 0'
-        }
-      }
-
-      const paymentWei = parsePaymentAmount(paymentString)
-      if (paymentWei > maxPayment) {
-        return {
-          isValid: false,
-          error: 'Payment amount exceeds remaining balance'
-        }
-      }
-
-      return { isValid: true }
-    },
-    [loan, maxPayment, parsePaymentAmount]
-  )
-
-  // Check if payment amount is valid
-  const isValidAmount = useCallback(
-    (paymentString: string): boolean => {
-      return validatePayment(paymentString).isValid
-    },
-    [validatePayment]
-  )
-
-  // Get minimum payment amount (minimum cycle payment)
-  const minimumPayment = useMemo(() => {
-    return loan?.paymentAmount ?? 0n
-  }, [loan?.paymentAmount])
-
+/**
+ * Per-loan display helpers for the payment UI.
+ *
+ * Deliberately small: this hook once carried a parallel payment-validation
+ * layer (validatePayment / isValidAmount / max & minimum payment) that no
+ * call site consumed — the payment dialog does its own validation against
+ * the live contract state. Only the helpers that are actually rendered
+ * survive; each takes the loan as an argument, so the hook holds no state.
+ */
+export const useLoanPayment = () => {
   // Overdue once the loan is past its end date. The contract still allows
   // payments during the balloonPaymentGraceDuration window, but from the
   // user's perspective the principal payment is late.
@@ -128,26 +55,9 @@ export const useLoanPayment = (
     return Number(scaledProgress) / 100
   }, [])
 
-  // Get payment status for UI display
-  const getPaymentStatus = useCallback(() => {
-    if (!loan) return 'NO_LOAN'
-    if (isCollateralWithdrawable) return 'COLLATERAL_READY'
-    if (isPaymentRequired) return 'PAYMENT_DUE'
-    return 'COMPLETED'
-  }, [loan, isCollateralWithdrawable, isPaymentRequired])
-
   return {
-    maxPayment,
-    minimumPayment,
-    parsePaymentAmount,
-    validatePayment,
-    isValidAmount,
     isLoanOverdue,
     isLoanInGracePeriod,
-    getPaymentProgress,
-    // New status-aware properties
-    isPaymentRequired,
-    isCollateralWithdrawable,
-    getPaymentStatus
+    getPaymentProgress
   }
 }

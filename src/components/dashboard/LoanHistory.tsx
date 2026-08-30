@@ -41,9 +41,15 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
   const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
 
   const handleCopyLoanId = (id: string) => {
-    navigator.clipboard.writeText(id)
-    setCopiedLoanId(id)
-    setTimeout(() => setCopiedLoanId(null), 2000)
+    // Clipboard access can be denied — only show the copied check mark once
+    // the write actually succeeded (an unhandled rejection otherwise).
+    navigator.clipboard
+      .writeText(id)
+      .then(() => {
+        setCopiedLoanId(id)
+        setTimeout(() => setCopiedLoanId(null), 2000)
+      })
+      .catch(() => {})
   }
 
   const getStatusIcon = (status: number) => {
