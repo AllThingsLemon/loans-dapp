@@ -713,9 +713,10 @@ export function LiquidityPerformance({
                       action: () => claimEarnings(),
                       // Report the NET amount — the gross figure overstated
                       // the payout by the earnings fee.
-                      successMsg: feeConfig
-                        ? `${formatCurrency(userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig.feeBps) / 10000n, decimals, symbol)} sent to your wallet (after the earnings fee).`
-                        : `${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} claimed successfully.`
+                      successMsg:
+                        feeConfig && feeConfig.feeBps > 0n
+                          ? `${formatCurrency(userStatus.pendingEarnings - (userStatus.pendingEarnings * feeConfig.feeBps) / 10000n, decimals, symbol)} sent to your wallet (after the earnings fee).`
+                          : `${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} claimed successfully.`
                     })
                   }
                   disabled={isProcessing !== null}

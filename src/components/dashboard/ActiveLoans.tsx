@@ -966,28 +966,39 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             const grossWei = getGrossPaymentAmount(paymentWei)
                             const feePercent =
                               Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
+                            // With the protocol fee disabled and no network
+                            // fee there is nothing to disclose.
+                            if (
+                              paymentFeeBps === 0n &&
+                              !(paymentNativeFee !== undefined && paymentNativeFee > 0n)
+                            )
+                              return null
                             return (
                               <div className='rounded-md bg-muted p-3 text-sm space-y-1'>
-                                <div className='flex justify-between'>
-                                  <span className='text-muted-foreground'>
-                                    Protocol fee ({feePercent}%)
-                                  </span>
-                                  <span>
-                                    {formatAmountWithSymbol(
-                                      grossWei - paymentWei,
-                                      tokenConfig?.loanToken.symbol || 'Token'
-                                    )}
-                                  </span>
-                                </div>
-                                <div className='flex justify-between font-medium'>
-                                  <span>Total debit</span>
-                                  <span>
-                                    {formatAmountWithSymbol(
-                                      grossWei,
-                                      tokenConfig?.loanToken.symbol || 'Token'
-                                    )}
-                                  </span>
-                                </div>
+                                {paymentFeeBps > 0n && (
+                                  <>
+                                    <div className='flex justify-between'>
+                                      <span className='text-muted-foreground'>
+                                        Protocol fee ({feePercent}%)
+                                      </span>
+                                      <span>
+                                        {formatAmountWithSymbol(
+                                          grossWei - paymentWei,
+                                          tokenConfig?.loanToken.symbol || 'Token'
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className='flex justify-between font-medium'>
+                                      <span>Total debit</span>
+                                      <span>
+                                        {formatAmountWithSymbol(
+                                          grossWei,
+                                          tokenConfig?.loanToken.symbol || 'Token'
+                                        )}
+                                      </span>
+                                    </div>
+                                  </>
+                                )}
                                 {paymentNativeFee !== undefined &&
                                   paymentNativeFee > 0n && (
                                     <div className='flex justify-between'>

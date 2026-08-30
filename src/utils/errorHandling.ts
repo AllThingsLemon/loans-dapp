@@ -128,9 +128,13 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   // LiquidityPool
   AccountEmpty: 'Your account has no liquidity to transfer.',
   AccountNotEmpty: 'The recipient account must be empty before transferring.',
+  ActiveBoostsPending:
+    'Your account still has active lock boosts — wait for them to expire before this action.',
   AddressZero: 'Invalid address provided.',
   AssetNotSupported: 'This token is not supported.',
   BelowMinimumDeposit: 'Amount is below the minimum required — please increase your amount and try again.',
+  BelowMinimumWithdrawal:
+    'Amount is below the minimum withdrawal — please increase your amount and try again.',
   EarningsTooEarly: 'Earnings distribution is not available yet — please wait for the cooldown period.',
   InsufficientNativeFee: 'Insufficient network fee — this operation requires a small TLEMX fee. Please try again.',
   InsufficientUnlocked: 'Insufficient unlocked liquidity — your deposit may still be in its lock period.',
@@ -140,9 +144,18 @@ const CONTRACT_ERROR_MESSAGES: Record<string, string> = {
   InvalidTierMultiplier: 'Invalid interest multiplier for lock tier.',
   LockDurationNotAvailable: 'The selected lock duration is not available.',
   LockTierDisabled: 'The selected lock tier is currently disabled.',
+  MigrationIncomplete:
+    'The pool is completing a migration — please try again shortly.',
+  MissingRole: 'Your wallet does not have permission for this action.',
   NativeFeeTransferFailed: 'Failed to transfer the required network fee.',
   NoEarningsAvailable: 'No earnings available to claim.',
   NotRequestOwner: 'You do not own this withdrawal request.',
+  SweepRequired:
+    'The pool needs its expired boosts processed first — please try again in a moment.',
+  TooManyDepositBuckets:
+    'Your account has too many separate deposits — consolidate or withdraw before depositing again.',
+  TooManyOpenRequests:
+    'You have too many open withdrawal requests — claim or wait for existing ones first.',
   Unauthorized: 'You are not authorized to perform this action.',
   UtilizationBelowThreshold: 'Pool utilization is below the required threshold for this action.',
   WithdrawalAlreadyClaimed: 'This withdrawal has already been claimed.',
