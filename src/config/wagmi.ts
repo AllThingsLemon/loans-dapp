@@ -7,7 +7,7 @@ import {
 } from '@rainbow-me/rainbowkit/wallets'
 import { createConfig, http } from 'wagmi'
 import { type Chain } from 'viem'
-import { bsc } from 'viem/chains'
+import { bsc, bscTestnet } from 'viem/chains'
 
 const citron = {
   id: 1005,
@@ -54,7 +54,8 @@ const lemon = {
 const SUPPORTED_CHAIN_REGISTRY: Record<number, Chain> = {
   [lemon.id]: lemon,
   [citron.id]: citron,
-  [bsc.id]: bsc
+  [bsc.id]: bsc,
+  [bscTestnet.id]: bscTestnet
 }
 
 // Resolve the active chain set from NEXT_PUBLIC_SUPPORTED_CHAINS, a
