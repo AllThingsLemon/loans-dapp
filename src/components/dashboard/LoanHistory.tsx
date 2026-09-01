@@ -114,7 +114,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                   <p className='font-medium'>
                     {formatAmountWithSymbol(
                       loan.loanAmount,
-                      tokenConfig?.loanToken.symbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token',
+                      tokenConfig?.loanToken.decimals
                     )}
                   </p>
                   <p className='text-sm text-muted-foreground'>
@@ -132,7 +133,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                 <p className='font-medium'>
                   {formatAmountWithSymbol(
                     loan.paidAmount,
-                    tokenConfig?.loanToken.symbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token',
+                    tokenConfig?.loanToken.decimals
                   )}
                 </p>
                 <p className='text-sm text-muted-foreground'>total paid</p>
@@ -194,7 +196,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                   <p className='font-medium'>
                     {formatAmountWithSymbol(
                       loan.loanAmount,
-                      tokenConfig?.loanToken.symbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token',
+                      tokenConfig?.loanToken.decimals
                     )}
                   </p>
                 </div>
@@ -239,7 +242,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                     <p className='text-lg font-semibold text-green-600'>
                       {formatAmountWithSymbol(
                         loan.paidAmount,
-                        tokenConfig?.loanToken.symbol || 'Token'
+                        tokenConfig?.loanToken.symbol || 'Token',
+                        tokenConfig?.loanToken.decimals
                       )}
                     </p>
                   </div>
@@ -250,7 +254,8 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
                     <p className='text-lg font-semibold'>
                       {formatAmountWithSymbol(
                         loan.remainingBalance,
-                        tokenConfig?.loanToken.symbol || 'Token'
+                        tokenConfig?.loanToken.symbol || 'Token',
+                        tokenConfig?.loanToken.decimals
                       )}
                     </p>
                   </div>

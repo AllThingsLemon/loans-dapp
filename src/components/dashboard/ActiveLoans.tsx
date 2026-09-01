@@ -112,7 +112,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     paymentFeeKnown,
     bpsDenominator,
     getGrossPaymentAmount,
-    paymentNativeFee,
+    paymentNativeFee
   } = useLoans({ originationPayer: effectiveExtensionPayer })
   const { tokenConfig } = useContractTokenConfiguration()
   const { getCollateralByAddress } = useCollateralManager()
@@ -428,7 +428,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       const requiredWei = paymentFeeKnown
         ? getGrossPaymentAmount(paymentWei)
         : paymentWei
-      if (userLoanTokenBalance !== undefined && requiredWei > userLoanTokenBalance) {
+      if (
+        userLoanTokenBalance !== undefined &&
+        requiredWei > userLoanTokenBalance
+      ) {
         const feeApplies = paymentFeeKnown && paymentFeeBps > 0n
         toast({
           title: 'Insufficient Balance',
@@ -497,7 +500,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     return (
       <div className='text-center py-8'>
         <AlertCircle className='h-12 w-12 mx-auto mb-4 text-destructive' />
-        <h3 className='text-lg font-medium mb-2'>Couldn&apos;t load your loans</h3>
+        <h3 className='text-lg font-medium mb-2'>
+          Couldn&apos;t load your loans
+        </h3>
         <p className='text-sm text-muted-foreground mb-4'>
           Something went wrong while fetching your loan data. Your loans are
           unaffected — please retry.
@@ -537,7 +542,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <p className='font-medium'>
                   {formatAmountWithSymbol(
                     loan.loanAmount,
-                    tokenConfig?.loanToken.symbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token',
+                    tokenConfig?.loanToken.decimals
                   )}
                 </p>
                 <p className='text-sm text-muted-foreground'>
@@ -555,7 +561,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
               <p className='font-medium'>
                 {formatAmountWithSymbol(
                   loan.remainingBalance,
-                  tokenConfig?.loanToken.symbol || 'Token'
+                  tokenConfig?.loanToken.symbol || 'Token',
+                  tokenConfig?.loanToken.decimals
                 )}
               </p>
               <p className='text-sm text-muted-foreground'>remaining</p>
@@ -611,9 +618,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
         // End of the next cycle the user must pay, accounting for prepayments.
         const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
-        const nextCycleEndMs = Number(
-          loan.createdAt + nextCycleIndex * loan.loanCycleDuration
-        ) * 1000
+        const nextCycleEndMs =
+          Number(loan.createdAt + nextCycleIndex * loan.loanCycleDuration) *
+          1000
         const nextPaymentDeadlineMs = Math.min(nextCycleEndMs, loanEndMs)
 
         let countdownTarget: Date
@@ -683,7 +690,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='font-medium'>
                     {formatAmountWithSymbol(
                       loan.loanAmount,
-                      tokenConfig?.loanToken.symbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token',
+                      tokenConfig?.loanToken.decimals
                     )}
                   </p>
                 </div>
@@ -707,7 +715,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Loan End Date
                   </p>
                   <p className='font-medium'>
-                    {new Date(Number(loan.dueTimestamp) * 1000).toLocaleDateString()}
+                    {new Date(
+                      Number(loan.dueTimestamp) * 1000
+                    ).toLocaleDateString()}
                   </p>
                 </div>
                 <div className='space-y-1'>
@@ -722,7 +732,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                           aria-expanded={openInfoLoanId === loan.id}
                           onClick={(e) => {
                             e.stopPropagation()
-                            setOpenInfoLoanId(openInfoLoanId === loan.id ? null : loan.id)
+                            setOpenInfoLoanId(
+                              openInfoLoanId === loan.id ? null : loan.id
+                            )
                           }}
                           onBlur={() => setOpenInfoLoanId(null)}
                           className='inline-flex items-center'
@@ -734,7 +746,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                             role='tooltip'
                             className='absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 bg-muted text-foreground text-xs rounded-md px-3 py-1.5 shadow-md max-w-xs w-max'
                           >
-                            Time includes a safety buffer to account for blockchain timing.
+                            Time includes a safety buffer to account for
+                            blockchain timing.
                           </span>
                         )}
                       </span>
@@ -771,7 +784,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     Paid:{' '}
                     {formatAmountWithSymbol(
                       loan.paidAmount,
-                      tokenConfig?.loanToken.symbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token',
+                      tokenConfig?.loanToken.decimals
                     )}
                   </span>
                   <span>
@@ -781,7 +795,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         prepaid part of the principal before the grace window. */}
                     {formatAmountWithSymbol(
                       loan.remainingBalance,
-                      tokenConfig?.loanToken.symbol || 'Token'
+                      tokenConfig?.loanToken.symbol || 'Token',
+                      tokenConfig?.loanToken.decimals
                     )}
                   </span>
                 </div>
@@ -811,7 +826,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       // loans surface N/N because combineLoanData resolves
                       // transpiredCycles to totalCycles for non-ACTIVE loans.
                       const done = loan.transpiredCycles
-                      const capped = done > loan.totalCycles ? loan.totalCycles : done
+                      const capped =
+                        done > loan.totalCycles ? loan.totalCycles : done
                       return capped.toString()
                     })()}
                     /{loan.totalCycles.toString()}
@@ -822,7 +838,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                   <p className='text-sm font-medium'>
                     {formatAmountWithSymbol(
                       loan.collateralAmount,
-                      getCollateralByAddress(loan.collateralToken)?.symbol || 'Token'
+                      getCollateralByAddress(loan.collateralToken)?.symbol ||
+                        'Token',
+                      getCollateralByAddress(loan.collateralToken)?.decimals
                     )}
                   </p>
                 </div>
@@ -854,7 +872,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     onOpenChange={(open) => {
                       // Don't let ESC / outside-click dismiss mid-transaction —
                       // the user would lose the pending-payment context.
-                      if (!open && (isApprovingPayment || isProcessingPayment)) {
+                      if (
+                        !open &&
+                        (isApprovingPayment || isProcessingPayment)
+                      ) {
                         return
                       }
                       setIsPaymentDialogOpen(open)
@@ -927,7 +948,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                           formatMinimumPayment(loan),
                                           tokenConfig?.loanToken.decimals || 18
                                         ),
-                                        tokenConfig?.loanToken.symbol || 'Token'
+                                        tokenConfig?.loanToken.symbol ||
+                                          'Token',
+                                        tokenConfig?.loanToken.decimals
                                       )}
                                     </span>
                                   </div>
@@ -941,7 +964,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                     <span className='text-sm text-muted-foreground'>
                                       {formatAmountWithSymbol(
                                         loan.remainingBalance,
-                                        tokenConfig?.loanToken.symbol || 'Token'
+                                        tokenConfig?.loanToken.symbol ||
+                                          'Token',
+                                        tokenConfig?.loanToken.decimals
                                       )}
                                     </span>
                                   </div>
@@ -990,12 +1015,17 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               paymentFeeKnown && paymentFeeBps > 0n
                             if (
                               !showProtocolFee &&
-                              !(paymentNativeFee !== undefined && paymentNativeFee > 0n)
+                              !(
+                                paymentNativeFee !== undefined &&
+                                paymentNativeFee > 0n
+                              )
                             )
                               return null
                             const grossWei = getGrossPaymentAmount(paymentWei)
                             const feePercent =
-                              Number((paymentFeeBps * 10000n) / bpsDenominator) / 100
+                              Number(
+                                (paymentFeeBps * 10000n) / bpsDenominator
+                              ) / 100
                             return (
                               <div className='rounded-md bg-muted p-3 text-sm space-y-1'>
                                 {showProtocolFee && (
@@ -1007,7 +1037,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                       <span>
                                         {formatAmountWithSymbol(
                                           grossWei - paymentWei,
-                                          tokenConfig?.loanToken.symbol || 'Token'
+                                          tokenConfig?.loanToken.symbol ||
+                                            'Token',
+                                          tokenConfig?.loanToken.decimals
                                         )}
                                       </span>
                                     </div>
@@ -1016,7 +1048,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                       <span>
                                         {formatAmountWithSymbol(
                                           grossWei,
-                                          tokenConfig?.loanToken.symbol || 'Token'
+                                          tokenConfig?.loanToken.symbol ||
+                                            'Token',
+                                          tokenConfig?.loanToken.decimals
                                         )}
                                       </span>
                                     </div>
@@ -1072,9 +1106,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               currentPaymentAmount,
                               tokenConfig?.loanToken.decimals
                             )
-                            const contractPullWei = getGrossPaymentAmount(paymentWei)
+                            const contractPullWei =
+                              getGrossPaymentAmount(paymentWei)
                             const needsApproval =
-                              !currentAllowance || currentAllowance < contractPullWei
+                              !currentAllowance ||
+                              currentAllowance < contractPullWei
                             const hasValidAmount =
                               currentPaymentAmount &&
                               parseFloat(currentPaymentAmount) > 0
@@ -1098,7 +1134,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   <AlertCircle className='h-4 w-4' />
                                   <span>
                                     You don&apos;t have enough{' '}
-                                    {tokenConfig?.loanToken.symbol || 'tokens'} for this payment.
+                                    {tokenConfig?.loanToken.symbol || 'tokens'}{' '}
+                                    for this payment.
                                   </span>
                                 </div>
                               )
@@ -1120,7 +1157,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   className='flex-1'
                                 >
                                   {isApprovingPayment ? (
-                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>
+                                    <>
+                                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
+                                      Approving…
+                                    </>
                                   ) : (
                                     'Approve Tokens'
                                   )}
@@ -1139,7 +1179,10 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   className='flex-1'
                                 >
                                   {isProcessingPayment ? (
-                                    <><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>
+                                    <>
+                                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
+                                      Processing…
+                                    </>
                                   ) : (
                                     'Confirm Payment'
                                   )}
@@ -1182,7 +1225,9 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         size='sm'
                         onClick={() => {
                           setSelectedLoanForExtension(loan.id)
-                          setExtensionDuration(loanConfig ? Number(loanConfig.minLoanDuration) : 0)
+                          setExtensionDuration(
+                            loanConfig ? Number(loanConfig.minLoanDuration) : 0
+                          )
                           setIsExtensionDialogOpen(true)
                         }}
                       >
@@ -1193,24 +1238,42 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       <DialogHeader>
                         <DialogTitle>Extend Loan</DialogTitle>
                         <DialogDescription>
-                          Select how long you&apos;d like to extend loan #{truncateAddress(loan.id)}.
+                          Select how long you&apos;d like to extend loan #
+                          {truncateAddress(loan.id)}.
                         </DialogDescription>
                       </DialogHeader>
                       {(() => {
-                        const minDur = loanConfig ? Number(loanConfig.minLoanDuration) : 0
+                        const minDur = loanConfig
+                          ? Number(loanConfig.minLoanDuration)
+                          : 0
                         const maxDur = Number(loan.originalDuration)
-                        const stepDur = loanConfig ? Number(loanConfig.loanCycleDuration) : 1
+                        const stepDur = loanConfig
+                          ? Number(loanConfig.loanCycleDuration)
+                          : 1
                         const aprConfig = extensionAprConfigs.find(
-                          (c) => extensionDuration >= Number(c.minDuration) && extensionDuration <= Number(c.maxDuration)
+                          (c) =>
+                            extensionDuration >= Number(c.minDuration) &&
+                            extensionDuration <= Number(c.maxDuration)
                         )
-                        const aprPct = aprConfig && tokenConfig
-                          ? formatPercentage(aprConfig.interestApr, tokenConfig.aprDecimals) + '%'
-                          : '—'
-                        const newDueDate = extensionDuration > 0
-                          ? new Date(Number(loan.dueTimestamp) * 1000 + extensionDuration * 1000).toLocaleDateString()
-                          : '—'
+                        const aprPct =
+                          aprConfig && tokenConfig
+                            ? formatPercentage(
+                                aprConfig.interestApr,
+                                tokenConfig.aprDecimals
+                              ) + '%'
+                            : '—'
+                        const newDueDate =
+                          extensionDuration > 0
+                            ? new Date(
+                                Number(loan.dueTimestamp) * 1000 +
+                                  extensionDuration * 1000
+                              ).toLocaleDateString()
+                            : '—'
                         const ltvPct = tokenConfig
-                          ? formatPercentage(loan.ltv, tokenConfig.ltvDecimals) + '%'
+                          ? formatPercentage(
+                              loan.ltv,
+                              tokenConfig.ltvDecimals
+                            ) + '%'
                           : '—'
                         // currentLmlnAllowance + userLmlnBalance are auto-redirected to the
                         // delegate's wallet when one is unlocked + valid (see useLoans options
@@ -1220,21 +1283,30 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                         // stored amount can hide the Approve button from a borrower whose
                         // extension would still revert on allowance. Falls back to the
                         // stored fee while the quote is in flight.
-                        const extensionFee = quotedExtensionFee ?? loan.originationFee
-                        const needsApproval = !currentLmlnAllowance || currentLmlnAllowance < extensionFee
-                        const hasInsufficientBalance = userLmlnBalance !== undefined && userLmlnBalance < extensionFee
+                        const extensionFee =
+                          quotedExtensionFee ?? loan.originationFee
+                        const needsApproval =
+                          !currentLmlnAllowance ||
+                          currentLmlnAllowance < extensionFee
+                        const hasInsufficientBalance =
+                          userLmlnBalance !== undefined &&
+                          userLmlnBalance < extensionFee
                         // Block the CTA if the borrower has unlocked the field but
                         // hasn't supplied a verified delegate yet (red text in the
                         // OriginationPayerField surfaces the reason).
                         const payerBlocks =
-                          !isExtensionPayerLocked && !extensionPayerValidation.isValid
+                          !isExtensionPayerLocked &&
+                          !extensionPayerValidation.isValid
 
                         return (
                           <div className='space-y-5'>
                             {/* Duration slider */}
                             <div>
                               <label className='block text-sm font-medium mb-2'>
-                                Extension Duration: {extensionDuration > 0 ? formatDuration(BigInt(extensionDuration)) : '—'}
+                                Extension Duration:{' '}
+                                {extensionDuration > 0
+                                  ? formatDuration(BigInt(extensionDuration))
+                                  : '—'}
                               </label>
                               {minDur > 0 && maxDur > 0 ? (
                                 <>
@@ -1244,44 +1316,76 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                     max={maxDur}
                                     step={stepDur}
                                     value={extensionDuration || minDur}
-                                    onChange={(e) => setExtensionDuration(Number(e.target.value))}
+                                    onChange={(e) =>
+                                      setExtensionDuration(
+                                        Number(e.target.value)
+                                      )
+                                    }
                                     className='w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider'
                                   />
                                   <div className='flex justify-between text-sm text-muted-foreground mt-1'>
-                                    <span>{formatDuration(BigInt(minDur))}</span>
-                                    <span>{formatDuration(BigInt(maxDur))}</span>
+                                    <span>
+                                      {formatDuration(BigInt(minDur))}
+                                    </span>
+                                    <span>
+                                      {formatDuration(BigInt(maxDur))}
+                                    </span>
                                   </div>
                                 </>
                               ) : (
-                                <p className='text-sm text-muted-foreground'>Loading configuration...</p>
+                                <p className='text-sm text-muted-foreground'>
+                                  Loading configuration...
+                                </p>
                               )}
                             </div>
 
                             {/* Summary */}
                             <div className='bg-muted/50 p-4 rounded-lg space-y-2'>
                               <div className='flex justify-between text-sm'>
-                                <span className='text-muted-foreground'>Estimated APR</span>
-                                <span className='font-medium text-yellow-600'>{aprPct}</span>
-                              </div>
-                              <div className='flex justify-between text-sm'>
-                                <span className='text-muted-foreground'>LTV Ratio</span>
-                                <span className='font-medium text-yellow-600'>{ltvPct}</span>
-                              </div>
-                              <div className='flex justify-between text-sm'>
-                                <span className='text-muted-foreground'>Current Due Date</span>
-                                <span className='font-medium'>
-                                  {formatTimestamp(loan.dueTimestamp).toLocaleDateString()}
+                                <span className='text-muted-foreground'>
+                                  Estimated APR
+                                </span>
+                                <span className='font-medium text-yellow-600'>
+                                  {aprPct}
                                 </span>
                               </div>
                               <div className='flex justify-between text-sm'>
-                                <span className='text-muted-foreground'>New Due Date</span>
-                                <span className='font-medium'>{newDueDate}</span>
+                                <span className='text-muted-foreground'>
+                                  LTV Ratio
+                                </span>
+                                <span className='font-medium text-yellow-600'>
+                                  {ltvPct}
+                                </span>
+                              </div>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>
+                                  Current Due Date
+                                </span>
+                                <span className='font-medium'>
+                                  {formatTimestamp(
+                                    loan.dueTimestamp
+                                  ).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <div className='flex justify-between text-sm'>
+                                <span className='text-muted-foreground'>
+                                  New Due Date
+                                </span>
+                                <span className='font-medium'>
+                                  {newDueDate}
+                                </span>
                               </div>
                               {extensionFee > 0n && (
                                 <div className='flex justify-between text-sm pt-2 border-t'>
-                                  <span className='text-muted-foreground'>Extension Fee</span>
+                                  <span className='text-muted-foreground'>
+                                    Extension Fee
+                                  </span>
                                   <span className='font-medium'>
-                                    {formatAmountWithSymbol(extensionFee, tokenConfig?.feeToken.symbol || 'LMLN')}
+                                    {formatAmountWithSymbol(
+                                      extensionFee,
+                                      tokenConfig?.feeToken.symbol || 'LMLN',
+                                      tokenConfig?.feeToken.decimals
+                                    )}
                                   </span>
                                 </div>
                               )}
@@ -1301,8 +1405,12 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   return !wasLocked
                                 })
                               }}
-                              feeTokenSymbol={tokenConfig?.feeToken.symbol || 'LMLN'}
-                              feeTokenDecimals={tokenConfig?.feeToken.decimals ?? 18}
+                              feeTokenSymbol={
+                                tokenConfig?.feeToken.symbol || 'LMLN'
+                              }
+                              feeTokenDecimals={
+                                tokenConfig?.feeToken.decimals ?? 18
+                              }
                               id={`extend-payer-${loan.id}`}
                             />
 
@@ -1328,17 +1436,19 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   <AlertCircle className='h-4 w-4 shrink-0' />
                                   <span>
                                     The delegate hasn&apos;t approved enough{' '}
-                                    {tokenConfig?.feeToken.symbol || 'LMLN'} to the
-                                    Loans contract. They need to grant approval (the
-                                    Delegation Manager does this when authorizing)
-                                    before you can extend.
+                                    {tokenConfig?.feeToken.symbol || 'LMLN'} to
+                                    the Loans contract. They need to grant
+                                    approval (the Delegation Manager does this
+                                    when authorizing) before you can extend.
                                   </span>
                                 </p>
                               )}
                             <div className='flex gap-2'>
                               <Button
                                 variant='outline'
-                                disabled={isApprovingExtension || isProcessingExtension}
+                                disabled={
+                                  isApprovingExtension || isProcessingExtension
+                                }
                                 onClick={() => {
                                   setSelectedLoanForExtension(null)
                                   setIsApprovingExtension(false)
@@ -1354,20 +1464,32 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                 <div className='flex-1 text-sm text-destructive flex items-center gap-2'>
                                   <AlertCircle className='h-4 w-4' />
                                   <span>
-                                    {!isExtensionPayerLocked && !extensionPayerValidation.isSelf
+                                    {!isExtensionPayerLocked &&
+                                    !extensionPayerValidation.isSelf
                                       ? `The chosen delegate doesn't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`
                                       : `You don't have enough ${tokenConfig?.feeToken.symbol || 'LMLN'} for the extension fee.`}
                                   </span>
                                 </div>
                               ) : needsApproval &&
                                 extensionFee > 0n &&
-                                (isExtensionPayerLocked || extensionPayerValidation.isSelf) ? (
+                                (isExtensionPayerLocked ||
+                                  extensionPayerValidation.isSelf) ? (
                                 <Button
                                   onClick={() => handleExtensionApproval()}
-                                  disabled={isApprovingExtension || isProcessingExtension}
+                                  disabled={
+                                    isApprovingExtension ||
+                                    isProcessingExtension
+                                  }
                                   className='flex-1'
                                 >
-                                  {isApprovingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : ('Approve LMLN')}
+                                  {isApprovingExtension ? (
+                                    <>
+                                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
+                                      Approving…
+                                    </>
+                                  ) : (
+                                    'Approve LMLN'
+                                  )}
                                 </Button>
                               ) : (
                                 <Button
@@ -1385,7 +1507,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   }
                                   className='flex-1'
                                 >
-                                  {isProcessingExtension ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Processing…</>) : ('Confirm Extension')}
+                                  {isProcessingExtension ? (
+                                    <>
+                                      <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
+                                      Processing…
+                                    </>
+                                  ) : (
+                                    'Confirm Extension'
+                                  )}
                                 </Button>
                               )}
                             </div>
@@ -1421,8 +1550,20 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
           loan={activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)}
           tokenConfig={tokenConfig}
           collateralSymbol={(() => {
-            const loan = activeLoans.find((l) => l.id === selectedLoanIdForWithdrawal)
-            return loan ? getCollateralByAddress(loan.collateralToken)?.symbol : undefined
+            const loan = activeLoans.find(
+              (l) => l.id === selectedLoanIdForWithdrawal
+            )
+            return loan
+              ? getCollateralByAddress(loan.collateralToken)?.symbol
+              : undefined
+          })()}
+          collateralDecimals={(() => {
+            const loan = activeLoans.find(
+              (l) => l.id === selectedLoanIdForWithdrawal
+            )
+            return loan
+              ? getCollateralByAddress(loan.collateralToken)?.decimals
+              : undefined
           })()}
           isWithdrawing={isWithdrawingCollateral}
           onConfirmWithdrawal={confirmWithdrawal}

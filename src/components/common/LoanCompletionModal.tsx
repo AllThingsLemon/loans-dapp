@@ -18,6 +18,7 @@ interface LoanCompletionModalProps {
   loan: any
   tokenConfig: any
   collateralSymbol?: string
+  collateralDecimals?: number
   isWithdrawing: boolean
   onConfirmWithdrawal: () => Promise<void>
 }
@@ -28,6 +29,7 @@ export function LoanCompletionModal({
   loan,
   tokenConfig,
   collateralSymbol,
+  collateralDecimals,
   isWithdrawing,
   onConfirmWithdrawal
 }: LoanCompletionModalProps) {
@@ -70,7 +72,8 @@ export function LoanCompletionModal({
                 <span className='font-medium text-green-800'>
                   {formatAmountWithSymbol(
                     loan.loanAmount,
-                    tokenConfig?.loanToken.symbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token',
+                    tokenConfig?.loanToken.decimals
                   )}
                 </span>
               </div>
@@ -79,7 +82,8 @@ export function LoanCompletionModal({
                 <span className='font-medium text-green-800'>
                   {formatAmountWithSymbol(
                     loan.paidAmount,
-                    tokenConfig?.loanToken.symbol || 'Token'
+                    tokenConfig?.loanToken.symbol || 'Token',
+                    tokenConfig?.loanToken.decimals
                   )}
                 </span>
               </div>
@@ -88,7 +92,10 @@ export function LoanCompletionModal({
                 <span className='font-semibold text-green-800'>
                   {formatAmountWithSymbol(
                     loan.collateralAmount,
-                    collateralSymbol || tokenConfig?.nativeToken.symbol || 'Token'
+                    collateralSymbol ||
+                      tokenConfig?.nativeToken.symbol ||
+                      'Token',
+                    collateralDecimals
                   )}
                 </span>
               </div>
@@ -112,7 +119,13 @@ export function LoanCompletionModal({
             disabled={isWithdrawing}
             className='bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600 text-white'
           >
-            {isWithdrawing ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Withdrawing…</>) : ('Confirm & Withdraw Collateral')}
+            {isWithdrawing ? (
+              <>
+                <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Withdrawing…
+              </>
+            ) : (
+              'Confirm & Withdraw Collateral'
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
