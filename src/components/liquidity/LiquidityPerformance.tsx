@@ -461,7 +461,7 @@ export function LiquidityPerformance({
                 open: true,
                 title: 'Distribute Earnings',
                 description:
-                  'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all depositors to claim. Anyone can trigger this action.',
+                  'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all liquidity share owners to claim. Anyone can trigger this action.',
                 actionName: 'Distribute',
                 action: () => pullEarnings(),
                 successMsg: 'Earnings distributed to the pool.'

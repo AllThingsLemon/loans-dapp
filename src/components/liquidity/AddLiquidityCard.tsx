@@ -1,6 +1,11 @@
 'use client'
-import { useState, useMemo } from 'react'
-import { useAccount, useReadContract, useReadContracts } from 'wagmi'
+import { useState, useMemo, useEffect } from 'react'
+import {
+  useAccount,
+  usePublicClient,
+  useReadContract,
+  useReadContracts
+} from 'wagmi'
 import { erc20Abi, formatEther } from 'viem'
 import {
   Card,
@@ -21,7 +26,7 @@ import {
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
-import { Plus, Loader2 } from 'lucide-react'
+import { Plus, Loader2, ChevronRight, ChevronDown } from 'lucide-react'
 import {
   handleContractError,
   type ContractError
@@ -34,6 +39,8 @@ import type { ReferralState } from '@/src/hooks/referral/useReferralState'
 import { DetailRow } from '@/src/components/liquidity/DetailRow'
 import { describeSkipReason } from '@/src/utils/referral'
 import { truncateAddress } from '@/src/utils/format'
+import { validateRecipient } from '@/src/utils/recipientAddress'
+import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
 
 // Lock-tier durations are configured in 360-day years (e.g. 10 yr =
 // 360 * 86400 * 10 = 311_040_000 s). Using 365.25 here floors a clean
@@ -96,8 +103,26 @@ export function AddLiquidityCard({
   const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(
     null
   )
+  // ── Advanced section (non-earning + deposit-for-another-wallet) ───────────
+  // Collapsed by default and deliberately low-key — power-user options, not
+  // calls to action. See handleConfirmDeposit for the extra confirmation
+  // friction the recipient option adds.
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  // Checkbox arming the deposit-for-another-wallet option; the recipient
+  // field only renders (and only gates the deposit) while this is checked.
+  const [depositForOther, setDepositForOther] = useState(false)
+  const [recipientInput, setRecipientInput] = useState('')
+  // undefined = check in flight (or no recipient); the confirm gate treats
+  // undefined as "not yet acknowledgeable", never as "not a contract".
+  const [recipientIsContract, setRecipientIsContract] = useState<
+    boolean | undefined
+  >(undefined)
+  const [recipientAckContract, setRecipientAckContract] = useState(false)
+  // The typed last-4-characters challenge in the confirm dialog.
+  const [recipientSuffix, setRecipientSuffix] = useState('')
   const { toast } = useToast()
   const { address, chain } = useAccount()
+  const publicClient = usePublicClient()
   const nativeCurrencySymbol = chain?.nativeCurrency.symbol ?? 'native token'
 
   const {
@@ -107,10 +132,14 @@ export function AddLiquidityCard({
     feeConfig,
     approveToken,
     deposit,
+    depositFor,
     depositWithReferral,
     depositNativeFee,
     refetch
   } = liquidityPool
+
+  // For rejecting protocol contracts as deposit recipients.
+  const protocolAddrs = useProtocolAddresses()
 
   // Alias kept for clarity at the read-call sites below
   const lpAddress = liquidityPoolContractAddress
@@ -152,6 +181,68 @@ export function AddLiquidityCard({
     selectedAssetIndex !== null
       ? (depositableAssets[selectedAssetIndex] as `0x${string}` | undefined)
       : undefined
+
+  // ── Recipient verification (advanced deposit-for path) ────────────────────
+  // Layer 1+2: syntax, checksum, and semantic hard-blocks — pure and instant.
+  // Gated on the referral state being 'disabled': if the chain (or gate)
+  // flips to referral-only while an address sits in the field, the recipient
+  // must evaporate — depositFor bypasses the router, and the 'ready' branch
+  // of the confirm handler must not carry a stale "Deposit for" label.
+  const recipientValidation = useMemo(() => {
+    if (referral.gate.status !== 'disabled') return null
+    if (!showAdvanced || !depositForOther || !recipientInput.trim()) return null
+    return validateRecipient(recipientInput, {
+      self: address,
+      protocolAddresses: [
+        lpAddress,
+        stableTokenAddress,
+        protocolAddrs.loans,
+        protocolAddrs.collateralManager,
+        protocolAddrs.swapManager,
+        ...allAssets
+      ]
+    })
+  }, [
+    referral.gate.status,
+    showAdvanced,
+    depositForOther,
+    recipientInput,
+    address,
+    lpAddress,
+    stableTokenAddress,
+    protocolAddrs.loans,
+    protocolAddrs.collateralManager,
+    protocolAddrs.swapManager,
+    allAssets
+  ])
+
+  const verifiedRecipient =
+    recipientValidation?.ok === true ? recipientValidation.address : undefined
+
+  // Layer 3: is the recipient a contract? Warn-and-acknowledge, not a block —
+  // a multisig is a legitimate recipient, a random contract means stuck funds.
+  useEffect(() => {
+    setRecipientIsContract(undefined)
+    setRecipientAckContract(false)
+    setRecipientSuffix('')
+    if (!verifiedRecipient || !publicClient) return
+    let cancelled = false
+    publicClient
+      .getCode({ address: verifiedRecipient })
+      .then((code) => {
+        if (!cancelled) setRecipientIsContract(!!code && code !== '0x')
+      })
+      .catch(() => {
+        // Unknown stays undefined: the confirm gate refuses to proceed on a
+        // contract-status we couldn't determine only if the user never
+        // acknowledges — treat as EOA is the wrong default, so leave it
+        // unresolved and let the dialog show "checking".
+        if (!cancelled) setRecipientIsContract(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [verifiedRecipient, publicClient])
 
   // Parse dollar input to stable token units for contract calls
   const parsedDollarAmount = useMemo(() => {
@@ -368,8 +459,7 @@ export function AddLiquidityCard({
   // spender flips pool↔router), not insufficient. The Approve button stays
   // visible so the layout doesn't jump, but is held disabled until the read
   // resolves — an eager click here would fire a redundant approval.
-  const allowanceUnknown =
-    !!grossTokenAmount && currentAllowance === undefined
+  const allowanceUnknown = !!grossTokenAmount && currentAllowance === undefined
   const needsApproval = useMemo(() => {
     if (!grossTokenAmount) return false
     if (currentAllowance === undefined) return true
@@ -396,13 +486,30 @@ export function AddLiquidityCard({
     }
   }
 
+  // Once the deposit-for-another-wallet box is CHECKED, the deposit is held
+  // until a recipient verifies — silently falling back to a self-deposit
+  // after an explicit opt-in would be worse than blocking.
+  const recipientFieldOk =
+    !showAdvanced || !depositForOther || !!verifiedRecipient
+
   const canDeposit =
     !!tokenAmount &&
     !insufficientBalance &&
     !isBelowMinimum &&
     selectedAsset !== undefined &&
     selectedTier !== undefined &&
-    !isReferralBlocked
+    !isReferralBlocked &&
+    recipientFieldOk
+
+  // The deposit-for confirmation gate: the last-4 challenge must match, the
+  // contract check must have resolved, and a contract recipient must be
+  // explicitly acknowledged. All moot on the plain self-deposit path.
+  const recipientConfirmBlocked =
+    !!verifiedRecipient &&
+    (recipientSuffix.trim().toLowerCase() !==
+      verifiedRecipient.slice(-4).toLowerCase() ||
+      recipientIsContract === undefined ||
+      (recipientIsContract && !recipientAckContract))
 
   const handleDepositClick = () => {
     if (!canDeposit) return
@@ -439,6 +546,26 @@ export function AddLiquidityCard({
           title: '\u2705 Deposit Successful',
           description: `Deposited $${amount} (${tokenEquivalent} ${symbol}) into the liquidity pool.${commissionNote}`
         })
+      } else if (gate.status === 'disabled' && verifiedRecipient) {
+        // Advanced path: the connected wallet pays, the verified recipient
+        // owns the position. Only reachable off the referral path \u2014 the
+        // disclosure is hidden otherwise and depositFor() re-enforces it.
+        await depositFor(
+          selectedAsset,
+          tokenAmount,
+          selectedLockDuration,
+          isNonEarning,
+          verifiedRecipient
+        )
+        toast({
+          title: '\u2705 Deposit Successful',
+          description: `Deposited $${amount} (${tokenEquivalent} ${symbol})${isNonEarning ? ' as non-earning liquidity' : ''} for ${truncateAddress(verifiedRecipient)}. That wallet now owns the position.`
+        })
+        setDepositForOther(false)
+        setRecipientInput('')
+        setRecipientSuffix('')
+        setRecipientAckContract(false)
+        setShowAdvanced(false)
       } else if (gate.status === 'disabled') {
         // No router on this chain \u2014 the plain deposit path applies unchanged.
         await deposit(
@@ -560,6 +687,20 @@ export function AddLiquidityCard({
                 : '\u00A0'}
             </span>
           </div>
+          {/* Directly under the input so the threshold is known before
+              typing, not only after tripping it. Turns red once the entered
+              amount is under it. */}
+          {minimumForDisplay && (
+            <p
+              className={
+                isBelowMinimum
+                  ? 'text-xs text-destructive'
+                  : 'text-xs text-muted-foreground'
+              }
+            >
+              Minimum deposit is ${minimumForDisplay} USD equivalent.
+            </p>
+          )}
         </div>
 
         {/* Lock Duration + Interest Multiplier */}
@@ -587,24 +728,120 @@ export function AddLiquidityCard({
           </div>
         )}
 
-        {/* The referral router fixes nonEarning, so the choice isn't offered
-            on that path. */}
+        {/* Advanced options — non-earning and deposit-for-another-wallet —
+            behind one collapsed chevron toggle so neither reads as a primary
+            call to action. Hidden on the referral path: the router fixes
+            nonEarning and depositFor would bypass referral-only policy. */}
         {!useReferralPath && (
-          <label className='flex items-center gap-2 cursor-pointer'>
-            <input
-              type='checkbox'
-              checked={isNonEarning}
-              onChange={(e) => setIsNonEarning(e.target.checked)}
-              className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
-            />
-            <span
-              className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}
+          <div className='space-y-2'>
+            <button
+              type='button'
+              onClick={() => {
+                const next = !showAdvanced
+                setShowAdvanced(next)
+                if (!next) {
+                  setDepositForOther(false)
+                  setRecipientInput('')
+                  setRecipientSuffix('')
+                  setRecipientAckContract(false)
+                }
+              }}
+              className='flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground'
             >
-              Deposit as non-earning
-              {isNonEarning &&
-                ' — will not earn interest from borrower payments'}
-            </span>
-          </label>
+              {showAdvanced ? (
+                <ChevronDown className='h-3.5 w-3.5' />
+              ) : (
+                <ChevronRight className='h-3.5 w-3.5' />
+              )}
+              Advanced
+              {/* Collapsing hides the checkbox but not its effect — keep a
+                  breadcrumb so an armed non-earning flag is never invisible.
+                  (The recipient field is cleared on collapse, so it needs no
+                  breadcrumb.) */}
+              {!showAdvanced && isNonEarning && (
+                <span className='text-destructive'>· non-earning</span>
+              )}
+            </button>
+            {showAdvanced && (
+              <div className='space-y-3 rounded-md border border-border p-3'>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={isNonEarning}
+                    onChange={(e) => setIsNonEarning(e.target.checked)}
+                    className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
+                  />
+                  <span
+                    className={`text-xs ${isNonEarning ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    Deposit as non-earning
+                    {isNonEarning &&
+                      ' — will not earn interest from borrower payments'}
+                  </span>
+                </label>
+
+                {gate.status === 'disabled' && (
+                  <div className='space-y-1.5'>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <input
+                        type='checkbox'
+                        checked={depositForOther}
+                        onChange={(e) => {
+                          setDepositForOther(e.target.checked)
+                          if (!e.target.checked) {
+                            setRecipientInput('')
+                            setRecipientSuffix('')
+                            setRecipientAckContract(false)
+                          }
+                        }}
+                        className='h-3.5 w-3.5 rounded border-border accent-yellow-500'
+                      />
+                      <span
+                        className={`text-xs ${depositForOther ? 'text-destructive' : 'text-muted-foreground'}`}
+                      >
+                        Deposit for another wallet
+                        {depositForOther &&
+                          ' — that wallet will own the position'}
+                      </span>
+                    </label>
+                    {depositForOther && (
+                      <div className='space-y-1.5 pl-5'>
+                        <Input
+                          placeholder='Recipient address (0x…)'
+                          value={recipientInput}
+                          onChange={(e) => setRecipientInput(e.target.value)}
+                          className='text-xs font-mono'
+                          spellCheck={false}
+                          autoComplete='off'
+                        />
+                        {!recipientInput.trim() && (
+                          <p className='text-xs text-muted-foreground'>
+                            Enter the recipient address to continue.
+                          </p>
+                        )}
+                        {recipientValidation && !recipientValidation.ok && (
+                          <p className='text-xs text-destructive'>
+                            {recipientValidation.reason}
+                          </p>
+                        )}
+                        {verifiedRecipient && (
+                          <p className='break-all font-mono text-xs text-muted-foreground'>
+                            ✓ {verifiedRecipient}
+                          </p>
+                        )}
+                        {recipientInput.trim() && (
+                          <p className='text-xs text-destructive'>
+                            Ownership goes to this wallet. Only it can withdraw
+                            or claim — this cannot be undone.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {requiresSwap && (
@@ -615,20 +852,6 @@ export function AddLiquidityCard({
         )}
 
         <div className='flex-1 space-y-1'>
-          {/* Always shown so the threshold is known before typing, not only
-              after tripping it. Still read from minimumDepositValue on the
-              pool — it turns red once the entered amount is under it. */}
-          {minimumForDisplay && (
-            <p
-              className={
-                isBelowMinimum
-                  ? 'text-sm text-destructive'
-                  : 'text-sm text-muted-foreground'
-              }
-            >
-              Minimum deposit is ${minimumForDisplay} USD equivalent.
-            </p>
-          )}
           {insufficientBalance && (
             <p className='text-sm text-destructive'>
               Insufficient balance. You need ~{grossTokenEquivalent} {symbol}
@@ -709,6 +932,8 @@ export function AddLiquidityCard({
                   <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
                   Depositing...
                 </>
+              ) : verifiedRecipient ? (
+                `Deposit for ${truncateAddress(verifiedRecipient)}`
               ) : (
                 'Deposit'
               )}
@@ -722,6 +947,8 @@ export function AddLiquidityCard({
         onOpenChange={(open) => {
           if (!open && isProcessing) return
           setShowConfirmDialog(open)
+          // Re-ask the last-4 challenge every time the dialog reopens.
+          if (!open) setRecipientSuffix('')
         }}
       >
         <DialogContent>
@@ -781,7 +1008,62 @@ export function AddLiquidityCard({
                   note='Your liquidity position is unaffected and still goes to your wallet.'
                 />
               )}
+              {verifiedRecipient && (
+                <DetailRow
+                  label='Owned by'
+                  value={truncateAddress(verifiedRecipient)}
+                  mono
+                  note='NOT your wallet — confirm below.'
+                />
+              )}
             </dl>
+
+            {verifiedRecipient && (
+              <div className='space-y-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2'>
+                <p className='text-sm font-medium text-destructive'>
+                  This deposit will be owned by a different wallet. Only it can
+                  withdraw or claim — this cannot be undone.
+                </p>
+                <p className='break-all font-mono text-xs'>
+                  {verifiedRecipient}
+                </p>
+                {recipientIsContract === undefined && (
+                  <p className='text-xs text-muted-foreground'>
+                    Checking whether the recipient is a smart contract…
+                  </p>
+                )}
+                {recipientIsContract === true && (
+                  <label className='flex items-start gap-2 text-xs'>
+                    <input
+                      type='checkbox'
+                      checked={recipientAckContract}
+                      onChange={(e) =>
+                        setRecipientAckContract(e.target.checked)
+                      }
+                      className='mt-0.5 h-3.5 w-3.5 rounded border-border accent-yellow-500'
+                    />
+                    <span>
+                      The recipient is a smart contract. I confirm it can make
+                      calls to the pool (e.g. a multisig) — funds sent to a
+                      contract that can&apos;t are unrecoverable.
+                    </span>
+                  </label>
+                )}
+                <label className='block text-xs'>
+                  Type the last 4 characters of the recipient address to enable
+                  the deposit:
+                  <Input
+                    value={recipientSuffix}
+                    onChange={(e) => setRecipientSuffix(e.target.value)}
+                    placeholder='last 4 characters'
+                    className='mt-1 h-8 font-mono text-xs'
+                    maxLength={4}
+                    spellCheck={false}
+                    autoComplete='off'
+                  />
+                </label>
+              </div>
+            )}
 
             {requiresSwap && (
               <p className='text-xs leading-relaxed text-muted-foreground'>
@@ -807,13 +1089,15 @@ export function AddLiquidityCard({
             </Button>
             <Button
               onClick={handleConfirmDeposit}
-              disabled={isProcessing}
+              disabled={isProcessing || recipientConfirmBlocked}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
               {isProcessing ? (
                 <>
                   <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Depositing…
                 </>
+              ) : verifiedRecipient ? (
+                `Deposit for ${truncateAddress(verifiedRecipient)}`
               ) : (
                 'Confirm Deposit'
               )}
