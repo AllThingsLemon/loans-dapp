@@ -80,6 +80,10 @@ function formatLockDurationLong(duration: bigint): string {
   return `${minutes} minute${minutes > 1 ? 's' : ''}`
 }
 
+// The exact word the non-earning confirmation requires — matches the
+// checkbox label so the user is retyping the thing they opted into.
+const NON_EARNING_CHALLENGE = 'non-earning'
+
 interface AddLiquidityCardProps {
   liquidityPool: UseLiquidityPoolReturn
   /**
@@ -120,6 +124,9 @@ export function AddLiquidityCard({
   const [recipientAckContract, setRecipientAckContract] = useState(false)
   // The typed last-4-characters challenge in the confirm dialog.
   const [recipientSuffix, setRecipientSuffix] = useState('')
+  // Typed challenge for non-earning deposits — same pattern as the recipient
+  // last-4 challenge: an explicit act, not just a checkbox skim.
+  const [nonEarningChallenge, setNonEarningChallenge] = useState('')
   const { toast } = useToast()
   const { address, chain } = useAccount()
   const publicClient = usePublicClient()
@@ -511,6 +518,12 @@ export function AddLiquidityCard({
       recipientIsContract === undefined ||
       (recipientIsContract && !recipientAckContract))
 
+  // Non-earning deposits require typing the word out — a checked box is too
+  // easy to sail past for a flag that permanently forfeits interest.
+  const nonEarningConfirmBlocked =
+    effectiveNonEarning &&
+    nonEarningChallenge.trim().toLowerCase() !== NON_EARNING_CHALLENGE
+
   const handleDepositClick = () => {
     if (!canDeposit) return
     setShowConfirmDialog(true)
@@ -594,6 +607,7 @@ export function AddLiquidityCard({
         return
       }
       setAmount('')
+      setNonEarningChallenge('')
       setShowConfirmDialog(false)
       // Fire-and-forget: the dialog is already closed and scheduleRefresh
       // covers a full refresh moments later — awaiting these only held the
@@ -947,8 +961,11 @@ export function AddLiquidityCard({
         onOpenChange={(open) => {
           if (!open && isProcessing) return
           setShowConfirmDialog(open)
-          // Re-ask the last-4 challenge every time the dialog reopens.
-          if (!open) setRecipientSuffix('')
+          // Re-ask both typed challenges every time the dialog reopens.
+          if (!open) {
+            setRecipientSuffix('')
+            setNonEarningChallenge('')
+          }
         }}
       >
         <DialogContent>
@@ -1073,10 +1090,25 @@ export function AddLiquidityCard({
             )}
 
             {effectiveNonEarning && (
-              <p className='rounded-lg bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive'>
-                This is a non-earning deposit. You will not earn interest from
-                borrower payments on this deposit.
-              </p>
+              <div className='space-y-2 rounded-lg bg-destructive/10 px-3 py-2'>
+                <p className='text-sm font-medium text-destructive'>
+                  This is a non-earning deposit. You will not earn interest from
+                  borrower payments on this deposit.
+                </p>
+                <label className='block text-xs'>
+                  Type <span className='font-mono'>non-earning</span> to enable
+                  the deposit:
+                  <Input
+                    value={nonEarningChallenge}
+                    onChange={(e) => setNonEarningChallenge(e.target.value)}
+                    placeholder='non-earning'
+                    className='mt-1 h-8 font-mono text-xs'
+                    maxLength={16}
+                    spellCheck={false}
+                    autoComplete='off'
+                  />
+                </label>
+              </div>
             )}
           </div>
           <DialogFooter className='gap-2 sm:gap-0'>
@@ -1089,7 +1121,11 @@ export function AddLiquidityCard({
             </Button>
             <Button
               onClick={handleConfirmDeposit}
-              disabled={isProcessing || recipientConfirmBlocked}
+              disabled={
+                isProcessing ||
+                recipientConfirmBlocked ||
+                nonEarningConfirmBlocked
+              }
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black font-semibold'
             >
               {isProcessing ? (
