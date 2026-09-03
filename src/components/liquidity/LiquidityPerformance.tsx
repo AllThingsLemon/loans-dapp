@@ -265,6 +265,25 @@ export function LiquidityPerformance({
     return userStatus.pendingEarnings + userStatus.totalClaimed
   }, [userStatus])
 
+  // Interest borrowers have paid that still sits in the Loans contract —
+  // this wallet's slice of it, i.e. what "Distribute Earnings" would move
+  // into Claimable right now: undistributed × userShares / totalShares.
+  // poolStatus.totalInterestShares (from getPoolStatus) is used deliberately:
+  // the standalone totalInterestShares() getter returns 0 on the upgraded
+  // deployments.
+  const pendingDistribution = useMemo(() => {
+    if (!userStatus || !poolStatus || !liquidityStatus) return undefined
+    if (poolStatus.totalInterestShares === 0n) return 0n
+    const undistributed =
+      liquidityStatus.interestEarned > liquidityStatus.interestDistributed
+        ? liquidityStatus.interestEarned - liquidityStatus.interestDistributed
+        : 0n
+    return (
+      (undistributed * userStatus.interestShares) /
+      poolStatus.totalInterestShares
+    )
+  }, [userStatus, poolStatus, liquidityStatus])
+
   const earningsFeePct = useMemo(() => {
     if (!feeConfig || feeConfig.feeBps === 0n) return null
     return Number(feeConfig.feeBps) / 100
@@ -461,7 +480,7 @@ export function LiquidityPerformance({
                 open: true,
                 title: 'Distribute Earnings',
                 description:
-                  'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all depositors to claim. Anyone can trigger this action.',
+                  'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all liquidity share owners to claim. Anyone can trigger this action.',
                 actionName: 'Distribute',
                 action: () => pullEarnings(),
                 successMsg: 'Earnings distributed to the pool.'
@@ -675,7 +694,7 @@ export function LiquidityPerformance({
             </h3>
             <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
               <StatItem
-                label='Pending Earnings'
+                label='Claimable Earnings'
                 value={
                   userStatus
                     ? formatCurrency(
@@ -683,6 +702,14 @@ export function LiquidityPerformance({
                         decimals,
                         symbol
                       )
+                    : 'Loading...'
+                }
+              />
+              <StatItem
+                label='Pending Distribution'
+                value={
+                  pendingDistribution !== undefined
+                    ? formatCurrency(pendingDistribution, decimals, symbol)
                     : 'Loading...'
                 }
               />
@@ -708,7 +735,7 @@ export function LiquidityPerformance({
                     setConfirmModal({
                       open: true,
                       title: 'Claim Earnings',
-                      description: `Your pending earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
+                      description: `Your claimable earnings of ${formatCurrency(userStatus.pendingEarnings, decimals, symbol)} will be transferred directly to your wallet.${earningsFeePct ? ` A ${earningsFeePct}% fee will be deducted.` : ''}`,
                       actionName: 'Claim',
                       action: () => claimEarnings(),
                       // Report the NET amount — the gross figure overstated
@@ -847,7 +874,7 @@ export function LiquidityPerformance({
           <div className='space-y-4 py-2'>
             {userStatus && (
               <p className='text-sm text-muted-foreground'>
-                Your pending earnings of{' '}
+                Your claimable earnings of{' '}
                 {formatCurrency(userStatus.pendingEarnings, decimals, symbol)}{' '}
                 will be deposited back into the pool as new shares. Select a
                 lock duration below.
@@ -937,7 +964,7 @@ export function LiquidityPerformance({
           <div className='space-y-4 py-2'>
             <p className='text-sm text-muted-foreground'>
               All of your liquidity will be transferred to the entered wallet,
-              including all deposits, shares, and any pending earnings. This
+              including all deposits, shares, and any claimable earnings. This
               action cannot be undone.
             </p>
             <div className='space-y-1.5'>
@@ -978,7 +1005,7 @@ export function LiquidityPerformance({
                 htmlFor='transfer-account-confirm'
                 className='text-sm leading-snug cursor-pointer'
               >
-                I understand that all liquidity, shares, and pending earnings
+                I understand that all liquidity, shares, and claimable earnings
                 will be transferred to the entered wallet and this cannot be
                 reversed.
               </label>

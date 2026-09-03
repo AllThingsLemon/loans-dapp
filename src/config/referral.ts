@@ -21,7 +21,8 @@ export const ZERO_ADDRESS =
 const CHAINS = {
   LEMON: 1006,
   CITRON: 1005,
-  BSC: 56
+  BSC: 56,
+  BSC_TESTNET: 97
 } as const
 
 /** Normalise an env value to a usable address, treating 0x0…0 as unset. */
@@ -36,7 +37,9 @@ function normalizeAddress(raw?: string): `0x${string}` | undefined {
 const REFERRAL_ROUTER_ADDRESSES: Record<number, string | undefined> = {
   [CHAINS.LEMON]: process.env.NEXT_PUBLIC_LEMON_REFERRAL_ROUTER_ADDRESS,
   [CHAINS.CITRON]: process.env.NEXT_PUBLIC_CITRON_REFERRAL_ROUTER_ADDRESS,
-  [CHAINS.BSC]: process.env.NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS
+  [CHAINS.BSC]: process.env.NEXT_PUBLIC_BSC_REFERRAL_ROUTER_ADDRESS,
+  [CHAINS.BSC_TESTNET]:
+    process.env.NEXT_PUBLIC_BSC_TESTNET_REFERRAL_ROUTER_ADDRESS
 }
 
 /**

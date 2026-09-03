@@ -3,8 +3,11 @@ import { formatUnits } from 'viem'
 import { formatTokenAmount } from './decimals'
 
 // New contract-specific formatting utilities
-export const formatAmount = (amount: bigint, decimals = 18): string => {
-  return formatTokenAmount(amount, decimals)
+export const formatAmount = (
+  amount: bigint,
+  decimals: number | undefined
+): string => {
+  return formatTokenAmount(amount, decimals ?? 18)
 }
 
 /**
@@ -18,12 +21,17 @@ export const floorToDecimals = (value: number, decimals: number): number => {
   return Math.floor(value * factor) / factor
 }
 
+// `decimals` is deliberately required (undefined allowed while token config is
+// still loading). A defaulted-18 third argument let call sites silently render
+// 8-decimal chains as 0.00 — every caller must state where its decimals come from.
 export const formatAmountWithSymbol = (
   amount: bigint,
   symbol: string,
-  decimals = 18
+  decimals: number | undefined
 ): string => {
-  const formattedAmount = parseFloat(formatAmount(amount, decimals)).toLocaleString('en-US', {
+  const formattedAmount = parseFloat(
+    formatAmount(amount, decimals)
+  ).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })

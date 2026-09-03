@@ -8,21 +8,23 @@ export default function Footer() {
             every page without competing with the page it sits under. */}
         <div className='mx-auto max-w-4xl space-y-3 text-left text-[10px] leading-relaxed sm:text-xs'>
           <p>
-            LemLoans provides information and resources regarding the
-            fundamentals and functionality of the decentralized, non-custodial
-            liquidity protocol known as the LemLoans Protocol (the
-            &ldquo;LemLoans Protocol&rdquo; or the &ldquo;Protocol&rdquo;). The
-            Protocol consists of open-source, self-executing smart contracts
-            deployed on permissionless public blockchain networks.
+            LemLoans provides a user interface for accessing the decentralized,
+            non-custodial LemLoans Protocol. The Protocol consists of
+            open-source smart contracts deployed on permissionless public
+            blockchain networks. Once deployed and made immutable, the Protocol
+            operates according to the rules encoded in those smart contracts.
+            Users may interact with the Protocol through this website, another
+            compatible interface, or directly through the blockchain.
           </p>
           <p>
-            The LemLoans Protocol operates autonomously through immutable smart
-            contracts. No individual, company, foundation, developer, marketing
-            organization, or other entity controls, operates, manages, modifies,
-            or has discretionary authority over the Protocol or transactions
-            executed through it. Users interact directly with the Protocol
-            through their own self-custodied wallets and retain responsibility
-            for determining whether and how to interact with the Protocol.
+            The LemLoans Protocol operates autonomously through its smart
+            contracts. The website and user interface are provided by Lemon
+            Marketing LLC FZCO, led by H.H. Shaikh Khaled Ebrahim Hamed Ebrahim
+            Al Qassimi. Lemon Marketing does not custody user assets, act as a
+            lender or borrower, or control transactions executed through the
+            Protocol. Users interact through their own self-custodied wallets
+            and remain responsible for determining whether and how to use the
+            Protocol.
           </p>
         </div>
       </footer>

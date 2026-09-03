@@ -15,6 +15,7 @@ import {
 } from 'viem'
 import {
   useWriteLiquidityPoolDeposit,
+  useWriteLiquidityPoolDepositFor,
   useWriteLiquidityPoolRequestWithdrawal,
   useWriteLiquidityPoolClaimEarnings,
   useWriteLiquidityPoolCompoundEarnings,
@@ -44,7 +45,6 @@ import {
   type ReferralPreflightFailure
 } from '@/src/utils/referral'
 
-
 /**
  * A transport failure (RPC timeout / rate-limit) is not an answer from chain.
  * Callers use this to avoid turning "we couldn't ask" into "the answer is no".
@@ -64,6 +64,18 @@ export interface UseLiquidityOperationsReturn {
     amount: bigint,
     lockDuration: bigint,
     nonEarning: boolean
+  ) => Promise<`0x${string}` | undefined>
+  /**
+   * Deposit paid by the connected wallet but OWNED by `recipient` — entry,
+   * shares, and withdrawal rights all go to the recipient. The caller must
+   * have validated the recipient first (utils/recipientAddress.ts).
+   */
+  depositFor: (
+    token: `0x${string}`,
+    amount: bigint,
+    lockDuration: bigint,
+    nonEarning: boolean,
+    recipient: `0x${string}`
   ) => Promise<`0x${string}` | undefined>
   /**
    * Same deposit, routed through ReferralDepositRouter so the referrer earns a
@@ -159,6 +171,9 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
   // Write hooks
   const { writeContractAsync: depositFn, isPending: isDepositing } =
     useWriteLiquidityPoolDeposit({ mutation: { retry: false } })
+
+  const { writeContractAsync: depositForFn, isPending: isDepositingFor } =
+    useWriteLiquidityPoolDepositFor({ mutation: { retry: false } })
 
   const {
     writeContractAsync: requestWithdrawalFn,
@@ -384,6 +399,65 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       lpAddress,
       chainId,
       depositFn,
+      resolveNativeFee,
+      estimateGasWithBuffer,
+      waitAndInvalidate
+    ]
+  )
+
+  /**
+   * Deposit on behalf of another wallet: `msg.sender` pays, `recipient` owns
+   * the resulting position outright (deposit entry, shares, withdrawal
+   * rights). Mirrors deposit() exactly — same referral guard, same native-fee
+   * resolution — plus the recipient argument. Caller is responsible for
+   * having VERIFIED the recipient (see utils/recipientAddress.ts); this hook
+   * only refuses the degenerate cases that are wrong on every chain.
+   */
+  const depositFor = useCallback(
+    async (
+      token: `0x${string}`,
+      amount: bigint,
+      lockDuration: bigint,
+      nonEarning: boolean,
+      recipient: `0x${string}`
+    ) => {
+      if (!address) throw new Error('Wallet not connected')
+      if (!lpAddress) throw new Error('LiquidityPool address not resolved')
+      // depositFor calls the pool directly, so on a referral-only chain it
+      // would bypass both the commission and the referral requirement. Same
+      // invariant as deposit(), enforced at the same layer.
+      if (isReferralEnabled(chainId)) {
+        throw new Error(
+          'Deposits on this network must go through the referral router'
+        )
+      }
+      if (recipient.toLowerCase() === address.toLowerCase()) {
+        throw new Error('Recipient is the connected wallet — use deposit()')
+      }
+
+      const nativeFee = await resolveNativeFee('deposit')
+
+      const gasEstimate = await estimateGasWithBuffer(
+        'depositFor',
+        [token, amount, lockDuration, nonEarning, recipient],
+        nativeFee
+      )
+
+      const txHash = await depositForFn({
+        chainId,
+        address: lpAddress,
+        args: [token, amount, lockDuration, nonEarning, recipient],
+        value: nativeFee,
+        ...(gasEstimate !== undefined ? { gas: gasEstimate } : {})
+      })
+      await waitAndInvalidate(txHash)
+      return txHash
+    },
+    [
+      address,
+      lpAddress,
+      chainId,
+      depositForFn,
       resolveNativeFee,
       estimateGasWithBuffer,
       waitAndInvalidate
@@ -772,11 +846,19 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
       invalidateAll()
       return txHash
     },
-    [chainId, address, approveTokenFn, publicClient, invalidateAll, scheduleRefresh]
+    [
+      chainId,
+      address,
+      approveTokenFn,
+      publicClient,
+      invalidateAll,
+      scheduleRefresh
+    ]
   )
 
   const isTransacting =
     isDepositing ||
+    isDepositingFor ||
     isRequestingWithdrawal ||
     isClaiming ||
     isCompounding ||
@@ -790,6 +872,7 @@ export function useLiquidityOperations(): UseLiquidityOperationsReturn {
 
   return {
     deposit,
+    depositFor,
     depositWithReferral,
     referralRouterAddress,
     requestWithdrawal,

@@ -23,6 +23,7 @@ const CHAINS = {
   LEMON: 1006,
   CITRON: 1005,
   BSC: 56,
+  BSC_TESTNET: 97,
 } as const
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
@@ -31,6 +32,7 @@ const LOANS_ADDRESSES = {
   [CHAINS.LEMON]: (process.env.NEXT_PUBLIC_LEMON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   [CHAINS.CITRON]: (process.env.NEXT_PUBLIC_CITRON_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
   [CHAINS.BSC]: (process.env.NEXT_PUBLIC_BSC_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
+  [CHAINS.BSC_TESTNET]: (process.env.NEXT_PUBLIC_BSC_TESTNET_LOANS_ADDRESS || ZERO_ADDRESS) as `0x${string}`,
 } as const
 
 export default defineConfig({

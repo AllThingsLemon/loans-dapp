@@ -1,6 +1,8 @@
 'use client'
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
+import { useThirtyDayReturns } from '@/src/hooks/liquidity/useThirtyDayReturns'
+import { formatReturnPct } from '@/src/utils/returns'
 import {
   BarChart3,
   Coins,
@@ -14,46 +16,25 @@ import {
 } from 'lucide-react'
 
 /**
- * Marketing figures, not protocol data.
+ * The weight/lock structure mirrors the approved design's model tiers — the
+ * lock tiers a depositor can actually pick, and their real interest
+ * multipliers, come from `getAssetLockTiers` on the connected view. Keep the
+ * two in step by hand when the model changes.
  *
- * These are the "current model assumptions" from the approved design — they are
- * projections, not anything readable from chain, so they are hardcoded here on
- * purpose rather than dressed up as live values. The lock tiers a depositor can
- * actually pick, and their real interest multipliers, come from
- * `getAssetLockTiers` on the connected view. Keep the two in step by hand when
- * the model changes.
+ * The return figures — the headline above the table AND the per-tier column —
+ * are live protocol data (see useThirtyDayReturns). Each tier's return is
+ * mult × the 1.00x base rate: interest is distributed per interest share and
+ * a deposit's interest shares are principal × multiplier, so the multiplier
+ * IS the tier's earnings scale. The share-weighted average of the tier rows
+ * equals the headline figure by construction.
  */
 const RETURN_MODEL = [
-  {
-    period: '1 Year',
-    multiplier: '1.00x',
-    lock: '0 – 1 Year',
-    total: '28%* – 35%*'
-  },
-  {
-    period: '2 Years',
-    multiplier: '1.25x',
-    lock: '1 – 2 Years',
-    total: '70%* – 90%*'
-  },
-  {
-    period: '3 Years',
-    multiplier: '1.50x',
-    lock: '2 – 3 Years',
-    total: '130%* – 170%*'
-  },
-  {
-    period: '4 Years',
-    multiplier: '1.75x',
-    lock: '3 – 4 Years',
-    total: '220%* – 280%*'
-  },
-  {
-    period: '5 Years',
-    multiplier: '2.00x',
-    lock: '4 – 5 Years',
-    total: '350%* – 500%*'
-  }
+  { period: '1 Year', multiplier: '1.00x', mult: 1.0, lock: '0 – 1 Year' },
+  { period: '2 Years', multiplier: '1.25x', mult: 1.25, lock: '1 – 2 Years' },
+  { period: '3 Years', multiplier: '1.50x', mult: 1.5, lock: '2 – 3 Years' },
+  { period: '4 Years', multiplier: '1.75x', mult: 1.75, lock: '3 – 4 Years' },
+  { period: '5 Years', multiplier: '2.00x', mult: 2.0, lock: '4 – 5 Years' },
+  { period: '10 Years', multiplier: '3.00x', mult: 3.0, lock: '5 – 10 Years' }
 ] as const
 
 const PILLARS = [
@@ -120,7 +101,7 @@ const COLUMNS = [
   { label: 'Time Period', sub: null },
   { label: 'Weight', sub: '(Multiplier)' },
   { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Illustrative Total', sub: 'Returns*' }
+  { label: 'Actual Return', sub: '(Last 30 Days)' }
 ] as const
 
 const HEAD_CELL =
@@ -134,6 +115,7 @@ const TRIPLET_ROW =
 
 export function DisconnectedLiquidity() {
   const { openConnectModal } = useConnectModal()
+  const { data: returns, isLoading: returnsLoading } = useThirtyDayReturns()
 
   return (
     <div className='mx-auto flex max-w-4xl flex-col items-center gap-10 py-4 text-center'>
@@ -182,7 +164,7 @@ export function DisconnectedLiquidity() {
         ))}
       </div>
 
-      {/* ── Estimated returns ────────────────────────────────────── */}
+      {/* ── Measured returns ─────────────────────────────────────── */}
       <section className='w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-900'>
         <div className='flex items-center justify-center gap-3 sm:justify-start'>
           <BarChart3
@@ -191,11 +173,27 @@ export function DisconnectedLiquidity() {
           />
           <div className='text-left'>
             <h3 className='text-xl font-extrabold tracking-tight text-gray-900 sm:text-2xl dark:text-gray-100'>
-              ILLUSTRATIVE RETURN SCENARIOS
+              PROTOCOL RETURNS
             </h3>
             <p className='text-sm font-medium italic text-gray-500 dark:text-gray-400'>
-              Model Outputs Based on Stated Protocol-Activity Assumptions
+              Measured From Live On-Chain Activity
             </p>
+          </div>
+        </div>
+
+        {/* The headline figure is REAL protocol data (30-day interest over
+            total pool shares); the tier rows scale the measured base rate by
+            each multiplier. See useThirtyDayReturns for the share math. */}
+        <div className='mt-5 rounded-lg bg-gray-900 px-4 py-4 text-center'>
+          <div className='text-[10px] font-bold uppercase tracking-wide text-yellow-400 sm:text-xs'>
+            Actual Average Return · Last 30 Days
+          </div>
+          <div className='mt-1 text-3xl font-extrabold tabular-nums text-green-400 sm:text-4xl'>
+            {returnsLoading ? '…' : formatReturnPct(returns?.avgPct)}
+          </div>
+          <div className='mt-1 text-[10px] text-gray-400 sm:text-xs'>
+            Interest payments ÷ total pool shares, read from the protocol
+            contracts
           </div>
         </div>
 
@@ -203,7 +201,7 @@ export function DisconnectedLiquidity() {
             than scroll — clipping the return column defeats the point of the
             panel. overflow-x-auto is the backstop below that, so an unusually
             narrow screen scrolls the table and never the page. */}
-        <div className='mt-5 overflow-x-auto'>
+        <div className='mt-4 overflow-x-auto'>
           <table className='w-full border-collapse overflow-hidden rounded-lg'>
             <thead>
               <tr className='bg-gray-900 text-yellow-400'>
@@ -236,7 +234,13 @@ export function DisconnectedLiquidity() {
                   <td
                     className={`${CELL} font-bold tabular-nums text-green-700 dark:text-green-400`}
                   >
-                    {row.total}
+                    {returnsLoading
+                      ? '…'
+                      : formatReturnPct(
+                          returns?.basePct != null
+                            ? returns.basePct * row.mult
+                            : null
+                        )}
                   </td>
                 </tr>
               ))}
@@ -247,9 +251,12 @@ export function DisconnectedLiquidity() {
         {/* Deliberately set smaller than the table it sits under: it has to be
             present and readable without competing with the figures above. */}
         <p className='mt-4 text-left text-[10px] leading-relaxed text-gray-500 sm:text-xs dark:text-gray-400'>
-          *NOT BASED ON HISTORICAL RETURNS. Illustrative outcomes are
-          model-generated and are not promised or guaranteed. Actual protocol
-          outcomes depend on borrower demand, utilization, collateral
+          Returns are measured from actual on-chain interest payments relative
+          to pool shares over the stated period. Per-tier figures scale the
+          measured base rate by each tier&apos;s interest-share multiplier —
+          longer locks receive proportionally more of the same distributed
+          interest. Past performance does not guarantee future results. Actual
+          protocol outcomes depend on borrower demand, utilization, collateral
           performance, market conditions, refinancing activity, smart-contract
           execution and other factors. Digital assets deposited into the
           protocol may lose value, including the possible loss of some or all

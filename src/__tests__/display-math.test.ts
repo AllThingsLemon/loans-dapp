@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { formatPercentage, parseTokenAmount, formatTokenAmount } from '../utils/decimals'
-import { floorToDecimals, formatDuration, formatAmountWithSymbol } from '../utils/format'
+import {
+  formatPercentage,
+  parseTokenAmount,
+  formatTokenAmount
+} from '../utils/decimals'
+import {
+  floorToDecimals,
+  formatDuration,
+  formatAmountWithSymbol
+} from '../utils/format'
 import { grossPaymentAmount } from '../utils/fees'
 import {
   resolveGraceDuration,
@@ -28,8 +36,16 @@ describe('formatPercentage (2-decimal precision)', () => {
     // The calculator finds the selected tier by comparing the slider value
     // against Number(formatPercentage(tier.ltv)). Every distinct tier must
     // survive that transformation uniquely.
-    const tiers = [20_000_000n, 30_000_000n, 32_500_000n, 50_000_000n, 62_500_000n]
-    const displayed = tiers.map((t) => Number(formatPercentage(t, PCT_DECIMALS)))
+    const tiers = [
+      20_000_000n,
+      30_000_000n,
+      32_500_000n,
+      50_000_000n,
+      62_500_000n
+    ]
+    const displayed = tiers.map((t) =>
+      Number(formatPercentage(t, PCT_DECIMALS))
+    )
     expect(displayed).toEqual([20, 30, 32.5, 50, 62.5])
     expect(new Set(displayed).size).toBe(tiers.length)
   })
@@ -82,7 +98,23 @@ describe('parse/format token amounts', () => {
   })
 
   it('formatAmountWithSymbol renders two decimals with the symbol', () => {
-    expect(formatAmountWithSymbol(1_500_000_000_000_000_000n, 'USDT')).toBe('1.50 USDT')
+    expect(formatAmountWithSymbol(1_500_000_000_000_000_000n, 'USDT', 18)).toBe(
+      '1.50 USDT'
+    )
+  })
+
+  it('formatAmountWithSymbol respects non-18 token decimals', () => {
+    // 8-decimal chains (BSC testnet mocks) rendered as 0.00 when decimals
+    // were defaulted — 1e10 at 8 decimals is 100, not dust.
+    expect(formatAmountWithSymbol(10_000_000_000n, 'LUSD', 8)).toBe(
+      '100.00 LUSD'
+    )
+  })
+
+  it('formatAmountWithSymbol falls back to 18 while decimals are loading', () => {
+    expect(
+      formatAmountWithSymbol(1_500_000_000_000_000_000n, 'USDT', undefined)
+    ).toBe('1.50 USDT')
   })
 })
 
@@ -133,15 +165,25 @@ describe('loan default timing (balloonGraceSnapshot)', () => {
 
   it('a global grace change does NOT move a snapshotted loan’s default moment', () => {
     const snapshot = 86_400n
-    const before = loanDefaultTimestamp(createdAt, duration, resolveGraceDuration(snapshot, 43_200n))
-    const afterConfigChange = loanDefaultTimestamp(createdAt, duration, resolveGraceDuration(snapshot, 1n))
+    const before = loanDefaultTimestamp(
+      createdAt,
+      duration,
+      resolveGraceDuration(snapshot, 43_200n)
+    )
+    const afterConfigChange = loanDefaultTimestamp(
+      createdAt,
+      duration,
+      resolveGraceDuration(snapshot, 1n)
+    )
     expect(afterConfigChange).toBe(before)
   })
 
   it('flips to defaulted exactly at createdAt + duration + grace', () => {
     const grace = 86_400n
     const defaultAt = createdAt + duration + grace
-    expect(isPastDefault(createdAt, duration, grace, 0n, defaultAt - 1n)).toBe(false)
+    expect(isPastDefault(createdAt, duration, grace, 0n, defaultAt - 1n)).toBe(
+      false
+    )
     expect(isPastDefault(createdAt, duration, grace, 0n, defaultAt)).toBe(true)
   })
 

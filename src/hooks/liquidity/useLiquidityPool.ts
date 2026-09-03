@@ -8,6 +8,7 @@ export function useLiquidityPool() {
   return {
     ...data,
     deposit: operations.deposit,
+    depositFor: operations.depositFor,
     depositWithReferral: operations.depositWithReferral,
     referralRouterAddress: operations.referralRouterAddress,
     requestWithdrawal: operations.requestWithdrawal,
@@ -24,7 +25,7 @@ export function useLiquidityPool() {
     minimumWithdrawalValue: operations.minimumWithdrawalValue,
     depositNativeFee: operations.depositNativeFee,
     withdrawNativeFee: operations.withdrawNativeFee,
-    isTransacting: operations.isTransacting,
+    isTransacting: operations.isTransacting
   }
 }
 

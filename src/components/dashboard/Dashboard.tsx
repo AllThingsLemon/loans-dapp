@@ -100,7 +100,8 @@ export function Dashboard() {
             <div className='text-2xl font-bold'>
               {formatAmountWithSymbol(
                 totalBorrowed,
-                tokenConfig?.loanToken.symbol || 'Token'
+                tokenConfig?.loanToken.symbol || 'Token',
+                tokenConfig?.loanToken.decimals
               )}
             </div>
             <p className='text-xs text-muted-foreground'>
@@ -122,7 +123,8 @@ export function Dashboard() {
             <div className='text-2xl font-bold'>
               {formatAmountWithSymbol(
                 totalRemaining,
-                tokenConfig?.loanToken.symbol || 'Token'
+                tokenConfig?.loanToken.symbol || 'Token',
+                tokenConfig?.loanToken.decimals
               )}
             </div>
             <p className='text-xs text-muted-foreground'>Outstanding balance</p>
@@ -140,7 +142,8 @@ export function Dashboard() {
             <div className='text-2xl font-bold'>
               {formatAmountWithSymbol(
                 totalPaid,
-                tokenConfig?.loanToken.symbol || 'Token'
+                tokenConfig?.loanToken.symbol || 'Token',
+                tokenConfig?.loanToken.decimals
               )}
             </div>
             <p className='text-xs text-muted-foreground'>Total amount repaid</p>
@@ -199,7 +202,8 @@ export function Dashboard() {
             Loan Calculator
           </CardTitle>
           <CardDescription>
-            Calculate loan terms and create new loans. Note: 1 year = 360 days throughout the protocol.
+            Calculate loan terms and create new loans. Note: 1 year = 360 days
+            throughout the protocol.
           </CardDescription>
         </CardHeader>
         <CardContent>
