@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   formatPercentage,
   parseTokenAmount,
-  formatTokenAmount
+  formatTokenAmount,
+  formatSignificantValue
 } from '../utils/decimals'
 import {
   floorToDecimals,
@@ -48,6 +49,29 @@ describe('formatPercentage (2-decimal precision)', () => {
     )
     expect(displayed).toEqual([20, 30, 32.5, 50, 62.5])
     expect(new Set(displayed).size).toBe(tiers.length)
+  })
+})
+
+describe('formatSignificantValue (tiny prices keep 2 significant digits)', () => {
+  it('extends decimals until 2 non-zero digits show', () => {
+    expect(formatSignificantValue('0.00012345')).toBe('0.00012')
+    expect(formatSignificantValue('0.0001')).toBe('0.0001')
+    expect(formatSignificantValue('0.000098765')).toBe('0.000099')
+    expect(formatSignificantValue('0.051234')).toBe('0.051')
+  })
+
+  it('keeps normal-sized values at 2 decimals', () => {
+    expect(formatSignificantValue('13.63456')).toBe('13.63')
+    expect(formatSignificantValue('0.5')).toBe('0.5')
+  })
+
+  it('handles zero and junk', () => {
+    expect(formatSignificantValue('0')).toBe('0')
+    expect(formatSignificantValue('not a number')).toBe('0')
+  })
+
+  it('bounds runaway tiny values at maxDecimals', () => {
+    expect(formatSignificantValue('0.0000000000000001', 2, 12)).toBe('0')
   })
 })
 

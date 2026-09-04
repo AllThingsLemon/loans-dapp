@@ -2,7 +2,11 @@ import { useMemo } from 'react'
 import { usePriceDataFeed } from './pricing/usePriceDataFeed'
 import { useCollateralManager } from './useCollateralManager'
 import { useContractTokenConfiguration } from './useContractTokenConfiguration'
-import { formatTokenAmount, formatDisplayValue } from '@/src/utils/decimals'
+import {
+  formatTokenAmount,
+  formatDisplayValue,
+  formatSignificantValue
+} from '@/src/utils/decimals'
 
 // Re-export specialized hooks
 export { usePriceDataFeed } from './pricing/usePriceDataFeed'
@@ -94,7 +98,9 @@ export const usePricing = (): PriceData => {
       priceDataFeed.originationFeeTokenPrice,
       priceDecimals
     )
-    return formatDisplayValue(rawPrice, 4, 4) // smaller-value token → more decimals
+    // Tiny-value token: extend decimals until at least 2 significant digits
+    // show (e.g. $0.00012, not $0.0001 or $0.00).
+    return formatSignificantValue(rawPrice, 2)
   }, [priceDataFeed.originationFeeTokenPrice, priceDecimals])
 
   return {
