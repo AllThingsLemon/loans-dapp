@@ -99,19 +99,24 @@ function formatRelativeTime(timestamp: bigint): string {
   const ts = Number(timestamp)
   if (ts === 0) return 'Never'
 
+  const plural = (n: number, unit: string) =>
+    `${n} ${unit}${n === 1 ? '' : 's'}`
+
   const diff = now - ts
   if (diff < 0) {
     // Future
     const absDiff = Math.abs(diff)
-    if (absDiff < 3600) return `in ${Math.floor(absDiff / 60)} minutes`
-    if (absDiff < 86400) return `in ${Math.floor(absDiff / 3600)} hours`
-    return `in ${Math.floor(absDiff / 86400)} days`
+    if (absDiff < 3600)
+      return `in ${plural(Math.floor(absDiff / 60), 'minute')}`
+    if (absDiff < 86400)
+      return `in ${plural(Math.floor(absDiff / 3600), 'hour')}`
+    return `in ${plural(Math.floor(absDiff / 86400), 'day')}`
   }
 
   if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`
-  return `${Math.floor(diff / 86400)} days ago`
+  if (diff < 3600) return `${plural(Math.floor(diff / 60), 'minute')} ago`
+  if (diff < 86400) return `${plural(Math.floor(diff / 3600), 'hour')} ago`
+  return `${plural(Math.floor(diff / 86400), 'day')} ago`
 }
 
 function formatDate(timestamp: bigint): string {
@@ -211,6 +216,16 @@ export function LiquidityPerformance({
   const decimals = stableTokenDecimals ?? 18
   const symbol = stableTokenSymbol ?? 'Token'
 
+  // How often the pool allows a distribution, straight from the contract so
+  // the countdown can never disagree with it. 0 = distribution allowed any
+  // time (the countdown row is hidden entirely).
+  const { data: earningsFrequency } = useReadContract({
+    address: liquidityPoolContractAddress,
+    abi: liquidityPoolAbi as unknown as any[],
+    functionName: 'earningsFrequency',
+    query: { enabled: !!liquidityPoolContractAddress }
+  }) as { data: bigint | undefined }
+
   // Fetch lock tiers for stableToken so user can pick one when compounding
   const { data: stableLockTiersRaw } = useReadContract({
     address: liquidityPoolContractAddress,
@@ -300,21 +315,16 @@ export function LiquidityPerformance({
     return Math.min(Math.max(util, 0), 100)
   }, [currentUtilization])
 
-  const canDistributeEarnings = useMemo(() => {
+  // The distribute button is always rendered — anyone may trigger a
+  // distribution at any time (the contract also auto-distributes on every
+  // deposit). It is only disabled while the contract itself would revert:
+  // when a nonzero earningsFrequency still has the next window in the future.
+  const distributionTimeLocked = useMemo(() => {
     if (!poolStatus) return false
+    if (earningsFrequency === 0n) return false
     const now = BigInt(Math.floor(Date.now() / 1000))
-    return (
-      poolStatus.nextEarningsWithdrawalTime <= now &&
-      poolStatus.availableEarningsInLoans > 0n
-    )
-  }, [poolStatus])
-
-  const nextDistributionText = useMemo(() => {
-    if (!poolStatus) return 'N/A'
-    const now = BigInt(Math.floor(Date.now() / 1000))
-    if (poolStatus.nextEarningsWithdrawalTime <= now) return 'Available now'
-    return formatRelativeTime(poolStatus.nextEarningsWithdrawalTime)
-  }, [poolStatus])
+    return poolStatus.nextEarningsWithdrawalTime > now
+  }, [poolStatus, earningsFrequency])
 
   const sortedDepositEntries = useMemo(() => {
     return [...depositEntries].sort((a, b) =>
@@ -465,42 +475,35 @@ export function LiquidityPerformance({
               : 'Loading...'
           }
         />
-        <StatItem
-          label='Next Distribution Available'
-          value={nextDistributionText}
-        />
       </div>
-      {canDistributeEarnings && (
-        <div className='pt-2'>
-          <Button
-            size='sm'
-            variant='outline'
-            onClick={() =>
-              setConfirmModal({
-                open: true,
-                title: 'Distribute Earnings',
-                description:
-                  'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all liquidity share owners to claim. Anyone can trigger this action.',
-                actionName: 'Distribute',
-                action: () => pullEarnings(),
-                successMsg: 'Earnings distributed to the pool.'
-              })
-            }
-            disabled={isProcessing !== null}
-          >
-            {isProcessing === 'Distribute' ? (
-              <>
-                <Loader2 className='h-4 w-4 mr-2 animate-spin' />{' '}
-                Distributing...
-              </>
-            ) : (
-              <>
-                <ArrowDownToLine className='h-4 w-4 mr-2' /> Distribute Earnings
-              </>
-            )}
-          </Button>
-        </div>
-      )}
+      <div className='pt-2'>
+        <Button
+          size='sm'
+          variant='outline'
+          onClick={() =>
+            setConfirmModal({
+              open: true,
+              title: 'Distribute Earnings',
+              description:
+                'This will pull earned interest from the Loans contract into the liquidity pool, making it available for all liquidity share owners to claim. Anyone can trigger this action.',
+              actionName: 'Distribute',
+              action: () => pullEarnings(),
+              successMsg: 'Earnings distributed to the pool.'
+            })
+          }
+          disabled={isProcessing !== null || distributionTimeLocked}
+        >
+          {isProcessing === 'Distribute' ? (
+            <>
+              <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Distributing...
+            </>
+          ) : (
+            <>
+              <ArrowDownToLine className='h-4 w-4 mr-2' /> Distribute Earnings
+            </>
+          )}
+        </Button>
+      </div>
     </div>
   )
 
