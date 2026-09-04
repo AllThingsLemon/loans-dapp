@@ -16,36 +16,41 @@ const bsc = defineChain({
     name: 'BNB',
     symbol: 'BNB'
   },
+  // Ordering is deliberate, measured from real browser traffic (2026-09):
+  // the binance dataseeds lead because they are the only endpoints that
+  // reliably answer browser clients; publicnode 403s browser requests from
+  // the production origin (while answering curl), so it is last-resort only.
+  // The nodereal endpoints were removed outright — the shared key answers
+  // 429 to every request. NOTE: that key was also the only archive node, so
+  // no endpoint here can serve state older than ~128 blocks.
   rpcUrls: {
     default: {
       http: [
-        'https://bsc-mainnet.nodereal.io/v1/1491626c51634eb8bffd3d824757787c',
-        'https://bsc-rpc.publicnode.com',
         'https://bsc-dataseed1.binance.org',
         'https://bsc-dataseed2.binance.org',
         'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org'
-      ],
-      webSocket: [
-        'wss://bsc-mainnet.nodereal.io/ws/v1/1491626c51634eb8bffd3d824757787c'
+        'https://bsc-dataseed4.binance.org',
+        'https://bsc-rpc.publicnode.com'
       ]
     },
     public: {
       http: [
-        'https://bsc-mainnet.nodereal.io/v1/1491626c51634eb8bffd3d824757787c',
-        'https://bsc-rpc.publicnode.com',
         'https://bsc-dataseed1.binance.org',
         'https://bsc-dataseed2.binance.org',
         'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org'
-      ],
-      webSocket: [
-        'wss://bsc-mainnet.nodereal.io/ws/v1/1491626c51634eb8bffd3d824757787c'
+        'https://bsc-dataseed4.binance.org',
+        'https://bsc-rpc.publicnode.com'
       ]
     }
   },
   blockExplorers: {
     default: { name: 'BscScan', url: 'https://bscscan.com' }
+  },
+  contracts: {
+    multicall3: {
+      address: '0xca11bde05977b3631167028862be2a173976ca11',
+      blockCreated: 15921452
+    }
   }
 })
 
@@ -57,31 +62,30 @@ const bscTestnet = defineChain({
     name: 'tBNB',
     symbol: 'tBNB'
   },
+  // Same rationale as mainnet above: rate-limited nodereal removed outright.
   rpcUrls: {
     default: {
       http: [
-        'https://bsc-testnet.nodereal.io/v1/1491626c51634eb8bffd3d824757787c',
         'https://data-seed-prebsc-1-s1.binance.org:8545',
         'https://data-seed-prebsc-2-s1.binance.org:8545',
         'https://data-seed-prebsc-1-s2.binance.org:8545'
-      ],
-      webSocket: [
-        'wss://bsc-testnet.nodereal.io/ws/v1/1491626c51634eb8bffd3d824757787c'
       ]
     },
     public: {
       http: [
-        'https://bsc-testnet.nodereal.io/v1/1491626c51634eb8bffd3d824757787c',
         'https://data-seed-prebsc-1-s1.binance.org:8545',
         'https://data-seed-prebsc-2-s1.binance.org:8545'
-      ],
-      webSocket: [
-        'wss://bsc-testnet.nodereal.io/ws/v1/1491626c51634eb8bffd3d824757787c'
       ]
     }
   },
   blockExplorers: {
     default: { name: 'BscScan Testnet', url: 'https://testnet.bscscan.com' }
+  },
+  contracts: {
+    multicall3: {
+      address: '0xca11bde05977b3631167028862be2a173976ca11',
+      blockCreated: 17422483
+    }
   },
   testnet: true
 })
@@ -178,9 +182,13 @@ const connectors = connectorsForWallets(
 const buildTransport = (chain: Chain) => {
   const urls = chain.rpcUrls.default.http
   if (urls.length > 1) {
+    // rank: false — the list order above is deliberate (healthy endpoints
+    // first, rate-limited archive node last). Latency ranking would keep
+    // pinging the 429ing endpoint and promote it whenever a probe slips
+    // through its limiter.
     return fallback(
-      urls.map((url) => http(url, { retryCount: 3, retryDelay: 1000 })),
-      { rank: true, retryCount: 5, retryDelay: 1000 }
+      urls.map((url) => http(url, { retryCount: 2, retryDelay: 500 })),
+      { rank: false, retryCount: 3, retryDelay: 500 }
     )
   }
   return http(urls[0], { retryCount: 5, retryDelay: 1000 })

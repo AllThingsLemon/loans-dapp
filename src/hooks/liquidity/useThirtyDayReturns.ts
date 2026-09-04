@@ -6,6 +6,29 @@ import { bigintRatioToPct } from '@/src/utils/returns'
 const THIRTY_DAYS_S = 30 * 24 * 3600
 /** Header sample distance used to estimate the chain's average block time. */
 const BLOCK_SAMPLE = 90_000n
+/**
+ * Hard ceiling on the historical (archive-node) read. Only the last-resort
+ * archive endpoint can serve it, so when that endpoint is down the transport
+ * fallback chain grinds through every retry — measured at 80+ seconds —
+ * before the catch below ever runs. The interest-to-date fallback is
+ * perfectly serviceable, so give up long before that.
+ */
+const HISTORY_TIMEOUT_MS = 12_000
+
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('history read timeout')), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(t)
+        reject(e)
+      }
+    )
+  })
 
 export interface ThirtyDayReturns {
   /**
@@ -90,12 +113,16 @@ export function useThirtyDayReturns() {
       // cumulative interest counter at that block.
       let interestThen = 0n
       try {
-        const latest = await publicClient.getBlock()
+        const latest = await withTimeout(
+          publicClient.getBlock(),
+          HISTORY_TIMEOUT_MS
+        )
         const sampleNumber =
           latest.number > BLOCK_SAMPLE ? latest.number - BLOCK_SAMPLE : 0n
-        const sample = await publicClient.getBlock({
-          blockNumber: sampleNumber
-        })
+        const sample = await withTimeout(
+          publicClient.getBlock({ blockNumber: sampleNumber }),
+          HISTORY_TIMEOUT_MS
+        )
         const secPerBlock =
           Number(latest.timestamp - sample.timestamp) /
           Math.max(1, Number(latest.number - sample.number))
@@ -104,12 +131,15 @@ export function useThirtyDayReturns() {
         )
         const fromBlock =
           latest.number > blocksBack ? latest.number - blocksBack : 0n
-        interestThen = (await publicClient.readContract({
-          address: loans,
-          abi: loansAbi,
-          functionName: 'totalInterestEarned',
-          blockNumber: fromBlock
-        })) as bigint
+        interestThen = (await withTimeout(
+          publicClient.readContract({
+            address: loans,
+            abi: loansAbi,
+            functionName: 'totalInterestEarned',
+            blockNumber: fromBlock
+          }),
+          HISTORY_TIMEOUT_MS
+        )) as bigint
       } catch {
         // Pre-deployment block or pruned archive state — cumulative-to-date.
         interestThen = 0n
