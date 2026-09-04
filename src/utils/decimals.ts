@@ -102,6 +102,33 @@ export function formatDisplayValue(
 }
 
 /**
+ * Formats a value with however many decimals it takes to show at least
+ * `sigDigits` significant (non-zero-leading) digits — for very small prices
+ * where a fixed decimal cap would render "$0.0001" or even "$0.00".
+ * Values >= 1 just get `sigDigits` fraction digits. Trailing zeros are not
+ * padded, and `maxDecimals` bounds runaway tiny values.
+ */
+export function formatSignificantValue(
+  value: string,
+  sigDigits: number = 2,
+  maxDecimals: number = 12
+): string {
+  const num = Number(value)
+  if (isNaN(num)) return '0'
+  if (num === 0) return '0'
+
+  const abs = Math.abs(num)
+  const needed =
+    abs >= 1
+      ? sigDigits
+      : Math.min(maxDecimals, Math.floor(-Math.log10(abs)) + sigDigits)
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: needed
+  })
+}
+
+/**
  * Formats duration in seconds to human-readable format
  * @param seconds - Duration in seconds (as bigint)
  * @returns Human-readable duration string
