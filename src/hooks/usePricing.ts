@@ -2,11 +2,7 @@ import { useMemo } from 'react'
 import { usePriceDataFeed } from './pricing/usePriceDataFeed'
 import { useCollateralManager } from './useCollateralManager'
 import { useContractTokenConfiguration } from './useContractTokenConfiguration'
-import {
-  formatTokenAmount,
-  formatDisplayValue,
-  formatSignificantValue
-} from '@/src/utils/decimals'
+import { formatTokenAmount, formatSignificantValue } from '@/src/utils/decimals'
 
 // Re-export specialized hooks
 export { usePriceDataFeed } from './pricing/usePriceDataFeed'
@@ -76,9 +72,10 @@ export const usePricing = (): PriceData => {
   const feeTokenSymbol = tokenConfig?.feeToken.symbol
 
   const spotPrice = useMemo(() => {
-    if (!priceDataFeed.spotPrice || priceDecimals === undefined) return undefined
+    if (!priceDataFeed.spotPrice || priceDecimals === undefined)
+      return undefined
     const rawPrice = formatTokenAmount(priceDataFeed.spotPrice, priceDecimals)
-    return formatDisplayValue(rawPrice, 2, 2)
+    return formatSignificantValue(rawPrice, 2)
   }, [priceDataFeed.spotPrice, priceDecimals])
 
   const monthlyAverage = useMemo(() => {
@@ -88,7 +85,7 @@ export const usePricing = (): PriceData => {
       priceDataFeed.monthlyAverage,
       priceDecimals
     )
-    return formatDisplayValue(rawPrice, 2, 2)
+    return formatSignificantValue(rawPrice, 2)
   }, [priceDataFeed.monthlyAverage, priceDecimals])
 
   const feeTokenPrice = useMemo(() => {

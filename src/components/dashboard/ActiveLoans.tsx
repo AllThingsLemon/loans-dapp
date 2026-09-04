@@ -40,7 +40,8 @@ import {
 import {
   parseTokenAmount,
   formatPercentage,
-  formatTokenAmount
+  formatTokenAmount,
+  significantFractionDigits
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
@@ -1066,7 +1067,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                         {Number(
                                           formatEther(paymentNativeFee)
                                         ).toLocaleString('en-US', {
-                                          maximumFractionDigits: 4
+                                          maximumFractionDigits: Math.max(
+                                            4,
+                                            significantFractionDigits(
+                                              Number(
+                                                formatEther(paymentNativeFee)
+                                              )
+                                            )
+                                          )
                                         })}{' '}
                                         {nativeSymbol}
                                       </span>

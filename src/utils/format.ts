@@ -1,6 +1,6 @@
 import BigNumber from 'bignumber.js'
 import { formatUnits } from 'viem'
-import { formatTokenAmount } from './decimals'
+import { formatTokenAmount, significantFractionDigits } from './decimals'
 
 // New contract-specific formatting utilities
 export const formatAmount = (
@@ -29,11 +29,13 @@ export const formatAmountWithSymbol = (
   symbol: string,
   decimals: number | undefined
 ): string => {
-  const formattedAmount = parseFloat(
-    formatAmount(amount, decimals)
-  ).toLocaleString('en-US', {
+  const num = parseFloat(formatAmount(amount, decimals))
+  // Always at least 2 fraction digits (money-style "1,000.00"), extended as
+  // far as needed so tiny amounts keep 2 significant digits — 0.0000126 BTCB
+  // must render as "0.000013", never "0.00".
+  const formattedAmount = num.toLocaleString('en-US', {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: Math.max(2, significantFractionDigits(num))
   })
   return `${formattedAmount} ${symbol}`
 }
