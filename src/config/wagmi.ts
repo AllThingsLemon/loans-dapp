@@ -16,21 +16,19 @@ const bsc = defineChain({
     name: 'BNB',
     symbol: 'BNB'
   },
-  // Ordering is deliberate, measured from real browser traffic (2026-09):
-  // the binance dataseeds lead because they are the only endpoints that
-  // reliably answer browser clients; publicnode 403s browser requests from
-  // the production origin (while answering curl), so it is last-resort only.
-  // The nodereal endpoints were removed outright — the shared key answers
-  // 429 to every request. NOTE: that key was also the only archive node, so
-  // no endpoint here can serve state older than ~128 blocks.
+  // Only the binance dataseeds remain — measured from real browser traffic
+  // (2026-09) they are the only endpoints that reliably answer browser
+  // clients. publicnode 403s browser requests from the production origin
+  // (while answering curl); the nodereal key answers 429 to everything.
+  // NOTE: nodereal was also the only archive node, so no endpoint here can
+  // serve state older than ~128 blocks.
   rpcUrls: {
     default: {
       http: [
         'https://bsc-dataseed1.binance.org',
         'https://bsc-dataseed2.binance.org',
         'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org',
-        'https://bsc-rpc.publicnode.com'
+        'https://bsc-dataseed4.binance.org'
       ]
     },
     public: {
@@ -38,8 +36,7 @@ const bsc = defineChain({
         'https://bsc-dataseed1.binance.org',
         'https://bsc-dataseed2.binance.org',
         'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org',
-        'https://bsc-rpc.publicnode.com'
+        'https://bsc-dataseed4.binance.org'
       ]
     }
   },
