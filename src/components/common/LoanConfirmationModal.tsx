@@ -11,6 +11,7 @@ import {
 import { Button } from '../ui/button'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { formatEther } from 'viem'
+import { significantFractionDigits } from '../../utils/decimals'
 import { extractErrorMessage } from '../../utils/errorHandling'
 
 interface LoanConfirmationModalProps {
@@ -108,7 +109,10 @@ export function LoanConfirmationModal({
               <span>
                 {calculation.lemonRequired.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
+                  maximumFractionDigits: Math.max(
+                    2,
+                    significantFractionDigits(calculation.lemonRequired)
+                  )
                 })}{' '}
                 {collateral}
               </span>
@@ -116,7 +120,10 @@ export function LoanConfirmationModal({
             <div className='flex justify-between'>
               <span className='font-medium'>Origination Fee:</span>
               <span>
-                {Number(calculation.originationFeeLmln ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                {Number(calculation.originationFeeLmln ?? 0).toLocaleString(
+                  'en-US',
+                  { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                )}{' '}
                 {tokenConfig?.feeToken.symbol || 'Token'}
               </span>
             </div>
@@ -125,7 +132,10 @@ export function LoanConfirmationModal({
                 <span className='font-medium'>Network Fee:</span>
                 <span>
                   {Number(formatEther(nativeFee)).toLocaleString('en-US', {
-                    maximumFractionDigits: 4
+                    maximumFractionDigits: Math.max(
+                      4,
+                      significantFractionDigits(Number(formatEther(nativeFee)))
+                    )
                   })}{' '}
                   {nativeSymbol || 'native token'}
                 </span>
@@ -173,10 +183,10 @@ export function LoanConfirmationModal({
 
           {delegateNeedsAllowance && (
             <div className='text-red-600 text-sm p-2 bg-red-50 rounded'>
-              The delegate hasn&apos;t approved enough {tokenConfig?.feeToken.symbol || 'LMLN'} to
-              the Loans contract. They need to grant approval (the Delegation
-              Manager does this when authorizing) before you can create this
-              loan.
+              The delegate hasn&apos;t approved enough{' '}
+              {tokenConfig?.feeToken.symbol || 'LMLN'} to the Loans contract.
+              They need to grant approval (the Delegation Manager does this when
+              authorizing) before you can create this loan.
             </div>
           )}
 
@@ -188,11 +198,7 @@ export function LoanConfirmationModal({
         </div>
 
         <DialogFooter className='flex gap-2'>
-          <Button
-            variant='outline'
-            onClick={onClose}
-            disabled={isBusy}
-          >
+          <Button variant='outline' onClick={onClose} disabled={isBusy}>
             Cancel
           </Button>
           {needsCollateralApproval ? (
@@ -201,7 +207,13 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-blue-500 to-blue-400 hover:from-blue-600 hover:to-blue-500 text-white'
             >
-              {isApprovingCollateral ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${collateral}`)}
+              {isApprovingCollateral ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…
+                </>
+              ) : (
+                `Approve ${collateral}`
+              )}
             </Button>
           ) : needsApproval ? (
             <Button
@@ -209,15 +221,30 @@ export function LoanConfirmationModal({
               disabled={isBusy || !calculation.isValid}
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isApprovingLoanFee ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…</>) : (`Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`)}
+              {isApprovingLoanFee ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Approving…
+                </>
+              ) : (
+                `Approve ${tokenConfig?.feeToken.symbol || 'LMLN'} Fee`
+              )}
             </Button>
           ) : (
             <Button
               onClick={handleCreateLoan}
-              disabled={isBusy || !calculation.isValid || delegateNeedsAllowance}
+              disabled={
+                isBusy || !calculation.isValid || delegateNeedsAllowance
+              }
               className='bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-600 hover:to-yellow-500 text-black'
             >
-              {isCreatingLoan ? (<><Loader2 className='h-4 w-4 mr-2 animate-spin' /> Creating Loan…</>) : ('Confirm & Create Loan')}
+              {isCreatingLoan ? (
+                <>
+                  <Loader2 className='h-4 w-4 mr-2 animate-spin' /> Creating
+                  Loan…
+                </>
+              ) : (
+                'Confirm & Create Loan'
+              )}
             </Button>
           )}
         </DialogFooter>

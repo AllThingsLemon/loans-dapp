@@ -102,6 +102,21 @@ export function formatDisplayValue(
 }
 
 /**
+ * How many fraction digits a value needs so at least `sigDigits` significant
+ * (non-zero-leading) digits are visible. Values >= 1 need only `sigDigits`;
+ * smaller values extend by their leading-zero run, bounded by `maxDecimals`.
+ */
+export function significantFractionDigits(
+  num: number,
+  sigDigits: number = 2,
+  maxDecimals: number = 12
+): number {
+  const abs = Math.abs(num)
+  if (!Number.isFinite(abs) || abs === 0 || abs >= 1) return sigDigits
+  return Math.min(maxDecimals, Math.floor(-Math.log10(abs)) + sigDigits)
+}
+
+/**
  * Formats a value with however many decimals it takes to show at least
  * `sigDigits` significant (non-zero-leading) digits — for very small prices
  * where a fixed decimal cap would render "$0.0001" or even "$0.00".
@@ -117,14 +132,13 @@ export function formatSignificantValue(
   if (isNaN(num)) return '0'
   if (num === 0) return '0'
 
-  const abs = Math.abs(num)
-  const needed =
-    abs >= 1
-      ? sigDigits
-      : Math.min(maxDecimals, Math.floor(-Math.log10(abs)) + sigDigits)
   return num.toLocaleString('en-US', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: needed
+    maximumFractionDigits: significantFractionDigits(
+      num,
+      sigDigits,
+      maxDecimals
+    )
   })
 }
 

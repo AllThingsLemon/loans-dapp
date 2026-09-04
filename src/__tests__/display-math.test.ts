@@ -75,6 +75,22 @@ describe('formatSignificantValue (tiny prices keep 2 significant digits)', () =>
   })
 })
 
+describe('formatAmountWithSymbol (tiny collateral amounts keep 2 sig digits)', () => {
+  it('extends decimals for sub-cent amounts instead of rendering 0.00', () => {
+    // 0.0000126 BTCB at 18 decimals
+    expect(formatAmountWithSymbol(12_600_000_000_000n, 'BTCB', 18)).toBe(
+      '0.000013 BTCB'
+    )
+  })
+
+  it('keeps money-style 2 decimals for normal amounts', () => {
+    expect(
+      formatAmountWithSymbol(1_000_000_000_000_000_000_000n, 'LUSD', 18)
+    ).toBe('1,000.00 LUSD')
+    expect(formatAmountWithSymbol(150000000n, 'LUSD', 8)).toBe('1.50 LUSD')
+  })
+})
+
 describe('floorToDecimals (balances must round DOWN)', () => {
   it('floors instead of rounding half-up', () => {
     expect(floorToDecimals(99.996, 2)).toBe(99.99)

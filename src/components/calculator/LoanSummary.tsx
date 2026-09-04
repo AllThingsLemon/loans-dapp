@@ -4,7 +4,10 @@ import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
 import { formatDuration } from '../../utils/format'
-import { formatPercentage } from '../../utils/decimals'
+import {
+  formatPercentage,
+  significantFractionDigits
+} from '../../utils/decimals'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
@@ -90,7 +93,9 @@ export function LoanSummary({
   // gas token (tLEMX, BNB, …), unrelated to the actual collateral the user is
   // posting. Use a neutral label until selectedCollateral resolves, and avoid
   // duplicating the word ("Collateral Collateral") when no symbol is known.
-  const collateralLabel = collateralSymbol ? `${collateralSymbol} Collateral` : 'Collateral'
+  const collateralLabel = collateralSymbol
+    ? `${collateralSymbol} Collateral`
+    : 'Collateral'
   const collateralUnit = collateralSymbol ?? ''
   const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false)
 
@@ -140,7 +145,7 @@ export function LoanSummary({
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
                 {calculation.lemonRequired > 0
-                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${collateralUnit ? ` ${collateralUnit}` : ''}`
+                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: Math.max(2, significantFractionDigits(calculation.lemonRequired)) })}${collateralUnit ? ` ${collateralUnit}` : ''}`
                   : calculation.priceError || 'Calculating...'}
               </span>
             </div>
@@ -160,18 +165,23 @@ export function LoanSummary({
                         (calculation.loanAmount *
                           Number(selectedLtvOption.feePct)) /
                         10 ** tokenConfig.ltvDecimals
-                      ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD)`
+                      ).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })} USD)`
                     : '—'}
                 </span>
                 <div
                   className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'} ${hasInsufficientLmln ? 'text-red-500' : ''} mt-0.5`}
                 >
-                  {Number(calculation.originationFeeLmln ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                  {Number(calculation.originationFeeLmln ?? 0).toLocaleString(
+                    'en-US',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                  )}{' '}
                   {tokenConfig?.feeToken.symbol || 'LMLN'}
                 </div>
               </div>
             </div>
-
 
             <div className='flex justify-between'>
               <span
@@ -210,7 +220,11 @@ export function LoanSummary({
               <span
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
-                ${calculation.monthlyPayment.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                $
+                {calculation.monthlyPayment.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
               </span>
             </div>
 
@@ -241,7 +255,8 @@ export function LoanSummary({
                 <span
                   className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
                 >
-                  {calculation.loanCycles} {calculation.loanCycles === 1 ? 'cycle' : 'cycles'}
+                  {calculation.loanCycles}{' '}
+                  {calculation.loanCycles === 1 ? 'cycle' : 'cycles'}
                 </span>
                 {calculation.loanCycleDuration ? (
                   <div
@@ -286,12 +301,14 @@ export function LoanSummary({
             )}
             {hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                Not enough liquidity in the pool for this loan amount. Try a smaller amount.
+                Not enough liquidity in the pool for this loan amount. Try a
+                smaller amount.
               </p>
             )}
             {hasInsufficientCollateral && !hasInsufficientLiquidity && (
               <p className='text-sm text-destructive mb-3'>
-                You don&apos;t have enough {collateralSymbol || 'collateral'} in your wallet to back this loan.
+                You don&apos;t have enough {collateralSymbol || 'collateral'} in
+                your wallet to back this loan.
               </p>
             )}
             {/* userLmlnBalance is the fee payer's balance (delegate or borrower).
