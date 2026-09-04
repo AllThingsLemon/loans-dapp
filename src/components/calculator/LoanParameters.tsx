@@ -3,9 +3,20 @@
 import { Input } from '../ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { formatUnits } from 'viem'
-import { formatPercentage, formatDurationRange } from '../../utils/decimals'
+import {
+  formatPercentage,
+  formatDurationRange,
+  formatTokenAmount,
+  formatSignificantValue
+} from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import type { CollateralTokenInfo } from '../../hooks/useCollateralManager'
+import {
+  useReadLoansPriceDataFeed,
+  useReadPriceDataFeedGetSpotPrice,
+  useReadPriceDataFeedGetMonthlyAverage,
+  useReadPriceDataFeedDecimals
+} from '../../generated'
 
 interface LoanParametersProps {
   loanAmount: number
@@ -52,6 +63,38 @@ export function LoanParameters({
   // immediately.
   const hasMultipleCollateral = supportedCollateralTokens.length > 1
   const needsCollateralChoice = hasMultipleCollateral && !selectedCollateral
+
+  // Prices for the SELECTED collateral only — nothing is fetched or shown
+  // until a token is picked, so at most two figures ever render. The contract
+  // prices the collateral at the LOWER of spot and 30-day average, so the
+  // lower tile is highlighted to show which one the summary will use.
+  const { data: priceDataFeedAddress } = useReadLoansPriceDataFeed()
+  const priceArgs = {
+    address: priceDataFeedAddress,
+    args: selectedCollateral
+      ? ([selectedCollateral.address] as const)
+      : undefined,
+    query: { enabled: !!(priceDataFeedAddress && selectedCollateral) }
+  }
+  const { data: spotPriceRaw } = useReadPriceDataFeedGetSpotPrice(priceArgs)
+  const { data: monthlyAverageRaw } =
+    useReadPriceDataFeedGetMonthlyAverage(priceArgs)
+  const { data: priceDecimals } = useReadPriceDataFeedDecimals({
+    address: priceDataFeedAddress,
+    query: { enabled: !!priceDataFeedAddress }
+  })
+
+  const formatPrice = (raw: bigint | undefined): string | undefined => {
+    if (raw === undefined || priceDecimals === undefined) return undefined
+    return formatSignificantValue(formatTokenAmount(raw, Number(priceDecimals)))
+  }
+  const spotPriceText = formatPrice(spotPriceRaw)
+  const monthlyAverageText = formatPrice(monthlyAverageRaw)
+  // Which price the contract will use (ties go to spot — same number either way).
+  const spotIsUsed =
+    spotPriceRaw !== undefined &&
+    monthlyAverageRaw !== undefined &&
+    spotPriceRaw <= monthlyAverageRaw
   // Use pre-calculated duration range from the hook
   const minDuration = durationRange.min
   const maxDuration = durationRange.max
@@ -71,18 +114,33 @@ export function LoanParameters({
     ltvPercentages.length > 0 ? Math.max(...ltvPercentages) : 0
 
   // Check if loan amount is below minimum
-  const minLoanAmount = loanConfig?.minLoanAmount && tokenConfig
-    ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig.loanToken.decimals || 18))
-    : 0
+  const minLoanAmount =
+    loanConfig?.minLoanAmount && tokenConfig
+      ? Number(
+          formatUnits(
+            loanConfig.minLoanAmount,
+            tokenConfig.loanToken.decimals || 18
+          )
+        )
+      : 0
   const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
 
-  const maxLoanAmount = availableLiquidity !== undefined && tokenConfig
-    ? Number(formatUnits(availableLiquidity, tokenConfig.loanToken.decimals || 18))
-    : loanConfig?.minLoanAmount
-      ? Number(formatUnits(loanConfig.minLoanAmount, tokenConfig?.loanToken.decimals || 18)) * 100
-      : 100000
+  const maxLoanAmount =
+    availableLiquidity !== undefined && tokenConfig
+      ? Number(
+          formatUnits(availableLiquidity, tokenConfig.loanToken.decimals || 18)
+        )
+      : loanConfig?.minLoanAmount
+        ? Number(
+            formatUnits(
+              loanConfig.minLoanAmount,
+              tokenConfig?.loanToken.decimals || 18
+            )
+          ) * 100
+        : 100000
 
-  const hasNoLiquidity = availableLiquidity !== undefined && availableLiquidity === 0n
+  const hasNoLiquidity =
+    availableLiquidity !== undefined && availableLiquidity === 0n
 
   // Tiers need not be uniformly spaced (e.g. 20/30/50), so a fixed step can
   // land the slider on values that have no configured origination fee. Use a
@@ -144,6 +202,72 @@ export function LoanParameters({
                 Select a collateral token to see APR and LTV options.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Collateral price panel — only once a token is selected. The lower
+            of the two prices carries the highlight because that is the one
+            the contract uses to size the required collateral. */}
+        {selectedCollateral && (
+          <div>
+            <label
+              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
+            >
+              💱 {selectedCollateral.symbol} collateral pricing
+            </label>
+            <div className='grid grid-cols-2 gap-2'>
+              {[
+                { label: 'Spot Price', text: spotPriceText, used: spotIsUsed },
+                {
+                  label: '30-Day Average',
+                  text: monthlyAverageText,
+                  used: !spotIsUsed
+                }
+              ].map(({ label, text, used }) => {
+                const bothLoaded =
+                  spotPriceText !== undefined &&
+                  monthlyAverageText !== undefined
+                const highlighted = bothLoaded && used
+                return (
+                  <div
+                    key={label}
+                    className={`rounded-md border p-3 text-center transition-colors ${
+                      highlighted
+                        ? !isDashboard
+                          ? 'border-yellow-400 ring-1 ring-yellow-400 bg-yellow-400/10'
+                          : 'border-primary ring-1 ring-primary bg-primary/5'
+                        : !isDashboard
+                          ? 'border-white/20 bg-white/5'
+                          : 'border-border bg-muted/50'
+                    }`}
+                  >
+                    <p
+                      className={`text-xs ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+                    >
+                      {label}
+                    </p>
+                    <p
+                      className={`text-base font-bold ${!isDashboard ? 'text-white' : ''}`}
+                    >
+                      {text !== undefined ? `$${text}` : '…'}
+                    </p>
+                    {highlighted && (
+                      <p
+                        className={`text-[10px] font-medium uppercase tracking-wide ${!isDashboard ? 'text-yellow-300' : 'text-primary'}`}
+                      >
+                        ✓ Used in calculation
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p
+              className={`text-xs mt-1 ${!isDashboard ? 'text-gray-400' : 'text-muted-foreground'}`}
+            >
+              Your required collateral is calculated at the lower of the two
+              prices.
+            </p>
           </div>
         )}
 
@@ -217,7 +341,8 @@ export function LoanParameters({
               </div>
               {isBelowMinimum && (
                 <p className='text-sm text-red-500 mt-1'>
-                  Minimum loan is ${minLoanAmount.toLocaleString()} {tokenConfig?.loanToken.symbol || 'Token'}.
+                  Minimum loan is ${minLoanAmount.toLocaleString()}{' '}
+                  {tokenConfig?.loanToken.symbol || 'Token'}.
                 </p>
               )}
             </>
