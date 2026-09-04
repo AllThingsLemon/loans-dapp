@@ -68,8 +68,12 @@ export function useThirtyDayReturns() {
     | `0x${string}`
     | undefined
 
-  return useQuery<ThirtyDayReturns>({
-    queryKey: ['thirtyDayReturns', chainId],
+  // Fast reads only — four eth_calls against current state, ~1s on a healthy
+  // endpoint. This is what gates rendering, so the historical (archive-node)
+  // read must never sit in this query: with no archive endpoint configured
+  // it would run out its whole timeout on every page load.
+  const snapshot = useQuery({
+    queryKey: ['returnsSnapshot', chainId],
     enabled: !!publicClient && !!loans,
     staleTime: 5 * 60_000,
     retry: 1,
@@ -106,47 +110,69 @@ export function useThirtyDayReturns() {
           functionName: 'boostTotals'
         })
       ])) as [bigint, readonly [bigint, bigint, bigint, bigint, bigint]]
-      const totalInterestShares = boostTotals[0] + boostTotals[1]
-      if (totalLiquidityShares === 0n) return { avgPct: null, basePct: null }
+      return {
+        interestNow,
+        totalLiquidityShares,
+        totalInterestShares: boostTotals[0] + boostTotals[1]
+      }
+    }
+  })
 
+  // The 30-day baseline, refined in the background. Needs an archive node;
+  // with none configured it fails after HISTORY_TIMEOUT_MS and the figures
+  // simply stay interest-to-date (identical for a young deployment). The
+  // panel never waits on this query.
+  const baseline = useQuery({
+    queryKey: ['returnsBaseline', chainId],
+    enabled: !!publicClient && !!loans,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async (): Promise<bigint> => {
+      if (!publicClient || !loans) throw new Error('client not ready')
       // Estimate blocks-per-30-days from two headers, then read the
       // cumulative interest counter at that block.
-      let interestThen = 0n
-      try {
-        const latest = await withTimeout(
-          publicClient.getBlock(),
-          HISTORY_TIMEOUT_MS
-        )
-        const sampleNumber =
-          latest.number > BLOCK_SAMPLE ? latest.number - BLOCK_SAMPLE : 0n
-        const sample = await withTimeout(
-          publicClient.getBlock({ blockNumber: sampleNumber }),
-          HISTORY_TIMEOUT_MS
-        )
-        const secPerBlock =
-          Number(latest.timestamp - sample.timestamp) /
-          Math.max(1, Number(latest.number - sample.number))
-        const blocksBack = BigInt(
-          Math.floor(THIRTY_DAYS_S / Math.max(0.1, secPerBlock))
-        )
-        const fromBlock =
-          latest.number > blocksBack ? latest.number - blocksBack : 0n
-        interestThen = (await withTimeout(
-          publicClient.readContract({
-            address: loans,
-            abi: loansAbi,
-            functionName: 'totalInterestEarned',
-            blockNumber: fromBlock
-          }),
-          HISTORY_TIMEOUT_MS
-        )) as bigint
-      } catch {
-        // Pre-deployment block or pruned archive state — cumulative-to-date.
-        interestThen = 0n
-      }
+      const latest = await withTimeout(
+        publicClient.getBlock(),
+        HISTORY_TIMEOUT_MS
+      )
+      const sampleNumber =
+        latest.number > BLOCK_SAMPLE ? latest.number - BLOCK_SAMPLE : 0n
+      const sample = await withTimeout(
+        publicClient.getBlock({ blockNumber: sampleNumber }),
+        HISTORY_TIMEOUT_MS
+      )
+      const secPerBlock =
+        Number(latest.timestamp - sample.timestamp) /
+        Math.max(1, Number(latest.number - sample.number))
+      const blocksBack = BigInt(
+        Math.floor(THIRTY_DAYS_S / Math.max(0.1, secPerBlock))
+      )
+      const fromBlock =
+        latest.number > blocksBack ? latest.number - blocksBack : 0n
+      return (await withTimeout(
+        publicClient.readContract({
+          address: loans,
+          abi: loansAbi,
+          functionName: 'totalInterestEarned',
+          blockNumber: fromBlock
+        }),
+        HISTORY_TIMEOUT_MS
+      )) as bigint
+    }
+  })
 
+  // Baseline still pending or failed → 0n, i.e. interest-to-date.
+  const interestThen = baseline.data ?? 0n
+
+  let data: ThirtyDayReturns | undefined
+  if (snapshot.data) {
+    const { interestNow, totalLiquidityShares, totalInterestShares } =
+      snapshot.data
+    if (totalLiquidityShares === 0n) {
+      data = { avgPct: null, basePct: null }
+    } else {
       const delta = interestNow > interestThen ? interestNow - interestThen : 0n
-      return {
+      data = {
         avgPct: bigintRatioToPct(delta, totalLiquidityShares),
         basePct:
           totalInterestShares > 0n
@@ -154,5 +180,7 @@ export function useThirtyDayReturns() {
             : null
       }
     }
-  })
+  }
+
+  return { data, isLoading: snapshot.isLoading }
 }
