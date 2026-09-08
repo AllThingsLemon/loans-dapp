@@ -128,7 +128,10 @@ function InfoTooltip({ text }: { text: string }) {
             <Info className='h-3 w-3' />
           </button>
         </TooltipTrigger>
-        <TooltipContent side='top' className='max-w-64 text-xs leading-snug'>
+        <TooltipContent
+          side='top'
+          className='max-w-64 border border-yellow-400 bg-white text-xs leading-snug text-black shadow-md'
+        >
           {text}
         </TooltipContent>
       </Tooltip>

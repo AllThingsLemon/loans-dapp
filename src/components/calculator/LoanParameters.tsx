@@ -2,6 +2,7 @@
 
 import { Input } from '../ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Coins, Tag } from 'lucide-react'
 import { formatUnits } from 'viem'
 import {
   formatPercentage,
@@ -166,9 +167,10 @@ export function LoanParameters({
         {hasMultipleCollateral && (
           <div>
             <label
-              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
+              className={`flex items-center gap-1.5 text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
             >
-              🪙 Choose your collateral token
+              <Coins className='h-4 w-4 shrink-0' /> Choose your collateral
+              token
             </label>
             <div className='flex flex-wrap gap-2'>
               {supportedCollateralTokens.map((token) => {
@@ -211,9 +213,10 @@ export function LoanParameters({
         {selectedCollateral && (
           <div>
             <label
-              className={`block text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
+              className={`flex items-center gap-1.5 text-sm font-medium ${!isDashboard ? 'text-gray-300' : ''} mb-2`}
             >
-              💱 {selectedCollateral.symbol} collateral pricing
+              <Tag className='h-4 w-4 shrink-0' /> {selectedCollateral.symbol}{' '}
+              collateral pricing
             </label>
             <div className='grid grid-cols-2 gap-2'>
               {[
