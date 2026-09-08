@@ -216,16 +216,6 @@ export function LiquidityPerformance({
   const decimals = stableTokenDecimals ?? 18
   const symbol = stableTokenSymbol ?? 'Token'
 
-  // How often the pool allows a distribution, straight from the contract so
-  // the countdown can never disagree with it. 0 = distribution allowed any
-  // time (the countdown row is hidden entirely).
-  const { data: earningsFrequency } = useReadContract({
-    address: liquidityPoolContractAddress,
-    abi: liquidityPoolAbi as unknown as any[],
-    functionName: 'earningsFrequency',
-    query: { enabled: !!liquidityPoolContractAddress }
-  }) as { data: bigint | undefined }
-
   // Fetch lock tiers for stableToken so user can pick one when compounding
   const { data: stableLockTiersRaw } = useReadContract({
     address: liquidityPoolContractAddress,
@@ -314,17 +304,6 @@ export function LiquidityPerformance({
     const util = Number(currentUtilization) / 100
     return Math.min(Math.max(util, 0), 100)
   }, [currentUtilization])
-
-  // The distribute button is always rendered — anyone may trigger a
-  // distribution at any time (the contract also auto-distributes on every
-  // deposit). It is only disabled while the contract itself would revert:
-  // when a nonzero earningsFrequency still has the next window in the future.
-  const distributionTimeLocked = useMemo(() => {
-    if (!poolStatus) return false
-    if (earningsFrequency === 0n) return false
-    const now = BigInt(Math.floor(Date.now() / 1000))
-    return poolStatus.nextEarningsWithdrawalTime > now
-  }, [poolStatus, earningsFrequency])
 
   const sortedDepositEntries = useMemo(() => {
     return [...depositEntries].sort((a, b) =>
@@ -491,7 +470,7 @@ export function LiquidityPerformance({
               successMsg: 'Earnings distributed to the pool.'
             })
           }
-          disabled={isProcessing !== null || distributionTimeLocked}
+          disabled={isProcessing !== null}
         >
           {isProcessing === 'Distribute' ? (
             <>
