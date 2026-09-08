@@ -21,7 +21,7 @@ import { formatTokenAmount, formatSignificantValue } from '../../utils/decimals'
 const TOKEN_ICONS: Record<string, string> = {
   LEMX: '/images/tokens/lemx.png',
   WLEMX: '/images/tokens/lemx.png',
-  LMLN: '/images/lemloans-logo.png',
+  LMLN: '/images/tokens/lmln.png',
   BTC: '/images/tokens/btc.png',
   BTCB: '/images/tokens/btc.png',
   ETH: '/images/tokens/eth.png',

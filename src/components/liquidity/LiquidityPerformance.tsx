@@ -130,7 +130,7 @@ function InfoTooltip({ text }: { text: string }) {
         </TooltipTrigger>
         <TooltipContent
           side='top'
-          className='max-w-64 border border-yellow-400 bg-white text-xs leading-snug text-black shadow-md'
+          className='max-w-64 border-2 border-yellow-400 bg-white text-xs leading-snug text-black shadow-lg shadow-black/15'
         >
           {text}
         </TooltipContent>
