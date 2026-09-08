@@ -22,6 +22,7 @@ const TOKEN_ICONS: Record<string, string> = {
   LEMX: '/images/tokens/lemx.png',
   WLEMX: '/images/tokens/lemx.png',
   LMLN: '/images/tokens/lmln.png',
+  LUSD: '/images/tokens/lusd.png',
   BTC: '/images/tokens/btc.png',
   BTCB: '/images/tokens/btc.png',
   ETH: '/images/tokens/eth.png',
