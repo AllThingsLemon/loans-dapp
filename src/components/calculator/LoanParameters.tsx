@@ -12,6 +12,7 @@ import {
 } from '../../utils/decimals'
 import { formatDuration } from '../../utils/format'
 import type { CollateralTokenInfo } from '../../hooks/useCollateralManager'
+import { TokenSelect } from '../common/TokenSelect'
 import {
   useReadLoansPriceDataFeed,
   useReadPriceDataFeedGetSpotPrice,
@@ -172,31 +173,23 @@ export function LoanParameters({
               <Coins className='h-4 w-4 shrink-0' /> Choose your collateral
               token
             </label>
-            <div className='flex flex-wrap gap-2'>
-              {supportedCollateralTokens.map((token) => {
-                const isSelected =
-                  selectedCollateral?.address.toLowerCase() ===
-                  token.address.toLowerCase()
-                return (
-                  <button
-                    key={token.address}
-                    type='button'
-                    onClick={() => setSelectedCollateral(token)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium border transition-colors ${
-                      isSelected
-                        ? !isDashboard
-                          ? 'bg-yellow-400 border-yellow-400 text-black'
-                          : 'bg-primary border-primary text-primary-foreground'
-                        : !isDashboard
-                          ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                          : 'bg-muted border-border text-foreground hover:bg-accent'
-                    }`}
-                  >
-                    {token.symbol}
-                  </button>
+            <TokenSelect
+              tokens={supportedCollateralTokens}
+              value={selectedCollateral?.address}
+              onChange={(address) =>
+                setSelectedCollateral(
+                  supportedCollateralTokens.find(
+                    (t) => t.address.toLowerCase() === address.toLowerCase()
+                  )
                 )
-              })}
-            </div>
+              }
+              placeholder='Select Token'
+              triggerClassName={
+                !isDashboard
+                  ? 'w-full sm:w-64 bg-white/10 border-white/20 text-white'
+                  : 'w-full sm:w-64'
+              }
+            />
             {needsCollateralChoice && (
               <p
                 className={`text-sm mt-2 ${!isDashboard ? 'text-yellow-300' : 'text-muted-foreground'}`}

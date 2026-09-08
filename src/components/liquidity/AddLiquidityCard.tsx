@@ -25,6 +25,7 @@ import {
   DialogFooter
 } from '@/src/components/ui/dialog'
 import { useToast } from '@/src/hooks/use-toast'
+import { TokenSelect } from '@/src/components/common/TokenSelect'
 import { formatTokenAmount, parseTokenAmount } from '@/src/utils/decimals'
 import { Plus, Loader2, ChevronRight, ChevronDown } from 'lucide-react'
 import {
@@ -657,16 +658,18 @@ export function AddLiquidityCard({
       <CardContent className='flex flex-col flex-1 space-y-4'>
         {/* Token Selector */}
         {depositableAssets.length > 0 && (
-          <div className='flex gap-2'>
-            {depositableAssets.map((asset, idx) => (
-              <AssetButton
-                key={asset}
-                address={asset}
-                isSelected={selectedAssetIndex === idx}
-                onClick={() => handleAssetChange(idx)}
-              />
-            ))}
-          </div>
+          <TokenSelect
+            tokens={depositableAssets.map((asset) => ({ address: asset }))}
+            value={selectedAsset}
+            onChange={(address) => {
+              const idx = depositableAssets.findIndex(
+                (a) => a.toLowerCase() === address.toLowerCase()
+              )
+              if (idx >= 0) handleAssetChange(idx)
+            }}
+            placeholder='Select Token'
+            triggerClassName='w-full sm:w-64'
+          />
         )}
 
         <div className='space-y-2'>
@@ -1142,34 +1145,5 @@ export function AddLiquidityCard({
         </DialogContent>
       </Dialog>
     </Card>
-  )
-}
-
-// Small helper component to show asset button with its symbol
-function AssetButton({
-  address,
-  isSelected,
-  onClick
-}: {
-  address: `0x${string}`
-  isSelected: boolean
-  onClick: () => void
-}) {
-  const { data: symbol } = useReadContract({
-    address,
-    abi: erc20Abi,
-    functionName: 'symbol',
-    query: { enabled: !!address }
-  })
-
-  return (
-    <Button
-      variant={isSelected ? 'default' : 'outline'}
-      size='sm'
-      onClick={onClick}
-      className='text-xs'
-    >
-      {(symbol as string) ?? address.slice(0, 6) + '...'}
-    </Button>
   )
 }
