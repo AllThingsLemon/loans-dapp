@@ -35,8 +35,15 @@ import {
   Coins,
   Send,
   Wallet,
-  Repeat2
+  Repeat2,
+  Info
 } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from '@/src/components/ui/tooltip'
 import {
   handleContractError,
   type ContractError
@@ -44,6 +51,92 @@ import {
 import type { UseLiquidityPoolReturn } from '@/src/hooks/liquidity/useLiquidityPool'
 interface LiquidityPerformanceProps {
   liquidityPool: UseLiquidityPoolReturn
+}
+
+/**
+ * Plain-language definitions for every stat on this page, keyed by the
+ * StatItem label. Sourced from the loans-dapp glossary; wording kept short
+ * enough for a tooltip.
+ */
+const STAT_GLOSSARY: Record<string, string> = {
+  // Your Position
+  'Total Deposited':
+    'The total principal you have deposited into the liquidity pool across all of your deposit entries.',
+  Locked:
+    'Principal still inside its lock period. It keeps earning, but cannot be withdrawn until the lock expires.',
+  Unlocked:
+    'Principal whose lock period has expired — eligible for a withdrawal request.',
+  'Pool Ownership':
+    'Your share of the pool: your liquidity shares as a percentage of all liquidity shares.',
+  'Liquidity Shares':
+    "Shares issued 1:1 with deposited principal. They track your claim on the pool's principal.",
+  'Interest Shares':
+    "Your principal multiplied by your lock tier's multiplier. Interest is distributed per interest share, so longer locks earn proportionally more.",
+  'Interest Share %':
+    'Your interest shares as a percentage of all interest shares — your slice of every earnings distribution.',
+  // Your Earnings
+  'Claimable Earnings':
+    'Interest already distributed to the pool that you can claim to your wallet (or compound) right now.',
+  'Pending Distribution':
+    'Your share of interest paid by borrowers that still sits in the Loans contract — exactly what Distribute Earnings would move into Claimable.',
+  'Total Claimed':
+    'Earnings you have already claimed to your wallet over the life of your position.',
+  'Lifetime Earnings':
+    'Everything your position has earned: claimable earnings plus what you have already claimed.',
+  // Pool Overview
+  'Total Liquidity Available':
+    'Stablecoin in the pool that is not currently lent out — available to fund new loans and withdrawals.',
+  'Principal in Active Loans':
+    'Pool principal currently lent out to borrowers in active loans.',
+  'Pool Utilization':
+    'The percentage of pool principal currently lent out, as reported by the pool contract.',
+  'Defaulted Principal':
+    'Principal lost to defaulted loans that liquidation has not yet recovered.',
+  'Total Pool Shares':
+    'All liquidity shares in existence — the denominator for pool ownership.',
+  'Total Interest Shares':
+    'All interest shares in existence — the denominator for every earnings distribution.',
+  'Total Loans Issued':
+    'The number of loans the protocol has originated on this chain.',
+  // Earnings Distribution
+  'Total Interest Generated':
+    'Cumulative interest borrowers have paid to the protocol since deployment.',
+  'Uncollected Pool Earnings':
+    'Interest sitting in the Loans contract that has not yet been pulled into the pool for distribution.',
+  'Last Distribution':
+    'When earnings were last pulled from the Loans contract into the pool.'
+}
+
+/**
+ * Info marker that works with BOTH pointer styles: hover opens it on
+ * desktop (controlled Radix tooltip), and click/tap toggles it where hover
+ * doesn't exist. Blurring the trigger closes a tap-opened tip.
+ */
+function InfoTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip open={open} onOpenChange={setOpen}>
+        <TooltipTrigger asChild>
+          <button
+            type='button'
+            aria-label='What does this mean?'
+            onClick={() => setOpen((o) => !o)}
+            onBlur={() => setOpen(false)}
+            className='inline-flex shrink-0 text-muted-foreground/70 hover:text-muted-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm'
+          >
+            <Info className='h-3 w-3' />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          side='top'
+          className='max-w-64 border-2 border-yellow-400 bg-white text-xs leading-snug text-black shadow-lg shadow-black/15'
+        >
+          {text}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
 }
 
 function StatItem({
@@ -55,9 +148,13 @@ function StatItem({
   value: string
   warning?: boolean
 }) {
+  const tooltip = STAT_GLOSSARY[label]
   return (
     <div className='space-y-1'>
-      <p className='text-xs text-muted-foreground'>{label}</p>
+      <p className='flex items-center gap-1 text-xs text-muted-foreground'>
+        {label}
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </p>
       <p className={`text-sm font-medium ${warning ? 'text-destructive' : ''}`}>
         {value}
       </p>
@@ -216,16 +313,6 @@ export function LiquidityPerformance({
   const decimals = stableTokenDecimals ?? 18
   const symbol = stableTokenSymbol ?? 'Token'
 
-  // How often the pool allows a distribution, straight from the contract so
-  // the countdown can never disagree with it. 0 = distribution allowed any
-  // time (the countdown row is hidden entirely).
-  const { data: earningsFrequency } = useReadContract({
-    address: liquidityPoolContractAddress,
-    abi: liquidityPoolAbi as unknown as any[],
-    functionName: 'earningsFrequency',
-    query: { enabled: !!liquidityPoolContractAddress }
-  }) as { data: bigint | undefined }
-
   // Fetch lock tiers for stableToken so user can pick one when compounding
   const { data: stableLockTiersRaw } = useReadContract({
     address: liquidityPoolContractAddress,
@@ -314,17 +401,6 @@ export function LiquidityPerformance({
     const util = Number(currentUtilization) / 100
     return Math.min(Math.max(util, 0), 100)
   }, [currentUtilization])
-
-  // The distribute button is always rendered — anyone may trigger a
-  // distribution at any time (the contract also auto-distributes on every
-  // deposit). It is only disabled while the contract itself would revert:
-  // when a nonzero earningsFrequency still has the next window in the future.
-  const distributionTimeLocked = useMemo(() => {
-    if (!poolStatus) return false
-    if (earningsFrequency === 0n) return false
-    const now = BigInt(Math.floor(Date.now() / 1000))
-    return poolStatus.nextEarningsWithdrawalTime > now
-  }, [poolStatus, earningsFrequency])
 
   const sortedDepositEntries = useMemo(() => {
     return [...depositEntries].sort((a, b) =>
@@ -491,7 +567,7 @@ export function LiquidityPerformance({
               successMsg: 'Earnings distributed to the pool.'
             })
           }
-          disabled={isProcessing !== null || distributionTimeLocked}
+          disabled={isProcessing !== null}
         >
           {isProcessing === 'Distribute' ? (
             <>
