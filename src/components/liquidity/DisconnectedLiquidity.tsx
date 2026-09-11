@@ -123,7 +123,7 @@ export function DisconnectedLiquidity() {
       <div className='flex flex-col items-center gap-3'>
         <div className='flex items-center gap-4'>
           <Image
-            src='/images/lemloans-logo.png'
+            src='/images/lemloans-badge.png'
             alt='LemLoans Logo'
             width={80}
             height={80}

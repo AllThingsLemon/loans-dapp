@@ -18,18 +18,24 @@ export default function Header() {
             href={isLoansPageHidden ? '/liquidity' : '/'}
             className='flex items-center gap-2 sm:gap-3 shrink-0'
           >
+            {/* Small screens: badge only, to prevent overlap with nav +
+                wallet button. sm+: the full horizontal lockup. */}
             <Image
-              src='/images/lemloans-logo.png'
-              alt='LemLoans Logo'
+              src='/images/lemloans-badge.png'
+              alt='LemLoans'
               width={40}
               height={40}
-              className='h-8 w-8 sm:h-10 sm:w-10'
+              className='h-8 w-8 sm:hidden'
               priority
             />
-            {/* Wordmark hidden on small screens to prevent overlap with nav + wallet button */}
-            <h1 className='hidden sm:block text-2xl font-bold text-gray-900 dark:text-gray-100'>
-              LemLoans
-            </h1>
+            <Image
+              src='/images/lemloans-header.png'
+              alt='LemLoans'
+              width={150}
+              height={50}
+              className='hidden h-10 w-auto sm:block'
+              priority
+            />
           </Link>
           {/* With loans hidden there is only one page left, so the whole nav
               goes — a lone tab that always points at the page you are already
