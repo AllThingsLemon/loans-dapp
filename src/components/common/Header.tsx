@@ -31,9 +31,9 @@ export default function Header() {
             <Image
               src='/images/lemloans-header.png'
               alt='LemLoans'
-              width={150}
-              height={50}
-              className='hidden h-10 w-auto sm:block'
+              width={210}
+              height={70}
+              className='hidden h-14 w-auto sm:block'
               priority
             />
           </Link>
