@@ -17,6 +17,22 @@ export function bigintRatioToPct(
   return Number((numerator * 10n ** 12n) / denominator) / 10 ** 10
 }
 
+/**
+ * Return earned by a 1.00x-multiplier deposit between two readings of the
+ * pool's `accumulatedEarningsPerInterestShare` (1e18-scaled earnings per
+ * interest share), as a percentage. A 1.00x deposit holds one interest share
+ * per unit of principal, so the accumulator's growth IS its return, whatever
+ * deposits and withdrawals happened in between. Null when the readings are
+ * out of order.
+ */
+export function accumulatorDeltaToPct(
+  accNow: bigint,
+  accThen: bigint
+): number | null {
+  if (accNow < accThen) return null
+  return bigintRatioToPct(accNow - accThen, 10n ** 18n)
+}
+
 /** "0.42%", "<0.01%" for measurable-but-tiny, "—" when unmeasurable. */
 export function formatReturnPct(pct: number | null | undefined): string {
   if (pct === null || pct === undefined) return '—'

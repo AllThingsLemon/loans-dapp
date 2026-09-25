@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { bigintRatioToPct, formatReturnPct } from '../utils/returns'
+import {
+  accumulatorDeltaToPct,
+  bigintRatioToPct,
+  formatReturnPct
+} from '../utils/returns'
 
 describe('bigintRatioToPct', () => {
   it('matches the hand-verified prod figures (18-dec USDT)', () => {
@@ -23,6 +27,25 @@ describe('bigintRatioToPct', () => {
 
   it('returns 0 for a zero numerator', () => {
     expect(bigintRatioToPct(0n, 21004350000000n)).toBe(0)
+  })
+})
+
+describe('accumulatorDeltaToPct', () => {
+  it('turns accumulator growth into the 1.00x return', () => {
+    // BSC pool accumulator on 2026-09-25, read against a zero baseline
+    expect(accumulatorDeltaToPct(61962336491567213n, 0n)).toBeCloseTo(6.1962, 4)
+    // 0.005 per share over the window → 0.5%
+    expect(
+      accumulatorDeltaToPct(61962336491567213n, 56962336491567213n)
+    ).toBeCloseTo(0.5, 10)
+  })
+
+  it('is zero for an unchanged accumulator', () => {
+    expect(accumulatorDeltaToPct(5n, 5n)).toBe(0)
+  })
+
+  it('is null when the readings are out of order', () => {
+    expect(accumulatorDeltaToPct(4n, 5n)).toBeNull()
   })
 })
 
