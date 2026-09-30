@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { bigintRatioToPct, formatReturnPct } from '../utils/returns'
+import {
+  bigintRatioToPct,
+  formatReturnPct,
+  formatUsd,
+  poolReturns,
+  UNMEASURED
+} from '../utils/returns'
 
 describe('bigintRatioToPct', () => {
   it('matches the hand-verified prod figures (18-dec USDT)', () => {
@@ -26,6 +32,34 @@ describe('bigintRatioToPct', () => {
   })
 })
 
+describe('poolReturns', () => {
+  // BSC mainnet, 2026-09-30 18:41 UTC: interest distributed in the last 30
+  // days, and the pool's deposits and interest shares at that moment
+  const DISTRIBUTED = 2599_770000000000000000n
+  const LIQUIDITY = 33636_347692371250000000n
+  const INTEREST_SHARES = 97705_707296008260000000n
+
+  it('matches the hand-computed figures', () => {
+    const r = poolReturns(DISTRIBUTED, LIQUIDITY, INTEREST_SHARES)
+    expect(r.avgPct).toBeCloseTo(7.729, 3)
+    expect(r.basePct).toBeCloseTo(2.6608, 4)
+  })
+
+  it('averages the tier figures to the headline by construction', () => {
+    const r = poolReturns(DISTRIBUTED, LIQUIDITY, INTEREST_SHARES)
+    // headline = 1.00x rate × (interest shares / deposits)
+    expect(r.avgPct).toBeCloseTo(
+      r.basePct! * (Number(INTEREST_SHARES) / Number(LIQUIDITY)),
+      8
+    )
+  })
+
+  it('is unmeasured for an empty pool', () => {
+    expect(poolReturns(DISTRIBUTED, 0n, 0n)).toEqual(UNMEASURED)
+    expect(poolReturns(DISTRIBUTED, LIQUIDITY, 0n)).toEqual(UNMEASURED)
+  })
+})
+
 describe('formatReturnPct', () => {
   it('renders normal figures at two decimals', () => {
     expect(formatReturnPct(13.252)).toBe('13.25%')
@@ -44,5 +78,11 @@ describe('formatReturnPct', () => {
   it('renders unmeasurable as an em dash', () => {
     expect(formatReturnPct(null)).toBe('—')
     expect(formatReturnPct(undefined)).toBe('—')
+  })
+})
+
+describe('formatUsd', () => {
+  it('formats dollar amounts to the cent', () => {
+    expect(formatUsd(2599.77)).toBe('$2,599.77')
   })
 })
