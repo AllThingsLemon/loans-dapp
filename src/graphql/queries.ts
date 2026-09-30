@@ -93,32 +93,144 @@ export const LOAN_EXTENDED = gql`
   }
 `
 
-/**
- * The latest pool pulls at or before `$at` (unix seconds); the newest one's
- * accumulator is the pool's value as of that moment. Several rows come back
- * because BSC fits ~2 blocks in a second and v2 tables carry no block number
- * column — callers break blockTimestamp ties on the event id.
- *
- * PENDING INDEXER WORK: `LiquidityPool_EarningsPulled` is indexed but not yet
- * tracked in Hasura; until it is, this query fails validation.
+/*
+ * The pool's share history: every event that changes its liquidity or
+ * interest share totals. Summed, they must equal the pool's live totals —
+ * useThirtyDayReturns checks that before trusting them.
  */
-export const EARNINGS_PULLED_AT = gql`
-  query EarningsPulledAt($chainId: Int!, $srcAddress: String!, $at: Int!) {
-    LiquidityPool_EarningsPulled(
-      where: {
-        chainId: { _eq: $chainId }
-        srcAddress: { _eq: $srcAddress }
-        blockTimestamp: { _lte: $at }
-      }
-      order_by: { blockTimestamp: desc }
-      limit: 10
+
+export const POOL_DEPOSITS = gql`
+  query PoolDeposits(
+    $chainId: Int!
+    $srcAddress: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_Deposited(
+      where: { chainId: { _eq: $chainId }, srcAddress: { _eq: $srcAddress } }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
     ) {
       id
       chainId
       srcAddress
       blockTimestamp
       transactionHash
+      user
+      token
+      tokenAmount
+      stableTokenValue
+      liquidityShares
+      interestShares
+      lockDuration
+      nonEarning
+    }
+  }
+`
+
+export const POOL_COMPOUNDS = gql`
+  query PoolCompounds(
+    $chainId: Int!
+    $srcAddress: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_EarningsCompounded(
+      where: { chainId: { _eq: $chainId }, srcAddress: { _eq: $srcAddress } }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      chainId
+      srcAddress
+      blockTimestamp
+      transactionHash
+      user
+      earningsAmount
+      liquidityShares
+      interestShares
+    }
+  }
+`
+
+export const POOL_WITHDRAWALS = gql`
+  query PoolWithdrawals(
+    $chainId: Int!
+    $srcAddress: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_Withdrawn(
+      where: { chainId: { _eq: $chainId }, srcAddress: { _eq: $srcAddress } }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      chainId
+      srcAddress
+      blockTimestamp
+      transactionHash
+      user
+      amount
+      liquiditySharesBurned
+      interestSharesBurned
+    }
+  }
+`
+
+export const POOL_BOOST_EXPIRIES = gql`
+  query PoolBoostExpiries(
+    $chainId: Int!
+    $srcAddress: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_BoostExpired(
+      where: { chainId: { _eq: $chainId }, srcAddress: { _eq: $srcAddress } }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      chainId
+      srcAddress
+      blockTimestamp
+      transactionHash
+      expiresAt
+      boostShares
+    }
+  }
+`
+
+/**
+ * Every pullEarnings() on the pool — each time interest is distributed from
+ * Loans to depositors. Summed, the amounts must equal
+ * Loans.totalInterestDistributed().
+ */
+export const EARNINGS_PULLED = gql`
+  query EarningsPulled(
+    $chainId: Int!
+    $srcAddress: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_EarningsPulled(
+      where: { chainId: { _eq: $chainId }, srcAddress: { _eq: $srcAddress } }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      chainId
+      srcAddress
+      blockTimestamp
+      transactionHash
+      amount
       newAccumulatedPerInterestShare
+      totalInterestShares
     }
   }
 `

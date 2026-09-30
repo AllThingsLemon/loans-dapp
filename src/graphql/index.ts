@@ -11,7 +11,11 @@ export {
   LOAN_INITIATED,
   LOAN_PAYMENTS,
   LOAN_EXTENDED,
-  EARNINGS_PULLED_AT
+  EARNINGS_PULLED,
+  POOL_DEPOSITS,
+  POOL_COMPOUNDS,
+  POOL_WITHDRAWALS,
+  POOL_BOOST_EXPIRIES
 } from './queries'
 
 export {
@@ -19,7 +23,8 @@ export {
   useLoanPayments,
   useLoanExtensions,
   useLoanPaymentBreakdown,
-  useEarningsPulledAt
+  useEarningsPulled,
+  usePoolShareChanges
 } from './hooks'
 
 export type {
@@ -31,5 +36,13 @@ export type {
   LoanInitiatedResponse,
   LoanPaymentsResponse,
   LoanExtendedResponse,
-  EarningsPulledResponse
+  EarningsPulledResponse,
+  PoolDepositRow,
+  PoolCompoundRow,
+  PoolWithdrawalRow,
+  BoostExpiredRow,
+  PoolDepositsResponse,
+  PoolCompoundsResponse,
+  PoolWithdrawalsResponse,
+  BoostExpiriesResponse
 } from './types'

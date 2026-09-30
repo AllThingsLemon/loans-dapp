@@ -54,12 +54,16 @@ export interface LoanExtendedRow extends EventRow {
 }
 
 /**
- * One `pullEarnings()` on the pool. `newAccumulatedPerInterestShare` is the
- * pool's accumulatedEarningsPerInterestShare AFTER this pull, scaled by 1e18.
- * Only the fields the dapp reads are declared.
+ * One `pullEarnings()` on the pool: `amount` of interest moved from Loans
+ * into the pool and credited to depositors (what Loans counts in
+ * totalInterestDistributed). `newAccumulatedPerInterestShare` is the pool's
+ * accumulatedEarningsPerInterestShare AFTER this pull, scaled by 1e18;
+ * `totalInterestShares` is what `amount` was split across.
  */
 export interface EarningsPulledRow extends EventRow {
+  amount: Numeric
   newAccumulatedPerInterestShare: Numeric
+  totalInterestShares: Numeric
 }
 
 export interface LoanInitiatedResponse {
@@ -76,4 +80,53 @@ export interface LoanExtendedResponse {
 
 export interface EarningsPulledResponse {
   LiquidityPool_EarningsPulled: EarningsPulledRow[]
+}
+
+export interface PoolDepositRow extends EventRow {
+  user: string
+  token: string
+  tokenAmount: Numeric
+  /** USD value credited, 1:1 with liquidityShares. */
+  stableTokenValue: Numeric
+  liquidityShares: Numeric
+  interestShares: Numeric
+  lockDuration: Numeric
+  /** Protocol deposits (e.g. from the Loans contract) that earn nothing. */
+  nonEarning: boolean
+}
+
+export interface PoolCompoundRow extends EventRow {
+  user: string
+  earningsAmount: Numeric
+  liquidityShares: Numeric
+  interestShares: Numeric
+}
+
+export interface PoolWithdrawalRow extends EventRow {
+  user: string
+  amount: Numeric
+  liquiditySharesBurned: Numeric
+  interestSharesBurned: Numeric
+}
+
+/** A lock boost running out: its extra interest shares leave the pool. */
+export interface BoostExpiredRow extends EventRow {
+  expiresAt: Numeric
+  boostShares: Numeric
+}
+
+export interface PoolDepositsResponse {
+  LiquidityPool_Deposited: PoolDepositRow[]
+}
+
+export interface PoolCompoundsResponse {
+  LiquidityPool_EarningsCompounded: PoolCompoundRow[]
+}
+
+export interface PoolWithdrawalsResponse {
+  LiquidityPool_Withdrawn: PoolWithdrawalRow[]
+}
+
+export interface BoostExpiriesResponse {
+  LiquidityPool_BoostExpired: BoostExpiredRow[]
 }

@@ -17,20 +17,39 @@ export function bigintRatioToPct(
   return Number((numerator * 10n ** 12n) / denominator) / 10 ** 10
 }
 
+export interface WindowReturns {
+  /**
+   * Pool-average return over the window as a percentage (0.42 = 0.42%):
+   * interest distributed ÷ the pool's deposits (liquidity shares). Null when
+   * unmeasurable.
+   */
+  avgPct: number | null
+  /**
+   * The 1.00x-multiplier return: the same interest ÷ the pool's interest
+   * shares. A tier with multiplier m earns m × basePct, because earnings are
+   * paid per interest share and a deposit's interest shares are principal ×
+   * m — so the deposit-weighted average of the tier figures is avgPct.
+   */
+  basePct: number | null
+}
+
+export const UNMEASURED: WindowReturns = { avgPct: null, basePct: null }
+
 /**
- * Return earned by a 1.00x-multiplier deposit between two readings of the
- * pool's `accumulatedEarningsPerInterestShare` (1e18-scaled earnings per
- * interest share), as a percentage. A 1.00x deposit holds one interest share
- * per unit of principal, so the accumulator's growth IS its return, whatever
- * deposits and withdrawals happened in between. Null when the readings are
- * out of order.
+ * Returns for a period's distributed interest against the pool's share
+ * totals: over liquidity shares for the average, over interest shares for
+ * the 1.00x rate.
  */
-export function accumulatorDeltaToPct(
-  accNow: bigint,
-  accThen: bigint
-): number | null {
-  if (accNow < accThen) return null
-  return bigintRatioToPct(accNow - accThen, 10n ** 18n)
+export function poolReturns(
+  distributed: bigint,
+  liquidityShares: bigint,
+  interestShares: bigint
+): WindowReturns {
+  if (liquidityShares === 0n || interestShares === 0n) return UNMEASURED
+  return {
+    avgPct: bigintRatioToPct(distributed, liquidityShares),
+    basePct: bigintRatioToPct(distributed, interestShares)
+  }
 }
 
 /** "0.42%", "<0.01%" for measurable-but-tiny, "—" when unmeasurable. */
@@ -38,4 +57,14 @@ export function formatReturnPct(pct: number | null | undefined): string {
   if (pct === null || pct === undefined) return '—'
   if (pct > 0 && pct < 0.01) return '<0.01%'
   return `${pct.toFixed(2)}%`
+}
+
+const USD = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD'
+})
+
+/** "$2,599.77". */
+export function formatUsd(amount: number): string {
+  return USD.format(amount)
 }

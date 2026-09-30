@@ -3,21 +3,29 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useChainId } from 'wagmi'
-import { loansAddress, useReadLoansLiquidityPool } from '@/src/generated'
+import { loansAddress } from '@/src/generated'
 import { breakDownPayments, compareEventIds } from '@/src/utils/loanHistory'
+import type { ShareChange } from '@/src/utils/poolHistory'
 import { getGraphQLClient, getGraphQLEndpoint, requestAll } from './client'
 import {
-  EARNINGS_PULLED_AT,
+  EARNINGS_PULLED,
   LOAN_EXTENDED,
   LOAN_INITIATED,
-  LOAN_PAYMENTS
+  LOAN_PAYMENTS,
+  POOL_BOOST_EXPIRIES,
+  POOL_COMPOUNDS,
+  POOL_DEPOSITS,
+  POOL_WITHDRAWALS
 } from './queries'
 import type {
   EarningsPulledResponse,
-  EarningsPulledRow,
   LoanExtendedResponse,
+  BoostExpiriesResponse,
   LoanInitiatedResponse,
-  LoanPaymentsResponse
+  LoanPaymentsResponse,
+  PoolCompoundsResponse,
+  PoolDepositsResponse,
+  PoolWithdrawalsResponse
 } from './types'
 
 /** Indexed history only grows; a minute of staleness is invisible. */
@@ -125,40 +133,93 @@ export function useLoanPaymentBreakdown() {
 }
 
 /**
- * The pool's last EarningsPulled at or before `at` (unix seconds): its
- * newAccumulatedPerInterestShare is the accumulator's value at that
- * moment. `null` when no pull precedes `at` — the window opens before the
- * first pull, so the accumulator then was 0.
+ * Every pullEarnings() on the pool, oldest first: each time interest moved
+ * from Loans into the pool and was credited to depositors.
  *
- * `at` is floored to the minute so a caller computing it from Date.now()
- * does not mint a new query key on every render.
- *
- * PENDING INDEXER WORK: `LiquidityPool_EarningsPulled` is indexed but not yet
- * tracked in Hasura; until it is, this query errors and callers must fall
- * back.
+ * `pool` is the LiquidityPool address (Loans.liquidityPool()).
  */
-export function useEarningsPulledAt(at: number | undefined) {
-  const { data: pool } = useReadLoansLiquidityPool()
+export function useEarningsPulled(pool: string | undefined) {
   const { chainId, srcAddress, enabled } = useIndexerScope(pool)
-  const atMinute = at === undefined ? undefined : Math.floor(at / 60) * 60
   return useQuery({
-    queryKey: ['indexer', chainId, srcAddress, 'earningsPulledAt', atMinute],
-    enabled: enabled && atMinute !== undefined,
+    queryKey: ['indexer', chainId, srcAddress, 'earningsPulled'],
+    enabled,
     staleTime: STALE_TIME,
     retry: 1,
-    queryFn: async (): Promise<EarningsPulledRow | null> => {
-      const response = await getGraphQLClient(
-        chainId
-      ).request<EarningsPulledResponse>(EARNINGS_PULLED_AT, {
-        chainId,
-        srcAddress,
-        at: atMinute
-      })
-      // Newest first by timestamp; same-second pulls are ordered by id.
-      const [latest] = response.LiquidityPool_EarningsPulled.sort((a, b) =>
-        compareEventIds(b.id, a.id)
-      )
-      return latest ?? null
+    queryFn: async () =>
+      (
+        await requestAll(
+          chainId,
+          EARNINGS_PULLED,
+          { chainId, srcAddress },
+          (r: EarningsPulledResponse) => r.LiquidityPool_EarningsPulled
+        )
+      ).sort((a, b) => compareEventIds(a.id, b.id))
+  })
+}
+
+/**
+ * Every change to the pool's share totals, oldest first: deposits and
+ * compounded earnings add, withdrawals and expiring boosts subtract. Summed
+ * (sumShareChanges), they should equal the pool's live totals.
+ *
+ * `pool` is the LiquidityPool address (Loans.liquidityPool()).
+ */
+export function usePoolShareChanges(pool: string | undefined) {
+  const { chainId, srcAddress, enabled } = useIndexerScope(pool)
+  return useQuery({
+    queryKey: ['indexer', chainId, srcAddress, 'poolShareChanges'],
+    enabled,
+    staleTime: STALE_TIME,
+    retry: 1,
+    queryFn: async (): Promise<ShareChange[]> => {
+      const vars = { chainId, srcAddress }
+      const [deposits, compounds, withdrawals, expiries] = await Promise.all([
+        requestAll(
+          chainId,
+          POOL_DEPOSITS,
+          vars,
+          (r: PoolDepositsResponse) => r.LiquidityPool_Deposited
+        ),
+        requestAll(
+          chainId,
+          POOL_COMPOUNDS,
+          vars,
+          (r: PoolCompoundsResponse) => r.LiquidityPool_EarningsCompounded
+        ),
+        requestAll(
+          chainId,
+          POOL_WITHDRAWALS,
+          vars,
+          (r: PoolWithdrawalsResponse) => r.LiquidityPool_Withdrawn
+        ),
+        requestAll(
+          chainId,
+          POOL_BOOST_EXPIRIES,
+          vars,
+          (r: BoostExpiriesResponse) => r.LiquidityPool_BoostExpired
+        )
+      ])
+      const changes: ShareChange[] = [
+        ...[...deposits, ...compounds].map((e) => ({
+          id: e.id,
+          timestamp: e.blockTimestamp,
+          liquidity: BigInt(e.liquidityShares),
+          interest: BigInt(e.interestShares)
+        })),
+        ...withdrawals.map((e) => ({
+          id: e.id,
+          timestamp: e.blockTimestamp,
+          liquidity: -BigInt(e.liquiditySharesBurned),
+          interest: -BigInt(e.interestSharesBurned)
+        })),
+        ...expiries.map((e) => ({
+          id: e.id,
+          timestamp: e.blockTimestamp,
+          liquidity: 0n,
+          interest: -BigInt(e.boostShares)
+        }))
+      ]
+      return changes.sort((a, b) => compareEventIds(a.id, b.id))
     }
   })
 }

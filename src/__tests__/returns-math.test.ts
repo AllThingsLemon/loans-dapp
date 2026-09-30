@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  accumulatorDeltaToPct,
   bigintRatioToPct,
-  formatReturnPct
+  formatReturnPct,
+  formatUsd,
+  poolReturns,
+  UNMEASURED
 } from '../utils/returns'
 
 describe('bigintRatioToPct', () => {
@@ -30,22 +32,31 @@ describe('bigintRatioToPct', () => {
   })
 })
 
-describe('accumulatorDeltaToPct', () => {
-  it('turns accumulator growth into the 1.00x return', () => {
-    // BSC pool accumulator on 2026-09-25, read against a zero baseline
-    expect(accumulatorDeltaToPct(61962336491567213n, 0n)).toBeCloseTo(6.1962, 4)
-    // 0.005 per share over the window → 0.5%
-    expect(
-      accumulatorDeltaToPct(61962336491567213n, 56962336491567213n)
-    ).toBeCloseTo(0.5, 10)
+describe('poolReturns', () => {
+  // BSC mainnet, 2026-09-30 18:41 UTC: interest distributed in the last 30
+  // days, and the pool's deposits and interest shares at that moment
+  const DISTRIBUTED = 2599_770000000000000000n
+  const LIQUIDITY = 33636_347692371250000000n
+  const INTEREST_SHARES = 97705_707296008260000000n
+
+  it('matches the hand-computed figures', () => {
+    const r = poolReturns(DISTRIBUTED, LIQUIDITY, INTEREST_SHARES)
+    expect(r.avgPct).toBeCloseTo(7.729, 3)
+    expect(r.basePct).toBeCloseTo(2.6608, 4)
   })
 
-  it('is zero for an unchanged accumulator', () => {
-    expect(accumulatorDeltaToPct(5n, 5n)).toBe(0)
+  it('averages the tier figures to the headline by construction', () => {
+    const r = poolReturns(DISTRIBUTED, LIQUIDITY, INTEREST_SHARES)
+    // headline = 1.00x rate × (interest shares / deposits)
+    expect(r.avgPct).toBeCloseTo(
+      r.basePct! * (Number(INTEREST_SHARES) / Number(LIQUIDITY)),
+      8
+    )
   })
 
-  it('is null when the readings are out of order', () => {
-    expect(accumulatorDeltaToPct(4n, 5n)).toBeNull()
+  it('is unmeasured for an empty pool', () => {
+    expect(poolReturns(DISTRIBUTED, 0n, 0n)).toEqual(UNMEASURED)
+    expect(poolReturns(DISTRIBUTED, LIQUIDITY, 0n)).toEqual(UNMEASURED)
   })
 })
 
@@ -67,5 +78,11 @@ describe('formatReturnPct', () => {
   it('renders unmeasurable as an em dash', () => {
     expect(formatReturnPct(null)).toBe('—')
     expect(formatReturnPct(undefined)).toBe('—')
+  })
+})
+
+describe('formatUsd', () => {
+  it('formats dollar amounts to the cent', () => {
+    expect(formatUsd(2599.77)).toBe('$2,599.77')
   })
 })

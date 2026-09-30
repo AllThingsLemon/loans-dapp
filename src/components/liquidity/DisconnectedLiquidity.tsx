@@ -2,7 +2,7 @@
 import { useConnectModal } from '@rainbow-me/rainbowkit'
 import Image from 'next/image'
 import { useThirtyDayReturns } from '@/src/hooks/liquidity/useThirtyDayReturns'
-import { formatReturnPct } from '@/src/utils/returns'
+import { formatReturnPct, formatUsd } from '@/src/utils/returns'
 import {
   BarChart3,
   Coins,
@@ -21,12 +21,13 @@ import {
  * multipliers, come from `getAssetLockTiers` on the connected view. Keep the
  * two in step by hand when the model changes.
  *
- * The return figures — the headline above the table AND the per-tier column —
- * are live protocol data (see useThirtyDayReturns). Each tier's return is
- * mult × the 1.00x base rate: interest is distributed per interest share and
- * a deposit's interest shares are principal × multiplier, so the multiplier
- * IS the tier's earnings scale. The share-weighted average of the tier rows
- * equals the headline figure by construction.
+ * The yield and performance figures — the headlines above the table AND the
+ * per-tier columns — are live protocol data (see useThirtyDayReturns). Each
+ * tier's figure is mult × the 1.00x base rate: interest is distributed per
+ * interest share and a deposit's interest shares are principal × multiplier,
+ * so the multiplier IS the tier's earnings scale. The deposit-weighted
+ * average of each column's tier rows is its headline (for performance,
+ * weighted by the lock mix at each distribution).
  */
 const RETURN_MODEL = [
   { period: '1 Year', multiplier: '1.00x', mult: 1.0, lock: '0 – 1 Year' },
@@ -97,11 +98,15 @@ const SUPPORTED_ASSETS = [
   { symbol: 'USDT', src: '/images/tokens/usdt.png' }
 ] as const
 
+/** Phones drop the lock column; the time period already names the lock. */
+const LOCK_COLUMN = 'hidden sm:table-cell'
+
 const COLUMNS = [
-  { label: 'Time Period', sub: null },
-  { label: 'Weight', sub: '(Multiplier)' },
-  { label: 'Lock Duration', sub: '(Years)' },
-  { label: 'Actual Return', sub: '(Last 30 Days)' }
+  { label: 'Time Period', sub: null, className: '' },
+  { label: 'Weight', sub: '(Multiplier)', className: '' },
+  { label: 'Lock Duration', sub: '(Years)', className: LOCK_COLUMN },
+  { label: 'Current Yield', sub: '(Last 30 Days)', className: '' },
+  { label: 'Performance', sub: '(Last 30 Days)', className: '' }
 ] as const
 
 const HEAD_CELL =
@@ -113,9 +118,53 @@ const CELL = 'px-1.5 py-3 text-center text-[11px] sm:px-3 sm:text-sm'
 const TRIPLET_ROW =
   'grid w-full grid-cols-3 divide-x divide-gray-200 dark:divide-gray-700'
 
+/** A 30-day figure in the table. */
+function FigureCell({
+  loading,
+  pct
+}: {
+  loading: boolean
+  pct: number | null
+}) {
+  return (
+    <td
+      className={`${CELL} font-bold tabular-nums text-green-700 dark:text-green-400`}
+    >
+      {loading ? '…' : formatReturnPct(pct)}
+    </td>
+  )
+}
+
+/** One of the two headline figures above the table. */
+function Headline({
+  label,
+  value,
+  children
+}: {
+  label: string
+  value: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className='rounded-lg bg-gray-900 px-4 py-4 text-center'>
+      <div className='text-[10px] font-bold uppercase tracking-wide text-yellow-400 sm:text-xs'>
+        {label}
+      </div>
+      <div className='mt-1 text-3xl font-extrabold tabular-nums text-green-400 sm:text-4xl'>
+        {value}
+      </div>
+      <div className='mt-1 text-[10px] text-gray-400 sm:text-xs'>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export function DisconnectedLiquidity() {
   const { openConnectModal } = useConnectModal()
   const { data: returns, isLoading: returnsLoading } = useThirtyDayReturns()
+  const currentYield = returns?.currentYield
+  const performance = returns?.performance
 
   return (
     <div className='mx-auto flex max-w-4xl flex-col items-center gap-10 py-4 text-center'>
@@ -164,7 +213,7 @@ export function DisconnectedLiquidity() {
         ))}
       </div>
 
-      {/* ── Measured returns ─────────────────────────────────────── */}
+      {/* ── Measured yield & performance ────────────────────────── */}
       <section className='w-full rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-900'>
         <div className='flex items-center justify-center gap-3 sm:justify-start'>
           <BarChart3
@@ -173,7 +222,7 @@ export function DisconnectedLiquidity() {
           />
           <div className='text-left'>
             <h3 className='text-xl font-extrabold tracking-tight text-gray-900 sm:text-2xl dark:text-gray-100'>
-              PROTOCOL RETURNS
+              PROTOCOL YIELD &amp; PERFORMANCE
             </h3>
             <p className='text-sm font-medium italic text-gray-500 dark:text-gray-400'>
               Measured From Live On-Chain Activity
@@ -181,32 +230,43 @@ export function DisconnectedLiquidity() {
           </div>
         </div>
 
-        {/* The headline figure is REAL protocol data (30-day interest over
-            total pool shares); the tier rows scale the measured base rate by
-            each multiplier. See useThirtyDayReturns for the share math. */}
-        <div className='mt-5 rounded-lg bg-gray-900 px-4 py-4 text-center'>
-          <div className='text-[10px] font-bold uppercase tracking-wide text-yellow-400 sm:text-xs'>
-            Actual Average Return · Last 30 Days
-          </div>
-          <div className='mt-1 text-3xl font-extrabold tabular-nums text-green-400 sm:text-4xl'>
-            {returnsLoading ? '…' : formatReturnPct(returns?.avgPct)}
-          </div>
-          <div className='mt-1 text-[10px] text-gray-400 sm:text-xs'>
-            Interest payments ÷ total pool shares, read from the protocol
-            contracts
-          </div>
+        {/* Both headlines are REAL protocol data. Current yield: the last 30
+            days of interest distributed to the pool over its current deposits.
+            Performance: each distribution over the deposits when it was
+            paid, added up (time-weighted). The tier columns scale each
+            measured base rate by the multiplier. See useThirtyDayReturns. */}
+        <div className='mt-5 grid gap-3 sm:grid-cols-2'>
+          <Headline
+            label='Average Current Yield · Last 30 Days'
+            value={returnsLoading ? '…' : formatReturnPct(currentYield?.avgPct)}
+          >
+            Interest distributed over the last 30 days ÷ current deposits
+            {returns?.distributed != null && (
+              <span className='block'>
+                Based on {formatUsd(returns.distributed)} distributed
+              </span>
+            )}
+          </Headline>
+          <Headline
+            label='Average Performance · Last 30 Days'
+            value={returnsLoading ? '…' : formatReturnPct(performance?.avgPct)}
+          >
+            Each distribution ÷ deposits when it was paid, added up over the
+            last 30 days
+          </Headline>
         </div>
 
-        {/* The table is sized to fit all four columns down to ~430px rather
-            than scroll — clipping the return column defeats the point of the
-            panel. overflow-x-auto is the backstop below that, so an unusually
-            narrow screen scrolls the table and never the page. */}
+        {/* The table is sized to fit down to ~375px rather than scroll, with
+            the lock column dropped on phones — clipping the figures defeats
+            the point of the panel. overflow-x-auto is the backstop below
+            that, so an unusually narrow screen scrolls the table and never
+            the page. */}
         <div className='mt-4 overflow-x-auto'>
           <table className='w-full border-collapse overflow-hidden rounded-lg'>
             <thead>
               <tr className='bg-gray-900 text-yellow-400'>
-                {COLUMNS.map(({ label, sub }) => (
-                  <th key={label} className={HEAD_CELL}>
+                {COLUMNS.map(({ label, sub, className }) => (
+                  <th key={label} className={`${HEAD_CELL} ${className}`}>
                     {label}
                     {sub && <span className='block font-semibold'>{sub}</span>}
                   </th>
@@ -214,6 +274,32 @@ export function DisconnectedLiquidity() {
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-200 dark:divide-gray-700'>
+              {/* The headlines as a row, so they read against the tiers. */}
+              <tr className='bg-gray-50 dark:bg-gray-800'>
+                <td
+                  className={`${CELL} font-bold uppercase text-yellow-600 dark:text-yellow-500`}
+                >
+                  Pool Average
+                </td>
+                <td
+                  className={`${CELL} font-bold text-green-700 dark:text-green-400`}
+                >
+                  Avg
+                </td>
+                <td
+                  className={`${CELL} ${LOCK_COLUMN} font-medium uppercase text-gray-800 dark:text-gray-200`}
+                >
+                  All Deposits
+                </td>
+                <FigureCell
+                  loading={returnsLoading}
+                  pct={currentYield?.avgPct ?? null}
+                />
+                <FigureCell
+                  loading={returnsLoading}
+                  pct={performance?.avgPct ?? null}
+                />
+              </tr>
               {RETURN_MODEL.map((row) => (
                 <tr key={row.period} className='bg-white dark:bg-gray-900'>
                   <td
@@ -227,21 +313,26 @@ export function DisconnectedLiquidity() {
                     {row.multiplier}
                   </td>
                   <td
-                    className={`${CELL} font-medium uppercase text-gray-800 dark:text-gray-200`}
+                    className={`${CELL} ${LOCK_COLUMN} font-medium uppercase text-gray-800 dark:text-gray-200`}
                   >
                     {row.lock}
                   </td>
-                  <td
-                    className={`${CELL} font-bold tabular-nums text-green-700 dark:text-green-400`}
-                  >
-                    {returnsLoading
-                      ? '…'
-                      : formatReturnPct(
-                          returns?.basePct != null
-                            ? returns.basePct * row.mult
-                            : null
-                        )}
-                  </td>
+                  <FigureCell
+                    loading={returnsLoading}
+                    pct={
+                      currentYield?.basePct != null
+                        ? currentYield.basePct * row.mult
+                        : null
+                    }
+                  />
+                  <FigureCell
+                    loading={returnsLoading}
+                    pct={
+                      performance?.basePct != null
+                        ? performance.basePct * row.mult
+                        : null
+                    }
+                  />
                 </tr>
               ))}
             </tbody>
@@ -251,12 +342,16 @@ export function DisconnectedLiquidity() {
         {/* Deliberately set smaller than the table it sits under: it has to be
             present and readable without competing with the figures above. */}
         <p className='mt-4 text-left text-[10px] leading-relaxed text-gray-500 sm:text-xs dark:text-gray-400'>
-          Returns are measured from actual on-chain interest payments relative
-          to pool shares over the stated period. Per-tier figures scale the
-          measured base rate by each tier&apos;s interest-share multiplier —
-          longer locks receive proportionally more of the same distributed
-          interest. Past performance does not guarantee future results. Actual
-          protocol outcomes depend on borrower demand, utilization, collateral
+          Current yield is the interest distributed to the pool over the last 30
+          days relative to the pool&apos;s current deposits; it changes as new
+          loans are made and as deposits enter or leave the pool. Performance
+          adds up each distribution in the last 30 days relative to the
+          pool&apos;s deposits when it was paid, which is what money held
+          through the whole period earned. Per-tier figures scale the measured
+          base rate by each tier&apos;s interest-share multiplier — longer locks
+          receive proportionally more of the same distributed interest. Past
+          performance does not guarantee future results. Actual protocol
+          outcomes depend on borrower demand, utilization, collateral
           performance, market conditions, refinancing activity, smart-contract
           execution and other factors. Digital assets deposited into the
           protocol may lose value, including the possible loss of some or all
