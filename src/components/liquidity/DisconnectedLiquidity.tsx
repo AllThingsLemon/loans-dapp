@@ -153,7 +153,7 @@ function Headline({
       <div className='mt-1 text-3xl font-extrabold tabular-nums text-green-400 sm:text-4xl'>
         {value}
       </div>
-      <div className='mt-1 text-[10px] text-gray-400 sm:text-xs'>
+      <div className='mt-1 text-[8px] italic text-gray-400 sm:text-[10px]'>
         {children}
       </div>
     </div>
@@ -237,7 +237,7 @@ export function DisconnectedLiquidity() {
             measured base rate by the multiplier. See useThirtyDayReturns. */}
         <div className='mt-5 grid gap-3 sm:grid-cols-2'>
           <Headline
-            label='Average Current Yield · Last 30 Days'
+            label='Current Yield · Last 30 Days'
             value={returnsLoading ? '…' : formatReturnPct(currentYield?.avgPct)}
           >
             Interest distributed over the last 30 days ÷ current deposits
@@ -248,7 +248,7 @@ export function DisconnectedLiquidity() {
             )}
           </Headline>
           <Headline
-            label='Average Performance · Last 30 Days'
+            label='Performance · Last 30 Days'
             value={returnsLoading ? '…' : formatReturnPct(performance?.avgPct)}
           >
             Each distribution ÷ deposits when it was paid, added up over the
