@@ -18,9 +18,9 @@ export const metadata = {
     siteName: 'LemLoans',
     images: [
       {
-        url: '/images/lemloans-logo.png',
+        url: '/images/lemloans-hero.jpg',
         width: 1200,
-        height: 630,
+        height: 1200,
         alt: 'LemLoans - DeFi Lending Platform'
       }
     ],
@@ -39,15 +39,32 @@ export default function RootLayout({
       <head>
         <meta charSet='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1.0' />
-        <link rel='icon' href='/images/lemloans-logo.png' />
-        <link rel='apple-touch-icon' href='/images/lemloans-logo.png' />
+        {/* Exact-size icons so browsers never downscale a large image into
+            the 16/32px tab slot — that rescaling is what made the mark look
+            blurry. /favicon.ico (src/app/favicon.ico) carries 16-128px
+            layers for the browsers that insist on it. */}
+        <link
+          rel='icon'
+          type='image/png'
+          sizes='32x32'
+          href='/images/icon-32.png'
+        />
+        <link
+          rel='icon'
+          type='image/png'
+          sizes='16x16'
+          href='/images/icon-16.png'
+        />
+        <link
+          rel='apple-touch-icon'
+          sizes='180x180'
+          href='/images/apple-touch-icon.png'
+        />
       </head>
       <body className='flex flex-col min-h-screen'>
         <Providers>
           <Header />
-          <main className='flex-1'>
-            {children}
-          </main>
+          <main className='flex-1'>{children}</main>
           <Footer />
           <Toaster />
         </Providers>
