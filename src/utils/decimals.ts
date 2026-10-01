@@ -80,6 +80,21 @@ export function formatTokenAmount(value: bigint, decimals: number): string {
 }
 
 /**
+ * Round a token amount up to the next whole cent (0.01 of the token), for
+ * amounts the user is asked to pay. Amounts under a cent come back exactly:
+ * rounding 0.00096 up to 0.01 would ask for ten times what's due.
+ * @param value - Amount in the token's smallest unit
+ * @param decimals - Token decimals
+ * @returns The rounded amount, in the same units
+ */
+export function roundUpToCent(value: bigint, decimals: number): bigint {
+  if (decimals < 2) return value
+  const cent = 10n ** BigInt(decimals - 2)
+  if (value < cent) return value
+  return ((value + cent - 1n) / cent) * cent
+}
+
+/**
  * Format display value with appropriate decimal places
  * @param value - Value to format
  * @param decimals - Number of decimal places

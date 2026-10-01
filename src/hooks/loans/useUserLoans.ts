@@ -52,6 +52,11 @@ const combineLoanData = (
   // Use contract data for calculations, not manual math
   const totalOwed = loan.loanAmount + loan.interestAmount
   const remainingBalance = loan.paidAmount >= totalOwed ? 0n : totalOwed - loan.paidAmount
+  // The contract applies every payment to interest before principal, so the
+  // interest still owed is whatever of interestAmount paidAmount hasn't
+  // covered — the same figure Loans emits as remainingInterest.
+  const remainingInterest =
+    loan.paidAmount >= loan.interestAmount ? 0n : loan.interestAmount - loan.paidAmount
   // dueTimestamp is the fixed loan maturity date (createdAt + duration).
   // timeToDefault extends when the borrower is ahead on payments and must NOT
   // be used as the due date — it would show a date beyond loan maturity.
@@ -100,6 +105,7 @@ const combineLoanData = (
 
     // Computed helper properties (using contract data as source of truth)
     remainingBalance,
+    remainingInterest,
     dueTimestamp
   }
 }
