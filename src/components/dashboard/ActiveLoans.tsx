@@ -969,7 +969,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               </div>
                               {/* Disabled once the interest is paid: there's
                                   nothing left to pay, and the contract rejects
-                                  a zero payment. */}
+                                  a zero payment. Saying so beats a bare 0.00,
+                                  which reads like a missing amount. */}
                               <div className='flex items-center space-x-2'>
                                 <RadioGroupItem
                                   value='interest'
@@ -980,12 +981,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   <div className='flex items-center justify-between'>
                                     <span>Pay all remaining interest</span>
                                     <span className='text-sm text-muted-foreground'>
-                                      {formatAmountWithSymbol(
-                                        loan.remainingInterest,
-                                        tokenConfig?.loanToken.symbol ||
-                                          'Token',
-                                        tokenConfig?.loanToken.decimals
-                                      )}
+                                      {loan.remainingInterest === 0n
+                                        ? 'All interest paid'
+                                        : formatAmountWithSymbol(
+                                            loan.remainingInterest,
+                                            tokenConfig?.loanToken.symbol ||
+                                              'Token',
+                                            tokenConfig?.loanToken.decimals
+                                          )}
                                     </span>
                                   </div>
                                 </Label>
