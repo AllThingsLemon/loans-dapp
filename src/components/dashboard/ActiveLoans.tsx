@@ -41,6 +41,7 @@ import {
   parseTokenAmount,
   formatPercentage,
   formatTokenAmount,
+  roundUpToCent,
   significantFractionDigits
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
@@ -173,26 +174,22 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       })
   }
 
-  // Helper function to format minimum payment with rounding (to nearest 0.10)
+  // The contract's minimum (loanPayment) is one cycle's share of the
+  // interest. Round it up to the cent so the suggestion is a clean amount
+  // that still covers the cycle; under a cent it's used exactly (see
+  // roundUpToCent).
   const formatMinimumPayment = (loan: Loan): string => {
     if (!loan || !tokenConfig?.loanToken.decimals) return '0'
-    const minPayment = formatTokenAmount(
-      loan.paymentAmount,
-      tokenConfig.loanToken.decimals
-    )
-    const rounded = Math.ceil(parseFloat(minPayment) * 10) / 10
+    const decimals = tokenConfig.loanToken.decimals
+    const rounded = roundUpToCent(loan.paymentAmount, decimals)
     // Rounding a cost up is the safe direction, but near payoff the rounded
     // minimum can exceed the remaining balance — and the payment guard then
     // rejects the app's own default suggestion with "Payment Too Large".
     // Clamp to the exact remaining balance in that case.
-    const remaining = formatTokenAmount(
-      loan.remainingBalance,
-      tokenConfig.loanToken.decimals
+    return formatTokenAmount(
+      rounded > loan.remainingBalance ? loan.remainingBalance : rounded,
+      decimals
     )
-    if (rounded > parseFloat(remaining)) {
-      return remaining
-    }
-    return rounded.toFixed(1)
   }
 
   // Helper function to get payment amount based on selected type
