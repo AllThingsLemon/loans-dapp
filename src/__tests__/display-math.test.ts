@@ -3,7 +3,8 @@ import {
   formatPercentage,
   parseTokenAmount,
   formatTokenAmount,
-  formatSignificantValue
+  formatSignificantValue,
+  roundUpToCent
 } from '../utils/decimals'
 import {
   floorToDecimals,
@@ -231,5 +232,28 @@ describe('loan default timing (balloonGraceSnapshot)', () => {
     const now = createdAt + duration + 10_000n
     expect(isPastDefault(createdAt, duration, 0n, 86_400n, now)).toBe(false)
     expect(isPastDefault(createdAt, duration, 0n, 5_000n, now)).toBe(true)
+  })
+})
+
+describe('roundUpToCent', () => {
+  const E18 = 10n ** 18n
+
+  it('rounds a minimum payment up to the next cent', () => {
+    // $500 of interest over 60 monthly cycles = 8.3333… per cycle
+    const perCycle = (500n * E18) / 60n
+    expect(formatTokenAmount(roundUpToCent(perCycle, 18), 18)).toBe('8.34')
+  })
+
+  it('leaves amounts already on a cent unchanged', () => {
+    expect(roundUpToCent(1234n * 10n ** 16n, 18)).toBe(1234n * 10n ** 16n)
+  })
+
+  it('keeps amounts under a cent exact instead of rounding them to 0.01', () => {
+    // a 4-hour testnet loan: 0.04629629 LUSD of interest over 48 cycles
+    expect(roundUpToCent(96_450n, 8)).toBe(96_450n)
+  })
+
+  it('works for 8-decimal tokens', () => {
+    expect(formatTokenAmount(roundUpToCent(1_000_000_001n, 8), 8)).toBe('10.01')
   })
 })
