@@ -70,6 +70,9 @@ interface ActiveLoansProps {
   compact?: boolean
 }
 
+/** The payment dialog's options, in the order they're listed. */
+type PaymentType = 'minimum' | 'interest' | 'balance' | 'custom'
+
 export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const { address, chain } = useAccount()
   const nativeSymbol = chain?.nativeCurrency.symbol ?? 'native token'
@@ -123,9 +126,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   const { toast } = useToast()
   const [selectedLoan, setSelectedLoan] = useState<`0x${string}` | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentType, setPaymentType] = useState<
-    'balance' | 'minimum' | 'custom'
-  >('minimum')
+  const [paymentType, setPaymentType] = useState<PaymentType>('minimum')
   const [customAmount, setCustomAmount] = useState('')
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
   const [isApprovingPayment, setIsApprovingPayment] = useState(false)
@@ -206,6 +207,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         )
       case 'minimum':
         return formatMinimumPayment(loan)
+      case 'interest':
+        return formatTokenAmount(
+          loan.remainingInterest,
+          tokenConfig.loanToken.decimals
+        )
       case 'custom':
         return customAmount
       default:
@@ -230,10 +236,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   }
 
   // Helper function to handle payment type changes
-  const handlePaymentTypeChange = (
-    loan: Loan,
-    newType: 'balance' | 'minimum' | 'custom'
-  ) => {
+  const handlePaymentTypeChange = (loan: Loan, newType: PaymentType) => {
     setPaymentType(newType)
     if (newType !== 'custom') {
       setCustomAmount('')
@@ -248,6 +251,13 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
       )
     } else if (newType === 'minimum') {
       setPaymentAmount(formatMinimumPayment(loan))
+    } else if (newType === 'interest') {
+      setPaymentAmount(
+        formatTokenAmount(
+          loan.remainingInterest,
+          tokenConfig?.loanToken.decimals || 18
+        )
+      )
     }
   }
 
@@ -933,7 +943,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                               onValueChange={(value) =>
                                 handlePaymentTypeChange(
                                   loan,
-                                  value as 'balance' | 'minimum' | 'custom'
+                                  value as PaymentType
                                 )
                               }
                               className='space-y-3'
@@ -949,6 +959,29 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                           formatMinimumPayment(loan),
                                           tokenConfig?.loanToken.decimals || 18
                                         ),
+                                        tokenConfig?.loanToken.symbol ||
+                                          'Token',
+                                        tokenConfig?.loanToken.decimals
+                                      )}
+                                    </span>
+                                  </div>
+                                </Label>
+                              </div>
+                              {/* Disabled once the interest is paid: there's
+                                  nothing left to pay, and the contract rejects
+                                  a zero payment. */}
+                              <div className='flex items-center space-x-2'>
+                                <RadioGroupItem
+                                  value='interest'
+                                  id='interest'
+                                  disabled={loan.remainingInterest === 0n}
+                                />
+                                <Label htmlFor='interest' className='flex-1'>
+                                  <div className='flex items-center justify-between'>
+                                    <span>Pay all remaining interest</span>
+                                    <span className='text-sm text-muted-foreground'>
+                                      {formatAmountWithSymbol(
+                                        loan.remainingInterest,
                                         tokenConfig?.loanToken.symbol ||
                                           'Token',
                                         tokenConfig?.loanToken.decimals

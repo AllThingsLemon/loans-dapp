@@ -37,6 +37,7 @@ export interface Loan {
   loanCycleDuration: bigint // From loans struct — used for adaptive countdown buffer
   balloonGraceSnapshot: bigint // Grace window captured at creation (0 for pre-upgrade loans)
   remainingBalance: bigint // Calculated from contract values, not manually
+  remainingInterest: bigint // Interest still owed — payments apply to interest first
   dueTimestamp: bigint // Calculated from timeToDefault
 }
 
