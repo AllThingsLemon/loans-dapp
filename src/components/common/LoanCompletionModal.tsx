@@ -10,7 +10,10 @@ import {
 } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { CheckCircle, Trophy, Loader2 } from 'lucide-react'
-import { formatAmountWithSymbol } from '../../utils/format'
+import {
+  COLLATERAL_SIG_DIGITS,
+  formatAmountWithSymbol
+} from '../../utils/format'
 
 interface LoanCompletionModalProps {
   isOpen: boolean
@@ -95,7 +98,8 @@ export function LoanCompletionModal({
                     collateralSymbol ||
                       tokenConfig?.nativeToken.symbol ||
                       'Token',
-                    collateralDecimals
+                    collateralDecimals,
+                    COLLATERAL_SIG_DIGITS
                   )}
                 </span>
               </div>
