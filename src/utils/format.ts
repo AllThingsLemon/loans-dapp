@@ -21,23 +21,42 @@ export const floorToDecimals = (value: number, decimals: number): number => {
   return Math.floor(value * factor) / factor
 }
 
+/** Collateral amounts show 3 significant digits: 0.0602 BTCB, not 0.060. */
+export const COLLATERAL_SIG_DIGITS = 3
+
+/**
+ * A token amount for display: always at least 2 fraction digits (money-style
+ * "1,000.00"), and below 1 as many as it takes to show `sigDigits`
+ * significant digits, padded — with the default 2, 0.0602 renders "0.060",
+ * never "0.06", and 0.0000126 renders "0.000013", never "0.00". Amounts of
+ * 1 or more stay at 2 decimals, which already shows 3+ significant digits.
+ */
+export const formatSignificantAmount = (
+  num: number,
+  sigDigits: number = 2
+): string => {
+  const abs = Math.abs(num)
+  const digits =
+    abs > 0 && abs < 1
+      ? Math.max(2, significantFractionDigits(num, sigDigits))
+      : 2
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  })
+}
+
 // `decimals` is deliberately required (undefined allowed while token config is
 // still loading). A defaulted-18 third argument let call sites silently render
 // 8-decimal chains as 0.00 — every caller must state where its decimals come from.
 export const formatAmountWithSymbol = (
   amount: bigint,
   symbol: string,
-  decimals: number | undefined
+  decimals: number | undefined,
+  sigDigits: number = 2
 ): string => {
   const num = parseFloat(formatAmount(amount, decimals))
-  // Always at least 2 fraction digits (money-style "1,000.00"), extended as
-  // far as needed so tiny amounts keep 2 significant digits — 0.0000126 BTCB
-  // must render as "0.000013", never "0.00".
-  const formattedAmount = num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: Math.max(2, significantFractionDigits(num))
-  })
-  return `${formattedAmount} ${symbol}`
+  return `${formatSignificantAmount(num, sigDigits)} ${symbol}`
 }
 
 export const formatDuration = (seconds: bigint): string => {

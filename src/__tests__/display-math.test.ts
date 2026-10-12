@@ -4,12 +4,15 @@ import {
   parseTokenAmount,
   formatTokenAmount,
   formatSignificantValue,
-  roundUpToCent
+  roundUpToCent,
+  significantFractionDigits
 } from '../utils/decimals'
 import {
   floorToDecimals,
   formatDuration,
-  formatAmountWithSymbol
+  formatAmountWithSymbol,
+  formatSignificantAmount,
+  COLLATERAL_SIG_DIGITS
 } from '../utils/format'
 import { grossPaymentAmount } from '../utils/fees'
 import {
@@ -89,6 +92,70 @@ describe('formatAmountWithSymbol (tiny collateral amounts keep 2 sig digits)', (
       formatAmountWithSymbol(1_000_000_000_000_000_000_000n, 'LUSD', 18)
     ).toBe('1,000.00 LUSD')
     expect(formatAmountWithSymbol(150000000n, 'LUSD', 8)).toBe('1.50 LUSD')
+  })
+
+  it('pads to 2 significant digits instead of dropping a trailing zero', () => {
+    // 0.0602 rendered "0.06" — one significant digit
+    expect(formatAmountWithSymbol(60_200_000_000_000_000n, 'LUSD', 18)).toBe(
+      '0.060 LUSD'
+    )
+    expect(formatAmountWithSymbol(10_000_000n, 'LUSD', 8)).toBe('0.10 LUSD')
+  })
+})
+
+describe('formatSignificantAmount (default 2 significant digits)', () => {
+  it('shows at least 2 significant digits below 1', () => {
+    expect(formatSignificantAmount(0.0602)).toBe('0.060')
+    expect(formatSignificantAmount(0.06123)).toBe('0.061')
+    expect(formatSignificantAmount(0.000096)).toBe('0.000096')
+  })
+
+  it('keeps exact powers of ten at 2 significant digits, not 3', () => {
+    expect(formatSignificantAmount(0.1)).toBe('0.10')
+    expect(formatSignificantAmount(0.01)).toBe('0.010')
+  })
+
+  it('leaves amounts of 1 or more at 2 decimals', () => {
+    expect(formatSignificantAmount(27.78)).toBe('27.78')
+    expect(formatSignificantAmount(5)).toBe('5.00')
+    expect(formatSignificantAmount(1000)).toBe('1,000.00')
+  })
+})
+
+describe('collateral amounts (3 significant digits)', () => {
+  it('shows 3 significant digits below 1', () => {
+    expect(formatSignificantAmount(0.06024, COLLATERAL_SIG_DIGITS)).toBe(
+      '0.0602'
+    )
+    expect(formatSignificantAmount(0.1, COLLATERAL_SIG_DIGITS)).toBe('0.100')
+    expect(formatSignificantAmount(0.0000126, COLLATERAL_SIG_DIGITS)).toBe(
+      '0.0000126'
+    )
+    expect(
+      formatAmountWithSymbol(
+        60_240_000_000_000_000n,
+        'BTCB',
+        18,
+        COLLATERAL_SIG_DIGITS
+      )
+    ).toBe('0.0602 BTCB')
+  })
+
+  it('leaves amounts of 1 or more at 2 decimals', () => {
+    expect(formatSignificantAmount(27.7777, COLLATERAL_SIG_DIGITS)).toBe(
+      '27.78'
+    )
+    expect(formatSignificantAmount(5, COLLATERAL_SIG_DIGITS)).toBe('5.00')
+  })
+})
+
+describe('significantFractionDigits', () => {
+  it('counts decimals from the first significant digit', () => {
+    expect(significantFractionDigits(0.0602)).toBe(3)
+    expect(significantFractionDigits(0.5)).toBe(2)
+    expect(significantFractionDigits(0.1)).toBe(2)
+    expect(significantFractionDigits(0.0001)).toBe(5)
+    expect(significantFractionDigits(42)).toBe(2)
   })
 })
 

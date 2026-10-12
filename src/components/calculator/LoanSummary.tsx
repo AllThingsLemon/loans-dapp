@@ -3,11 +3,12 @@
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Plus } from 'lucide-react'
-import { formatDuration } from '../../utils/format'
 import {
-  formatPercentage,
-  significantFractionDigits
-} from '../../utils/decimals'
+  COLLATERAL_SIG_DIGITS,
+  formatDuration,
+  formatSignificantAmount
+} from '../../utils/format'
+import { formatPercentage } from '../../utils/decimals'
 import { useState } from 'react'
 import { DisclaimerModal } from '../common/DisclaimerModal'
 import { LoanConfirmationModal } from '../common/LoanConfirmationModal'
@@ -145,7 +146,7 @@ export function LoanSummary({
                 className={`font-medium ${!isDashboard ? 'text-white' : ''}`}
               >
                 {calculation.lemonRequired > 0
-                  ? `${calculation.lemonRequired.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: Math.max(2, significantFractionDigits(calculation.lemonRequired)) })}${collateralUnit ? ` ${collateralUnit}` : ''}`
+                  ? `${formatSignificantAmount(calculation.lemonRequired, COLLATERAL_SIG_DIGITS)}${collateralUnit ? ` ${collateralUnit}` : ''}`
                   : calculation.priceError || 'Calculating...'}
               </span>
             </div>
