@@ -12,6 +12,10 @@ import { Button } from '../ui/button'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { formatEther } from 'viem'
 import { significantFractionDigits } from '../../utils/decimals'
+import {
+  COLLATERAL_SIG_DIGITS,
+  formatSignificantAmount
+} from '../../utils/format'
 import { extractErrorMessage } from '../../utils/errorHandling'
 
 interface LoanConfirmationModalProps {
@@ -107,13 +111,10 @@ export function LoanConfirmationModal({
             <div className='flex justify-between'>
               <span className='font-medium'>Collateral Required:</span>
               <span>
-                {calculation.lemonRequired.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: Math.max(
-                    2,
-                    significantFractionDigits(calculation.lemonRequired)
-                  )
-                })}{' '}
+                {formatSignificantAmount(
+                  calculation.lemonRequired,
+                  COLLATERAL_SIG_DIGITS
+                )}{' '}
                 {collateral}
               </span>
             </div>

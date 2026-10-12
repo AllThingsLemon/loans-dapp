@@ -30,6 +30,7 @@ import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfi
 import { useDelegateValidation } from '@/src/hooks/loans/useDelegateValidation'
 import { OriginationPayerField } from '@/src/components/common/OriginationPayerField'
 import {
+  COLLATERAL_SIG_DIGITS,
   formatAmountWithSymbol,
   formatDuration,
   formatTimestamp,
@@ -848,7 +849,8 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                       loan.collateralAmount,
                       getCollateralByAddress(loan.collateralToken)?.symbol ||
                         'Token',
-                      getCollateralByAddress(loan.collateralToken)?.decimals
+                      getCollateralByAddress(loan.collateralToken)?.decimals,
+                      COLLATERAL_SIG_DIGITS
                     )}
                   </p>
                 </div>

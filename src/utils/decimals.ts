@@ -128,7 +128,10 @@ export function significantFractionDigits(
 ): number {
   const abs = Math.abs(num)
   if (!Number.isFinite(abs) || abs === 0 || abs >= 1) return sigDigits
-  return Math.min(maxDecimals, Math.floor(-Math.log10(abs)) + sigDigits)
+  // The first significant digit sits at decimal place -floor(log10(abs)):
+  // 0.0602 → 2nd place, 0.1 → 1st. Counting from there (rather than from
+  // ceil) keeps exact powers of ten at 2 digits: 0.1 → "0.10", not "0.100".
+  return Math.min(maxDecimals, sigDigits - 1 - Math.floor(Math.log10(abs)))
 }
 
 /**
