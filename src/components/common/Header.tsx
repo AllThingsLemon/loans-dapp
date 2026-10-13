@@ -7,10 +7,17 @@ import { isLoansPageHidden } from '@/src/config/referral'
 
 export default function Header() {
   const pathname = usePathname()
+  // /lending/* pages are standalone public pages: just the logo, centered —
+  // no nav, no wallet button.
+  const isStandalone = pathname.startsWith('/lending/')
 
   return (
     <div className='sticky top-0 z-50 flex items-center justify-center w-full border-b border-border/40 bg-background'>
-      <header className='flex items-center justify-between gap-3 p-3 sm:p-4 min-w-full max-w-screen-xl'>
+      <header
+        className={`flex items-center gap-3 p-3 sm:p-4 min-w-full max-w-screen-xl ${
+          isStandalone ? 'justify-center' : 'justify-between'
+        }`}
+      >
         <div className='flex items-center min-w-0 gap-2 sm:gap-3'>
           {/* `/` redirects to /liquidity when loans are hidden — link straight
               there so the logo doesn't bounce through a redirect. */}
@@ -41,7 +48,7 @@ export default function Header() {
               goes — a lone tab that always points at the page you are already
               on is just clutter. Rendered from a build-time constant, so this
               is identical for connected and disconnected visitors. */}
-          {!isLoansPageHidden && (
+          {!isLoansPageHidden && !isStandalone && (
             <nav className='flex items-center gap-3 sm:gap-4 sm:ml-6 shrink-0'>
               <Link
                 href='/'
@@ -68,19 +75,21 @@ export default function Header() {
         </div>
         {/* Compact RainbowKit button on small screens — drop balance, use a shorter label
             and the icon-only chain status so the wallet pill doesn't blow out the header. */}
-        <div className='shrink-0'>
-          <div className='hidden sm:block'>
-            <ConnectButton />
+        {!isStandalone && (
+          <div className='shrink-0'>
+            <div className='hidden sm:block'>
+              <ConnectButton />
+            </div>
+            <div className='block sm:hidden'>
+              <ConnectButton
+                label='Connect'
+                showBalance={false}
+                accountStatus='avatar'
+                chainStatus='icon'
+              />
+            </div>
           </div>
-          <div className='block sm:hidden'>
-            <ConnectButton
-              label='Connect'
-              showBalance={false}
-              accountStatus='avatar'
-              chainStatus='icon'
-            />
-          </div>
-        </div>
+        )}
       </header>
     </div>
   )
