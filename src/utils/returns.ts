@@ -1,6 +1,6 @@
 /**
  * Pure math/formatting for the measured-returns display
- * (useThirtyDayReturns + DisconnectedLiquidity). Kept dependency-free so the
+ * (useThirtyDayReturns + ReturnsPanel). Kept dependency-free so the
  * arithmetic is unit-testable without pulling wallet UI into the test env.
  */
 
