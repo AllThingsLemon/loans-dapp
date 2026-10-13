@@ -88,7 +88,7 @@ function Headline({
  * The measured 30-day returns panel: headline figures over a per-tier table.
  *
  * The disconnected Liquidity page shows Current Yield and Performance side by
- * side. /lending/performance passes showCurrentYield={false} to drop every
+ * side. /liquidity/performance passes showCurrentYield={false} to drop every
  * yield figure — the headline, the table column and its disclaimer sentence —
  * leaving Performance alone.
  */
