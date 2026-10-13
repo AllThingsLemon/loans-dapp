@@ -7,9 +7,33 @@ import { isLoansPageHidden } from '@/src/config/referral'
 
 export default function Header() {
   const pathname = usePathname()
-  // /lending/* pages are standalone public pages: just the logo, centered —
-  // no nav, no wallet button.
+  // /lending/* pages are standalone public pages: just the logo, centered and
+  // not a link — no nav, no wallet button, no way into the app.
   const isStandalone = pathname.startsWith('/lending/')
+
+  const logoClassName = 'flex items-center gap-2 sm:gap-3 shrink-0'
+  const logo = (
+    <>
+      {/* Small screens: badge only, to prevent overlap with nav +
+          wallet button. sm+: the full horizontal lockup. */}
+      <Image
+        src='/images/lemloans-badge.png'
+        alt='LemLoans'
+        width={40}
+        height={40}
+        className='h-8 w-8 sm:hidden'
+        priority
+      />
+      <Image
+        src='/images/lemloans-header.png'
+        alt='LemLoans'
+        width={210}
+        height={70}
+        className='hidden h-14 w-auto sm:block'
+        priority
+      />
+    </>
+  )
 
   return (
     <div className='sticky top-0 z-50 flex items-center justify-center w-full border-b border-border/40 bg-background'>
@@ -19,31 +43,18 @@ export default function Header() {
         }`}
       >
         <div className='flex items-center min-w-0 gap-2 sm:gap-3'>
-          {/* `/` redirects to /liquidity when loans are hidden — link straight
-              there so the logo doesn't bounce through a redirect. */}
-          <Link
-            href={isLoansPageHidden ? '/liquidity' : '/'}
-            className='flex items-center gap-2 sm:gap-3 shrink-0'
-          >
-            {/* Small screens: badge only, to prevent overlap with nav +
-                wallet button. sm+: the full horizontal lockup. */}
-            <Image
-              src='/images/lemloans-badge.png'
-              alt='LemLoans'
-              width={40}
-              height={40}
-              className='h-8 w-8 sm:hidden'
-              priority
-            />
-            <Image
-              src='/images/lemloans-header.png'
-              alt='LemLoans'
-              width={210}
-              height={70}
-              className='hidden h-14 w-auto sm:block'
-              priority
-            />
-          </Link>
+          {isStandalone ? (
+            <div className={logoClassName}>{logo}</div>
+          ) : (
+            /* `/` redirects to /liquidity when loans are hidden — link
+               straight there so the logo doesn't bounce through a redirect. */
+            <Link
+              href={isLoansPageHidden ? '/liquidity' : '/'}
+              className={logoClassName}
+            >
+              {logo}
+            </Link>
+          )}
           {/* With loans hidden there is only one page left, so the whole nav
               goes — a lone tab that always points at the page you are already
               on is just clutter. Rendered from a build-time constant, so this
