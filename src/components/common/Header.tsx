@@ -5,11 +5,14 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { isLoansPageHidden } from '@/src/config/referral'
 
+const STANDALONE_PATHS = ['/liquidity/performance']
+
 export default function Header() {
   const pathname = usePathname()
-  // /lending/* pages are standalone public pages: just the logo, centered and
-  // not a link — no nav, no wallet button, no way into the app.
-  const isStandalone = pathname.startsWith('/lending/')
+  // Standalone public pages: just the logo, centered and not a link — no nav,
+  // no wallet button, no way into the app. Matched exactly, so other
+  // /liquidity/* routes keep the full header.
+  const isStandalone = STANDALONE_PATHS.includes(pathname)
 
   const logoClassName = 'flex items-center gap-2 sm:gap-3 shrink-0'
   const logo = (
