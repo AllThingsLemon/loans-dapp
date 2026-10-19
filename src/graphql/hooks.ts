@@ -51,6 +51,16 @@ function useIndexerScope(address: string | undefined) {
   }
 }
 
+/**
+ * Refresh settings for indexed history that backs a live figure, so the
+ * figure re-reads it instead of keeping its first reading (or failure) until
+ * the page reloads.
+ */
+export interface IndexerRefresh {
+  refetchInterval?: number
+  refetchOnWindowFocus?: boolean
+}
+
 function useLoansScope() {
   const chainId = useChainId()
   return useIndexerScope(loansAddress[chainId as keyof typeof loansAddress])
@@ -138,13 +148,17 @@ export function useLoanPaymentBreakdown() {
  *
  * `pool` is the LiquidityPool address (Loans.liquidityPool()).
  */
-export function useEarningsPulled(pool: string | undefined) {
+export function useEarningsPulled(
+  pool: string | undefined,
+  refresh: IndexerRefresh = {}
+) {
   const { chainId, srcAddress, enabled } = useIndexerScope(pool)
   return useQuery({
     queryKey: ['indexer', chainId, srcAddress, 'earningsPulled'],
     enabled,
     staleTime: STALE_TIME,
-    retry: 1,
+    retry: 2,
+    ...refresh,
     queryFn: async () =>
       (
         await requestAll(
@@ -164,13 +178,17 @@ export function useEarningsPulled(pool: string | undefined) {
  *
  * `pool` is the LiquidityPool address (Loans.liquidityPool()).
  */
-export function usePoolShareChanges(pool: string | undefined) {
+export function usePoolShareChanges(
+  pool: string | undefined,
+  refresh: IndexerRefresh = {}
+) {
   const { chainId, srcAddress, enabled } = useIndexerScope(pool)
   return useQuery({
     queryKey: ['indexer', chainId, srcAddress, 'poolShareChanges'],
     enabled,
     staleTime: STALE_TIME,
-    retry: 1,
+    retry: 2,
+    ...refresh,
     queryFn: async (): Promise<ShareChange[]> => {
       const vars = { chainId, srcAddress }
       const [deposits, compounds, withdrawals, expiries] = await Promise.all([
