@@ -19,7 +19,13 @@ export const runtime = 'edge'
 /** Multicall batches stay well under this (wagmi batches 1 KB of calldata). */
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_BATCH = 25
-const UPSTREAM_TIMEOUT_MS = 8_000
+/**
+ * Each dataseed gets UPSTREAM_TIMEOUT_MS, and all of them together DEADLINE_MS:
+ * inside the browser's own 10 s timeout for this request, so a hung dataseed
+ * costs a few seconds rather than the whole request.
+ */
+const UPSTREAM_TIMEOUT_MS = 3_000
+const DEADLINE_MS = 9_000
 
 const rpcError = (id: unknown, code: number, message: string, status = 200) =>
   NextResponse.json(
@@ -52,6 +58,11 @@ export async function POST(
     return rpcError(null, -32600, 'Cross-origin requests are not allowed', 403)
   }
 
+  // The declared size first, so an oversized upload is refused unread.
+  const declared = Number(request.headers.get('content-length') ?? 0)
+  if (declared > MAX_BODY_BYTES) {
+    return rpcError(null, -32600, 'Request too large', 413)
+  }
   const body = await request.text()
   if (body.length > MAX_BODY_BYTES) {
     return rpcError(null, -32600, 'Request too large', 413)
@@ -78,14 +89,17 @@ export async function POST(
 
   // Start at a random dataseed so proxied traffic spreads across all of them.
   const start = Math.floor(Math.random() * upstreams.length)
+  const deadline = Date.now() + DEADLINE_MS
   for (let k = 0; k < upstreams.length; k++) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
     const url = upstreams[(start + k) % upstreams.length]
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body,
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+        signal: AbortSignal.timeout(Math.min(UPSTREAM_TIMEOUT_MS, remaining))
       })
       // Rate-limited or failing: the next dataseed may still answer.
       if (!response.ok) continue

@@ -6,14 +6,14 @@ import {
   rainbowWallet
 } from '@rainbow-me/rainbowkit/wallets'
 import { createConfig } from 'wagmi'
-import { defineChain, http, type Chain } from 'viem'
+import { defineChain, type Chain } from 'viem'
 import {
   BSC_RPC_URLS,
   BSC_TESTNET_RPC_URLS,
   PROXIED_RPC_URLS,
   rpcProxyPath
 } from './rpc'
-import { stickyFallback } from './stickyFallback'
+import { buildTransport } from './transport'
 
 const bsc = defineChain({
   id: 56,
@@ -159,38 +159,25 @@ const connectors = connectorsForWallets(
 )
 
 /**
- * The chain's endpoints in order and, for the BNB chains in a browser, the
- * site's own /api/rpc proxy last — for visitors whose network, DNS filter or
- * ad blocker blocks binance.org. stickyFallback starts each request at the
- * endpoint that answered last, so a blocked visitor walks the list once and
- * then goes straight to the proxy, while everyone else never reaches it.
- *
- * One retry per dataseed: with four mirrors and the proxy behind them, more
- * would only delay a blocked visitor's first answer (each blocked dataseed
- * costs its retries before the next is tried).
+ * The site's own /api/rpc proxy for a BNB chain, in a browser: the last
+ * resort for visitors whose network, DNS filter or ad blocker blocks
+ * binance.org (see buildTransport). Absolute, since viem builds a Request
+ * from it; none during prerender, which sends no requests.
  */
-const buildTransport = (chain: Chain) => {
-  const urls = chain.rpcUrls.default.http
-  const proxyUrl =
-    PROXIED_RPC_URLS[chain.id] && typeof window !== 'undefined'
-      ? `${window.location.origin}${rpcProxyPath(chain.id)}`
-      : undefined
-  if (urls.length === 1 && !proxyUrl) {
-    return http(urls[0], { retryCount: 5, retryDelay: 1000 })
-  }
-  return stickyFallback(
-    [
-      ...urls.map((url) => http(url, { retryCount: 1, retryDelay: 500 })),
-      ...(proxyUrl ? [http(proxyUrl, { retryCount: 2, retryDelay: 500 })] : [])
-    ],
-    { retryCount: 3, retryDelay: 500 }
-  )
-}
+const proxyUrlFor = (chainId: number) =>
+  PROXIED_RPC_URLS[chainId] && typeof window !== 'undefined'
+    ? `${window.location.origin}${rpcProxyPath(chainId)}`
+    : undefined
 
 export const config = createConfig({
   chains,
   connectors,
-  transports: Object.fromEntries(chains.map((c) => [c.id, buildTransport(c)])),
+  transports: Object.fromEntries(
+    chains.map((c) => [
+      c.id,
+      buildTransport(c.rpcUrls.default.http, proxyUrlFor(c.id))
+    ])
+  ),
   pollingInterval: 4000,
   batch: {
     multicall: {
