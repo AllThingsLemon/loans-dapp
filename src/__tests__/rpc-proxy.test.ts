@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createPublicClient, http } from 'viem'
+import { createPublicClient } from 'viem'
 import { bsc } from 'viem/chains'
 import { POST } from '../app/api/rpc/[chainId]/route'
 import { BSC_RPC_URLS, rpcProxyPath } from '../config/rpc'
-import { RECHECK_MS, stickyFallback } from '../config/stickyFallback'
+import { RECHECK_MS } from '../config/stickyFallback'
+import { buildTransport } from '../config/transport'
 
 /**
  * The last-resort route for visitors whose network or browser blocks the
- * binance.org dataseeds: the /api/rpc proxy, and the sticky fallback that
- * sends a blocked browser to it once instead of on every request.
+ * binance.org dataseeds: the /api/rpc proxy, and the production transport
+ * (buildTransport → stickyFallback) that sends a blocked browser to it once
+ * instead of on every request, and never sends it anything a dataseed
+ * answered.
  */
 
 const SITE = 'https://lending.lemloans.io'
@@ -30,6 +33,17 @@ const answer = (body: unknown, result: unknown) =>
 /** A JSON-RPC response body. */
 const rpcJson = async (response: Response) =>
   (await response.json()) as { result?: unknown; error?: { code: number } }
+
+/** A node's JSON-RPC error, in a normal HTTP 200 response. */
+const rpcFailure = (body: unknown, code: number, message: string) =>
+  new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: JSON.parse(String(body)).id,
+      error: { code, message }
+    }),
+    { headers: { 'content-type': 'application/json' } }
+  )
 
 const blocked = () => Promise.reject(new TypeError('Failed to fetch'))
 
@@ -142,20 +156,36 @@ describe('/api/rpc proxy', () => {
     expect((await proxy('{not json')).status).toBe(400)
     expect(calls).toHaveLength(0)
   })
+
+  it('refuses a body declared too large without reading it', async () => {
+    const calls = stubFetch(async (_url, init) => answer(init.body, '0x1'))
+    const response = await POST(
+      new Request(`${SITE}/api/rpc/56`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': '1000000'
+        },
+        body: rpcBody('eth_blockNumber')
+      }),
+      { params: { chainId: '56' } }
+    )
+    expect(response.status).toBe(413)
+    expect(calls).toHaveLength(0)
+  })
 })
 
-describe('stickyFallback', () => {
-  /** The production order: the dataseeds, then the proxy. */
+describe('buildTransport (the BNB chains in a browser)', () => {
+  /** Exactly what wagmi.ts builds for chain 56: the dataseeds, then the proxy. */
   const client = () =>
     createPublicClient({
       chain: bsc,
-      transport: stickyFallback(
-        [...BSC_RPC_URLS, PROXY].map((url) => http(url, { retryCount: 0 })),
-        { retryCount: 0 }
-      )
+      transport: buildTransport(BSC_RPC_URLS, PROXY)
     })
   const blockNumber = (c: ReturnType<typeof client>) =>
     c.request({ method: 'eth_blockNumber' })
+  /** Waits for the whole walk's retries (500 + 1000 + 2000 ms) to run out. */
+  const SLOW = { timeout: 15_000 }
 
   it('stays on the first dataseed while it answers', async () => {
     const calls = stubFetch(async (_url, init) => answer(init.body, '0x10'))
@@ -198,16 +228,7 @@ describe('stickyFallback', () => {
 
   it('throws a revert at once instead of trying the next endpoint', async () => {
     const calls = stubFetch(async (_url, init) =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            id: JSON.parse(String(init.body)).id,
-            error: { code: 3, message: 'execution reverted' }
-          }),
-          { headers: { 'content-type': 'application/json' } }
-        )
-      )
+      rpcFailure(init.body, 3, 'execution reverted')
     )
     await expect(
       client().request({
@@ -218,9 +239,102 @@ describe('stickyFallback', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('fails with the last error once every endpoint has failed', async () => {
-    const calls = stubFetch(blocked)
-    await expect(blockNumber(client())).rejects.toThrow(/HTTP request failed/)
-    expect(calls).toEqual([...BSC_RPC_URLS, PROXY])
+  it('keeps errors the dataseeds answer off the proxy', SLOW, async () => {
+    // What every dataseed says to a getLogs from block 0 (no archive node).
+    const calls = stubFetch(async (_url, init) =>
+      rpcFailure(init.body, -32005, 'limit exceeded')
+    )
+    await expect(
+      client().request({
+        method: 'eth_getLogs',
+        params: [{ fromBlock: '0x0', toBlock: 'latest' }]
+      })
+    ).rejects.toThrow(/limit/)
+    expect(calls.length).toBeGreaterThan(0)
+    expect(calls).not.toContain(PROXY)
+    expect(new Set(calls)).toEqual(new Set(BSC_RPC_URLS))
+  })
+
+  it(
+    "gives a blocked browser the proxy's relayed error without walking the dataseeds",
+    SLOW,
+    async () => {
+      let relayError = false
+      const calls = stubFetch(async (url, init) => {
+        if (url !== PROXY) return blocked()
+        return relayError
+          ? rpcFailure(init.body, -32005, 'limit exceeded')
+          : answer(init.body, '0x10')
+      })
+      const c = client()
+      await blockNumber(c)
+      relayError = true
+      calls.length = 0
+      await expect(
+        c.request({
+          method: 'eth_getLogs',
+          params: [{ fromBlock: '0x0', toBlock: 'latest' }]
+        })
+      ).rejects.toThrow(/limit/)
+      expect(new Set(calls)).toEqual(new Set([PROXY]))
+    }
+  )
+
+  it(
+    'goes back to the dataseeds when the proxy itself fails',
+    SLOW,
+    async () => {
+      let proxyDown = false
+      const calls = stubFetch(async (url, init) => {
+        if (url === PROXY) {
+          return proxyDown
+            ? new Response('unavailable', { status: 503 })
+            : answer(init.body, '0x10')
+        }
+        return proxyDown ? answer(init.body, '0x11') : blocked()
+      })
+      const c = client()
+      await blockNumber(c)
+      proxyDown = true
+      calls.length = 0
+      expect(await blockNumber(c)).toBe('0x11')
+      expect(calls.at(-1)).toBe(BSC_RPC_URLS[0])
+    }
+  )
+
+  it(
+    'fails with the last error once every endpoint has failed',
+    SLOW,
+    async () => {
+      const calls = stubFetch(blocked)
+      await expect(blockNumber(client())).rejects.toThrow(/HTTP request failed/)
+      expect(new Set(calls)).toEqual(new Set([...BSC_RPC_URLS, PROXY]))
+    }
+  )
+
+  it("supports viem's watch actions", async () => {
+    stubFetch(async (_url, init) => answer(init.body, '0x10'))
+    const c = createPublicClient({
+      chain: bsc,
+      transport: buildTransport(BSC_RPC_URLS, PROXY),
+      pollingInterval: 50
+    })
+    const seen = await new Promise<bigint>((resolve, reject) => {
+      const unwatch = c.watchBlockNumber({
+        onBlockNumber: (n) => {
+          unwatch()
+          resolve(n)
+        },
+        onError: reject
+      })
+    })
+    expect(seen).toBe(16n)
+  })
+
+  it('keeps a single endpoint without a proxy on a plain retried http transport', () => {
+    expect(buildTransport(['https://rpc.lemonchain.io'])({}).config.type).toBe(
+      'http'
+    )
+    expect(buildTransport(BSC_RPC_URLS, PROXY)({}).config.type).toBe('fallback')
   })
 })
