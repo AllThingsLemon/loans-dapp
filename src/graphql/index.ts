@@ -24,7 +24,8 @@ export {
   useLoanExtensions,
   useLoanPaymentBreakdown,
   useEarningsPulled,
-  usePoolShareChanges
+  usePoolShareChanges,
+  useUserDeposits
 } from './hooks'
 
 export type { IndexerRefresh } from './hooks'
@@ -44,6 +45,8 @@ export type {
   PoolWithdrawalRow,
   BoostExpiredRow,
   PoolDepositsResponse,
+  UserDepositRow,
+  UserDepositsResponse,
   PoolCompoundsResponse,
   PoolWithdrawalsResponse,
   BoostExpiriesResponse

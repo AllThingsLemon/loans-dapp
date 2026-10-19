@@ -15,7 +15,8 @@ import {
   POOL_BOOST_EXPIRIES,
   POOL_COMPOUNDS,
   POOL_DEPOSITS,
-  POOL_WITHDRAWALS
+  POOL_WITHDRAWALS,
+  USER_DEPOSITS
 } from './queries'
 import type {
   EarningsPulledResponse,
@@ -25,7 +26,8 @@ import type {
   LoanPaymentsResponse,
   PoolCompoundsResponse,
   PoolDepositsResponse,
-  PoolWithdrawalsResponse
+  PoolWithdrawalsResponse,
+  UserDepositsResponse
 } from './types'
 
 /** Indexed history only grows; a minute of staleness is invisible. */
@@ -239,5 +241,35 @@ export function usePoolShareChanges(
       ]
       return changes.sort((a, b) => compareEventIds(a.id, b.id))
     }
+  })
+}
+
+/**
+ * One depositor's deposits into the pool, for what each of their lock
+ * entries was funded with (see originalDepositValues). Disabled without a
+ * user, or on a chain with no indexer.
+ *
+ * `pool` is the LiquidityPool address (Loans.liquidityPool()).
+ */
+export function useUserDeposits(
+  pool: string | undefined,
+  user: string | undefined,
+  refresh: IndexerRefresh = {}
+) {
+  const { chainId, srcAddress, enabled } = useIndexerScope(pool)
+  const account = user?.toLowerCase()
+  return useQuery({
+    queryKey: ['indexer', chainId, srcAddress, 'userDeposits', account],
+    enabled: enabled && !!account,
+    staleTime: STALE_TIME,
+    retry: 2,
+    ...refresh,
+    queryFn: () =>
+      requestAll(
+        chainId,
+        USER_DEPOSITS,
+        { chainId, srcAddress, user: account },
+        (r: UserDepositsResponse) => r.LiquidityPool_Deposited
+      )
   })
 }

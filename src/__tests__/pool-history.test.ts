@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { getAddress } from 'viem'
 import {
   DAY_S,
+  depositEntryKey,
   distributedSince,
   distributionPerformance,
+  sumDepositsByEntry,
   sumShareChanges,
   totalDistributed,
   type ShareChange
@@ -98,5 +101,52 @@ describe('distributionPerformance', () => {
       avgPct: 1,
       basePct: 1
     })
+  })
+})
+
+describe('sumDepositsByEntry / depositEntryKey', () => {
+  // A real BSC depositor (2026-10): three same-day USDT deposits merged into
+  // one 3600-day entry. The entry now reads $2,559.38 on chain, after $59.39
+  // of earnings were compounded into it; they deposited $2,500.
+  const USDT = '0x55d398326f99059ff775485246999027b3197955'
+  const UNLOCK = '2099865600'
+  const LOCK = '311040000'
+  const deposit = (usd: bigint, overrides = {}) => ({
+    token: USDT,
+    stableTokenValue: String(usd * E18),
+    expiresAt: UNLOCK,
+    lockDuration: LOCK,
+    ...overrides
+  })
+
+  it('sums the deposits behind an entry', () => {
+    const values = sumDepositsByEntry([
+      deposit(1300n),
+      deposit(700n),
+      deposit(500n)
+    ])
+    expect(values.get(depositEntryKey(USDT, UNLOCK, LOCK))).toBe(2500n * E18)
+  })
+
+  it('matches the chain entry: checksummed token, bigint unlockTime', () => {
+    const values = sumDepositsByEntry([deposit(1300n), deposit(1200n)])
+    const entryKey = depositEntryKey(getAddress(USDT), 2099865600n, 311040000n)
+    expect(values.get(entryKey)).toBe(2500n * E18)
+  })
+
+  it('keeps entries apart when unlock time, lock or token differ', () => {
+    const values = sumDepositsByEntry([
+      deposit(100n),
+      deposit(200n, { expiresAt: String(BigInt(UNLOCK) + BigInt(DAY_S)) }),
+      deposit(300n, { lockDuration: '31104000' }),
+      deposit(400n, { token: '0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c' })
+    ])
+    expect(values.size).toBe(4)
+    expect(values.get(depositEntryKey(USDT, UNLOCK, LOCK))).toBe(100n * E18)
+  })
+
+  it('has no value for an entry made only by compounding', () => {
+    const values = sumDepositsByEntry([deposit(2500n)])
+    expect(values.get(depositEntryKey(USDT, 2101075200n, LOCK))).toBeUndefined()
   })
 })
