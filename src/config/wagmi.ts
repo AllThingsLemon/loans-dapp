@@ -6,7 +6,14 @@ import {
   rainbowWallet
 } from '@rainbow-me/rainbowkit/wallets'
 import { createConfig } from 'wagmi'
-import { defineChain, fallback, http, type Chain } from 'viem'
+import { defineChain, http, type Chain } from 'viem'
+import {
+  BSC_RPC_URLS,
+  BSC_TESTNET_RPC_URLS,
+  PROXIED_RPC_URLS,
+  rpcProxyPath
+} from './rpc'
+import { stickyFallback } from './stickyFallback'
 
 const bsc = defineChain({
   id: 56,
@@ -16,29 +23,10 @@ const bsc = defineChain({
     name: 'BNB',
     symbol: 'BNB'
   },
-  // Only the binance dataseeds remain — measured from real browser traffic
-  // (2026-09) they are the only endpoints that reliably answer browser
-  // clients. publicnode 403s browser requests from the production origin
-  // (while answering curl); the nodereal key answers 429 to everything.
-  // NOTE: nodereal was also the only archive node, so no endpoint here can
-  // serve state older than ~128 blocks.
+  // Only the binance dataseeds answer browsers reliably (see src/config/rpc.ts).
   rpcUrls: {
-    default: {
-      http: [
-        'https://bsc-dataseed1.binance.org',
-        'https://bsc-dataseed2.binance.org',
-        'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org'
-      ]
-    },
-    public: {
-      http: [
-        'https://bsc-dataseed1.binance.org',
-        'https://bsc-dataseed2.binance.org',
-        'https://bsc-dataseed3.binance.org',
-        'https://bsc-dataseed4.binance.org'
-      ]
-    }
+    default: { http: BSC_RPC_URLS },
+    public: { http: BSC_RPC_URLS }
   },
   blockExplorers: {
     default: { name: 'BscScan', url: 'https://bscscan.com' }
@@ -59,15 +47,9 @@ const bscTestnet = defineChain({
     name: 'tBNB',
     symbol: 'tBNB'
   },
-  // Same rationale as mainnet above: rate-limited nodereal removed outright.
+  // Same endpoints the proxy relays to (see src/config/rpc.ts).
   rpcUrls: {
-    default: {
-      http: [
-        'https://data-seed-prebsc-1-s1.binance.org:8545',
-        'https://data-seed-prebsc-2-s1.binance.org:8545',
-        'https://data-seed-prebsc-1-s2.binance.org:8545'
-      ]
-    },
+    default: { http: BSC_TESTNET_RPC_URLS },
     public: {
       http: [
         'https://data-seed-prebsc-1-s1.binance.org:8545',
@@ -176,19 +158,33 @@ const connectors = connectorsForWallets(
   }
 )
 
+/**
+ * The chain's endpoints in order and, for the BNB chains in a browser, the
+ * site's own /api/rpc proxy last — for visitors whose network, DNS filter or
+ * ad blocker blocks binance.org. stickyFallback starts each request at the
+ * endpoint that answered last, so a blocked visitor walks the list once and
+ * then goes straight to the proxy, while everyone else never reaches it.
+ *
+ * One retry per dataseed: with four mirrors and the proxy behind them, more
+ * would only delay a blocked visitor's first answer (each blocked dataseed
+ * costs its retries before the next is tried).
+ */
 const buildTransport = (chain: Chain) => {
   const urls = chain.rpcUrls.default.http
-  if (urls.length > 1) {
-    // rank: false — the list order above is deliberate (healthy endpoints
-    // first, rate-limited archive node last). Latency ranking would keep
-    // pinging the 429ing endpoint and promote it whenever a probe slips
-    // through its limiter.
-    return fallback(
-      urls.map((url) => http(url, { retryCount: 2, retryDelay: 500 })),
-      { rank: false, retryCount: 3, retryDelay: 500 }
-    )
+  const proxyUrl =
+    PROXIED_RPC_URLS[chain.id] && typeof window !== 'undefined'
+      ? `${window.location.origin}${rpcProxyPath(chain.id)}`
+      : undefined
+  if (urls.length === 1 && !proxyUrl) {
+    return http(urls[0], { retryCount: 5, retryDelay: 1000 })
   }
-  return http(urls[0], { retryCount: 5, retryDelay: 1000 })
+  return stickyFallback(
+    [
+      ...urls.map((url) => http(url, { retryCount: 1, retryDelay: 500 })),
+      ...(proxyUrl ? [http(proxyUrl, { retryCount: 2, retryDelay: 500 })] : [])
+    ],
+    { retryCount: 3, retryDelay: 500 }
+  )
 }
 
 export const config = createConfig({

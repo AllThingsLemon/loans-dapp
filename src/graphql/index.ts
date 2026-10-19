@@ -27,6 +27,8 @@ export {
   usePoolShareChanges
 } from './hooks'
 
+export type { IndexerRefresh } from './hooks'
+
 export type {
   Numeric,
   LoanInitiatedRow,

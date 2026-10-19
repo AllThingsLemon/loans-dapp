@@ -1,9 +1,14 @@
+import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatUnits } from 'viem'
 import { usePublicClient, useChainId } from 'wagmi'
 import { loansAbi, loansAddress, liquidityPoolAbi } from '@/src/generated'
 import erc20Abi from '@/src/abis/ERC20.json'
-import { useEarningsPulled, usePoolShareChanges } from '@/src/graphql/hooks'
+import {
+  useEarningsPulled,
+  usePoolShareChanges,
+  type IndexerRefresh
+} from '@/src/graphql/hooks'
 import {
   DAY_S,
   distributedSince,
@@ -28,6 +33,17 @@ const WINDOW_S = 30 * DAY_S
  * figures would be wrong.
  */
 const TOTALS_TOLERANCE_BPS = 10n
+
+/**
+ * The figures re-read the chain and the indexer every minute, and when the
+ * tab regains focus. Without it, a failed read — or a reading taken in the
+ * seconds between a distribution and the indexer catching up — left "—" on
+ * screen until the page was reloaded.
+ */
+const REFRESH: IndexerRefresh = {
+  refetchInterval: 60_000,
+  refetchOnWindowFocus: true
+}
 
 const withinTolerance = (indexed: bigint, live: bigint) => {
   const gap = indexed > live ? indexed - live : live - indexed
@@ -73,7 +89,9 @@ export interface ThirtyDayReturns {
  * Loans.totalInterestDistributed(); Performance also needs the pool's share
  * history, which must add up to its live totals. If a check fails — or there
  * is no indexer for the chain, or it's unreachable — that figure is null
- * ("—") rather than a number that can't be vouched for.
+ * ("—") rather than a number that can't be vouched for. Once a figure has
+ * passed, a later reading that fails keeps it on screen until one passes
+ * again, rather than blanking it between refreshes.
  *
  * Works disconnected: reads go through the default-chain public client.
  */
@@ -90,7 +108,8 @@ export function useThirtyDayReturns() {
     // Refreshes in step with the indexer query, so the consistency check
     // below compares two readings of roughly the same moment.
     staleTime: 60_000,
-    retry: 1,
+    retry: 2,
+    ...REFRESH,
     queryFn: async () => {
       if (!publicClient || !loans) throw new Error('client not ready')
 
@@ -148,44 +167,58 @@ export function useThirtyDayReturns() {
     }
   })
 
-  const pulls = useEarningsPulled(snapshot.data?.pool)
-  const shares = usePoolShareChanges(snapshot.data?.pool)
+  const pulls = useEarningsPulled(snapshot.data?.pool, REFRESH)
+  const shares = usePoolShareChanges(snapshot.data?.pool, REFRESH)
 
-  let data: ThirtyDayReturns | undefined
-  if (snapshot.data) {
+  // The latest figures that passed their checks, per chain. Written during
+  // render, but only ever with what the current query data proves, so a
+  // re-render can't store anything a fresh one wouldn't.
+  const verified = useRef<{
+    chainId: number
+    currentYield?: WindowReturns
+    distributed?: number
+    performance?: Performance
+  }>({ chainId })
+  if (verified.current.chainId !== chainId) verified.current = { chainId }
+  const kept = verified.current
+
+  if (
+    snapshot.data &&
+    pulls.data &&
+    withinTolerance(
+      totalDistributed(pulls.data),
+      snapshot.data.totalInterestDistributed
+    )
+  ) {
     const live = snapshot.data
-    data = { currentYield: UNMEASURED, performance: null, distributed: null }
-    if (
-      pulls.data &&
-      withinTolerance(
-        totalDistributed(pulls.data),
-        live.totalInterestDistributed
-      )
-    ) {
-      const since = Math.floor(Date.now() / 1000) - WINDOW_S
-      const distributed = distributedSince(pulls.data, since)
-      data.currentYield = poolReturns(
-        distributed,
-        live.totalLiquidityShares,
-        live.totalInterestShares
-      )
-      data.distributed = Number(formatUnits(distributed, live.decimals))
+    const since = Math.floor(Date.now() / 1000) - WINDOW_S
+    const distributed = distributedSince(pulls.data, since)
+    kept.currentYield = poolReturns(
+      distributed,
+      live.totalLiquidityShares,
+      live.totalInterestShares
+    )
+    kept.distributed = Number(formatUnits(distributed, live.decimals))
 
-      const history = shares.data && sumShareChanges(shares.data)
-      if (
-        shares.data &&
-        history &&
-        withinTolerance(history.liquidity, live.totalLiquidityShares) &&
-        withinTolerance(history.interest, live.totalInterestShares)
-      ) {
-        data.performance = distributionPerformance(
-          pulls.data,
-          shares.data,
-          since
-        )
-      }
+    const history = shares.data && sumShareChanges(shares.data)
+    if (
+      shares.data &&
+      history &&
+      withinTolerance(history.liquidity, live.totalLiquidityShares) &&
+      withinTolerance(history.interest, live.totalInterestShares)
+    ) {
+      kept.performance = distributionPerformance(pulls.data, shares.data, since)
     }
   }
+
+  const data: ThirtyDayReturns | undefined =
+    snapshot.data || kept.currentYield
+      ? {
+          currentYield: kept.currentYield ?? UNMEASURED,
+          performance: kept.performance ?? null,
+          distributed: kept.distributed ?? null
+        }
+      : undefined
 
   return {
     data,
