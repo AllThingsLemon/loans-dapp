@@ -22,6 +22,7 @@ import { formatAmountWithSymbol } from '@/src/utils/format'
 import CalculatorSection from '@/src/components/common/Calculator'
 import { ActiveLoans } from '@/src/components/dashboard/ActiveLoans'
 import { LoanHistory } from '@/src/components/dashboard/LoanHistory'
+import { RecentActivity } from '@/src/components/dashboard/RecentActivity'
 import { Web3ErrorBoundary } from '@/src/components/error/Web3ErrorBoundary'
 import { PriceDataBanner } from '@/src/components/dashboard/PriceDataBanner'
 import { ProtocolStatusBanner } from '@/src/components/common/ProtocolStatusBanner'
@@ -256,7 +257,7 @@ export function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <LoanHistory compact />
+                <RecentActivity />
               </CardContent>
             </Card>
           </div>

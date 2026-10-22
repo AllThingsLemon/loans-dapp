@@ -23,7 +23,12 @@ import {
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
 import { floorToDecimals } from '@/src/utils/format'
-import { depositEntryKey } from '@/src/utils/poolHistory'
+import {
+  depositEntryKey,
+  poolActivity,
+  totalCompounded,
+  totalDeposited
+} from '@/src/utils/poolHistory'
 import {
   BarChart3,
   TrendingUp,
@@ -62,7 +67,9 @@ interface LiquidityPerformanceProps {
 const STAT_GLOSSARY: Record<string, string> = {
   // Your Position
   'Total Deposited':
-    'The total principal you have deposited into the liquidity pool across all of your deposit entries.',
+    'Everything you have deposited into the pool, at its value when deposited. Compounded earnings and withdrawals do not change it.',
+  'Current Principal':
+    'What your position holds now: your deposits plus the earnings you have compounded, less withdrawals. Locked plus Unlocked.',
   Locked:
     'Principal still inside its lock period. It keeps earning, but cannot be withdrawn until the lock expires.',
   Unlocked:
@@ -83,7 +90,7 @@ const STAT_GLOSSARY: Record<string, string> = {
   'Total Claimed':
     'Earnings you have already claimed to your wallet over the life of your position.',
   'Lifetime Earnings':
-    'Everything your position has earned: claimable earnings plus what you have already claimed.',
+    'Everything your position has earned: claimable earnings, plus what you have already claimed or compounded.',
   // Pool Overview
   'Total Liquidity Available':
     'Stablecoin in the pool that is not currently lent out — available to fund new loans and withdrawals.',
@@ -303,6 +310,8 @@ export function LiquidityPerformance({
     stableTokenAddress,
     liquidityPoolContractAddress,
     originalDepositValues,
+    accountHistory,
+    accountHistoryLoading,
     tokenMetadata,
     claimEarnings,
     compoundEarnings,
@@ -363,10 +372,23 @@ export function LiquidityPerformance({
     )
   }, [userStatus, poolStatus])
 
+  // Claimable + claimed + compounded. The chain's totalClaimed only counts
+  // claims; compounded earnings come from the indexer, as reinvested (after
+  // the earnings fee — the event records no fee), while claims count the
+  // amount before the claim fee. Without an indexer, compounds are left out.
   const lifetimeEarnings = useMemo(() => {
     if (!userStatus) return 0n
-    return userStatus.pendingEarnings + userStatus.totalClaimed
-  }, [userStatus])
+    return (
+      userStatus.pendingEarnings +
+      userStatus.totalClaimed +
+      (accountHistory ? totalCompounded(accountHistory) : 0n)
+    )
+  }, [userStatus, accountHistory])
+
+  const depositActivity = useMemo(
+    () => (accountHistory ? poolActivity(accountHistory) : []),
+    [accountHistory]
+  )
 
   // Interest borrowers have paid that still sits in the Loans contract —
   // this wallet's slice of it, i.e. what "Distribute Earnings" would move
@@ -686,6 +708,20 @@ export function LiquidityPerformance({
               <StatItem
                 label='Total Deposited'
                 value={
+                  accountHistory
+                    ? formatCurrency(
+                        totalDeposited(accountHistory),
+                        decimals,
+                        symbol
+                      )
+                    : accountHistoryLoading
+                      ? 'Loading...'
+                      : '—'
+                }
+              />
+              <StatItem
+                label='Current Principal'
+                value={
                   userStatus
                     ? formatCurrency(
                         userStatus.totalPrincipal,
@@ -803,7 +839,11 @@ export function LiquidityPerformance({
               />
               <StatItem
                 label='Lifetime Earnings'
-                value={formatCurrency(lifetimeEarnings, decimals, symbol)}
+                value={
+                  userStatus && !accountHistoryLoading
+                    ? formatCurrency(lifetimeEarnings, decimals, symbol)
+                    : 'Loading...'
+                }
               />
             </div>
             {userStatus && userStatus.pendingEarnings > 0n && (
@@ -874,10 +914,10 @@ export function LiquidityPerformance({
 
           <div className='border-t' />
 
-          {/* 5. Deposit History */}
+          {/* 5. Current Deposits: the lock entries the position holds now */}
           <div className='space-y-3'>
             <h3 className='text-sm font-semibold flex items-center gap-2'>
-              <Clock className='h-4 w-4' /> Deposit History
+              <Lock className='h-4 w-4' /> Current Deposits
             </h3>
             {sortedDepositEntries.length > 0 ? (
               <div className='space-y-2'>
@@ -940,6 +980,86 @@ export function LiquidityPerformance({
               </p>
             )}
           </div>
+
+          {/* 6. Deposit History: every deposit, compound and withdrawal, from
+              the indexer. Hidden on a chain without one. */}
+          {(accountHistory || accountHistoryLoading) && (
+            <div className='space-y-3'>
+              <h3 className='text-sm font-semibold flex items-center gap-2'>
+                <Clock className='h-4 w-4' /> Deposit History
+              </h3>
+              {!accountHistory ? (
+                <p className='text-sm text-muted-foreground'>
+                  Loading history…
+                </p>
+              ) : depositActivity.length > 0 ? (
+                <div className='space-y-2'>
+                  <div className='grid grid-cols-5 text-xs font-medium text-muted-foreground pb-1 border-b'>
+                    <span>Date</span>
+                    <span>Activity</span>
+                    <span>Amount</span>
+                    <span>Lock Duration</span>
+                    <span>Unlock Date</span>
+                  </div>
+                  {depositActivity.map((row) => {
+                    const meta =
+                      row.kind === 'deposit'
+                        ? tokenMetadata.get(row.token)
+                        : undefined
+                    const activity =
+                      row.kind === 'deposit'
+                        ? 'Deposit'
+                        : row.kind === 'compound'
+                          ? 'Compounded earnings'
+                          : row.claimed
+                            ? 'Withdrawal (paid)'
+                            : 'Withdrawal (queued)'
+                    return (
+                      <div
+                        key={row.id}
+                        className='grid grid-cols-5 items-center text-sm py-2 border-b border-border/50'
+                      >
+                        <span>{formatDate(BigInt(row.timestamp))}</span>
+                        <span>{activity}</span>
+                        <span>
+                          {formatCurrency(row.amount, decimals, symbol)}
+                          {meta &&
+                            row.kind === 'deposit' &&
+                            row.token !== stableTokenAddress?.toLowerCase() && (
+                              <span className='block text-xs text-muted-foreground'>
+                                {formatCurrency(
+                                  row.tokenAmount,
+                                  meta.decimals,
+                                  meta.symbol
+                                )}
+                              </span>
+                            )}
+                        </span>
+                        <span>
+                          {row.kind === 'deposit'
+                            ? formatDuration(row.lockDuration)
+                            : row.kind === 'compound'
+                              ? formatDuration(
+                                  row.unlockTime - BigInt(row.timestamp)
+                                )
+                              : '—'}
+                        </span>
+                        <span>
+                          {row.kind === 'withdrawal'
+                            ? '—'
+                            : formatDate(row.unlockTime)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className='text-sm text-muted-foreground'>
+                  No deposits yet.
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

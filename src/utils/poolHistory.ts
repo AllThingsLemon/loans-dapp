@@ -4,7 +4,14 @@
  * UI into the test env.
  */
 
-import type { EarningsPulledRow, UserDepositRow } from '@/src/graphql/types'
+import type {
+  AccountCompoundRow,
+  AccountDepositRow,
+  AccountTransferRow,
+  AccountWithdrawalClaimRow,
+  AccountWithdrawalRequestRow,
+  EarningsPulledRow
+} from '@/src/graphql/types'
 import { compareEventIds } from '@/src/utils/loanHistory'
 import { bigintRatioToPct } from '@/src/utils/returns'
 
@@ -126,7 +133,7 @@ export const depositEntryKey = (
  */
 export function sumDepositsByEntry(
   deposits: readonly Pick<
-    UserDepositRow,
+    AccountDepositRow,
     'token' | 'stableTokenValue' | 'expiresAt' | 'lockDuration'
   >[]
 ): Map<string, bigint> {
@@ -136,4 +143,132 @@ export function sumDepositsByEntry(
     values.set(key, (values.get(key) ?? 0n) + BigInt(d.stableTokenValue))
   }
   return values
+}
+
+/**
+ * The addresses whose pool history belongs to `account`, each with the event
+ * id its contribution stops before (undefined: no cutoff). transferAccount
+ * moves an entire position — deposit entries, claimed total, pending
+ * withdrawals — to an empty account, but the indexer keeps the earlier
+ * events under the sender; so the recipient's history is its own plus the
+ * sender's up to the transfer, and so on back through earlier transfers.
+ */
+export function accountLineage(
+  transfers: readonly AccountTransferRow[],
+  account: string
+): Map<string, string | undefined> {
+  const lineage = new Map<string, string | undefined>([
+    [account.toLowerCase(), undefined]
+  ])
+  const queue = [account.toLowerCase()]
+  while (queue.length > 0) {
+    const to = queue.shift()!
+    const cutoff = lineage.get(to)
+    for (const t of transfers) {
+      if (t.to.toLowerCase() !== to) continue
+      if (cutoff !== undefined && compareEventIds(t.id, cutoff) >= 0) continue
+      const from = t.from.toLowerCase()
+      if (lineage.has(from)) continue
+      lineage.set(from, t.id)
+      queue.push(from)
+    }
+  }
+  return lineage
+}
+
+/** The rows that belong to an account, given its accountLineage. */
+export function inLineage<T extends { id: string; user: string }>(
+  rows: readonly T[],
+  lineage: ReadonlyMap<string, string | undefined>
+): T[] {
+  return rows.filter((row) => {
+    const user = row.user.toLowerCase()
+    if (!lineage.has(user)) return false
+    const cutoff = lineage.get(user)
+    return cutoff === undefined || compareEventIds(row.id, cutoff) < 0
+  })
+}
+
+/** One account's pool history, already narrowed to its lineage. */
+export interface AccountHistory {
+  deposits: AccountDepositRow[]
+  compounds: AccountCompoundRow[]
+  withdrawalRequests: AccountWithdrawalRequestRow[]
+  withdrawalClaims: AccountWithdrawalClaimRow[]
+}
+
+/** Everything the account has deposited, at its USD value when deposited. */
+export const totalDeposited = (history: AccountHistory) =>
+  history.deposits.reduce((sum, d) => sum + BigInt(d.stableTokenValue), 0n)
+
+/** Earnings the account has reinvested, after the earnings fee. */
+export const totalCompounded = (history: AccountHistory) =>
+  history.compounds.reduce((sum, c) => sum + BigInt(c.earningsAmount), 0n)
+
+export type PoolActivity =
+  | {
+      kind: 'deposit'
+      id: string
+      timestamp: number
+      /** USD value when deposited. */
+      amount: bigint
+      token: string
+      tokenAmount: bigint
+      lockDuration: bigint
+      unlockTime: bigint
+    }
+  | {
+      kind: 'compound'
+      id: string
+      timestamp: number
+      amount: bigint
+      unlockTime: bigint
+    }
+  | {
+      kind: 'withdrawal'
+      id: string
+      timestamp: number
+      amount: bigint
+      /** Paid out (claimed) yet, or still in the withdrawal queue. */
+      claimed: boolean
+    }
+
+/** The account's deposits, compounds and withdrawals, newest first. */
+export function poolActivity(history: AccountHistory): PoolActivity[] {
+  const claimed = new Set(
+    history.withdrawalClaims.map((c) => BigInt(c.requestId))
+  )
+  const rows: PoolActivity[] = [
+    ...history.deposits.map(
+      (d): PoolActivity => ({
+        kind: 'deposit',
+        id: d.id,
+        timestamp: d.blockTimestamp,
+        amount: BigInt(d.stableTokenValue),
+        token: d.token.toLowerCase(),
+        tokenAmount: BigInt(d.tokenAmount),
+        lockDuration: BigInt(d.lockDuration),
+        unlockTime: BigInt(d.expiresAt)
+      })
+    ),
+    ...history.compounds.map(
+      (c): PoolActivity => ({
+        kind: 'compound',
+        id: c.id,
+        timestamp: c.blockTimestamp,
+        amount: BigInt(c.earningsAmount),
+        unlockTime: BigInt(c.unlockTime)
+      })
+    ),
+    ...history.withdrawalRequests.map(
+      (w): PoolActivity => ({
+        kind: 'withdrawal',
+        id: w.id,
+        timestamp: w.blockTimestamp,
+        amount: BigInt(w.amount),
+        claimed: claimed.has(BigInt(w.requestId))
+      })
+    )
+  ]
+  return rows.sort((a, b) => compareEventIds(b.id, a.id))
 }

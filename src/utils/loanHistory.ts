@@ -3,7 +3,11 @@
  * dependency-free so the arithmetic is unit-testable without pulling wallet
  * UI into the test env.
  */
-import type { LoanInitiatedRow, LoanPaymentRow } from '@/src/graphql/types'
+import type {
+  BorrowerActivityResponse,
+  LoanInitiatedRow,
+  LoanPaymentRow
+} from '@/src/graphql/types'
 
 export interface EventPosition {
   chainId: number
@@ -102,4 +106,105 @@ export function interestPaidSince(
     (sum, p) => (p.timestamp >= since ? sum + p.interestPaid : sum),
     0n
   )
+}
+
+export type LoanActivityKind =
+  | 'opened'
+  | 'payment'
+  | 'extended'
+  | 'repaid'
+  | 'collateralWithdrawn'
+  | 'defaulted'
+
+export interface LoanActivity {
+  id: string
+  kind: LoanActivityKind
+  loanId: string
+  /** Unix seconds. */
+  timestamp: number
+  /** Loan amount (opened), payment, or collateral returned; in that token. */
+  amount?: bigint
+  /** How long an extension added, in seconds. */
+  extensionDuration?: bigint
+}
+
+/** Order within one block: a loan opens, then is paid, extended, closed. */
+const KIND_ORDER: Record<LoanActivityKind, number> = {
+  opened: 0,
+  payment: 1,
+  extended: 2,
+  repaid: 3,
+  collateralWithdrawn: 4,
+  defaulted: 5
+}
+
+/**
+ * A borrower's loan events, newest first, at most `limit`. Openings come
+ * from the loans themselves (every loan has its createdAt on chain); the
+ * rest from the indexer, which has no Loans events before ~2026-08-31 — so
+ * an older loan shows its opening but not its earlier payments.
+ */
+export function recentLoanActivity(
+  loans: readonly { id: string; createdAt: bigint; loanAmount: bigint }[],
+  indexed: BorrowerActivityResponse | undefined,
+  limit: number
+): LoanActivity[] {
+  const events: LoanActivity[] = loans.map((loan) => ({
+    id: `opened:${loan.id}`,
+    kind: 'opened',
+    loanId: loan.id.toLowerCase(),
+    timestamp: Number(loan.createdAt),
+    amount: loan.loanAmount
+  }))
+  if (indexed) {
+    for (const p of indexed.payments) {
+      events.push({
+        id: p.id,
+        kind: 'payment',
+        loanId: p.loanId,
+        timestamp: p.blockTimestamp,
+        amount: BigInt(p.paymentAmount)
+      })
+    }
+    for (const e of indexed.extensions) {
+      events.push({
+        id: e.id,
+        kind: 'extended',
+        loanId: e.loanId,
+        timestamp: e.blockTimestamp,
+        extensionDuration: BigInt(e.extensionDuration)
+      })
+    }
+    for (const r of indexed.repaid) {
+      events.push({
+        id: r.id,
+        kind: 'repaid',
+        loanId: r.loanId,
+        timestamp: r.blockTimestamp
+      })
+    }
+    for (const w of indexed.collateralWithdrawn) {
+      events.push({
+        id: w.id,
+        kind: 'collateralWithdrawn',
+        loanId: w.loanId,
+        timestamp: w.blockTimestamp,
+        amount: BigInt(w.collateralAmount)
+      })
+    }
+    for (const d of indexed.defaulted) {
+      events.push({
+        id: d.id,
+        kind: 'defaulted',
+        loanId: d.loanId,
+        timestamp: d.blockTimestamp
+      })
+    }
+  }
+  return events
+    .sort(
+      (a, b) =>
+        b.timestamp - a.timestamp || KIND_ORDER[b.kind] - KIND_ORDER[a.kind]
+    )
+    .slice(0, limit)
 }
