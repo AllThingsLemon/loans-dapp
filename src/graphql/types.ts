@@ -95,15 +95,46 @@ export interface PoolDepositRow extends EventRow {
   nonEarning: boolean
 }
 
-/** The slice of a deposit that says which lock entry it funded, and with how much. */
-export interface UserDepositRow {
+/*
+ * One account's pool history (see the ACCOUNT_* queries). Each row keeps
+ * `user`, since the account's lineage can span addresses.
+ */
+interface AccountRow {
   id: string
+  user: string
+  /** Unix seconds. */
+  blockTimestamp: number
+}
+
+export interface AccountDepositRow extends AccountRow {
   token: string
+  tokenAmount: Numeric
   /** USD value credited at deposit time. */
   stableTokenValue: Numeric
   /** Unix seconds; the lock entry's unlockTime. */
   expiresAt: Numeric
   lockDuration: Numeric
+}
+
+export interface AccountCompoundRow extends AccountRow {
+  /** Reinvested, after the earnings fee. */
+  earningsAmount: Numeric
+  unlockTime: Numeric
+}
+
+export interface AccountWithdrawalRequestRow extends AccountRow {
+  requestId: Numeric
+  amount: Numeric
+}
+
+export interface AccountWithdrawalClaimRow extends AccountRow {
+  requestId: Numeric
+}
+
+export interface AccountTransferRow {
+  id: string
+  from: string
+  to: string
 }
 
 export interface PoolCompoundRow extends EventRow {
@@ -130,8 +161,28 @@ export interface PoolDepositsResponse {
   LiquidityPool_Deposited: PoolDepositRow[]
 }
 
-export interface UserDepositsResponse {
-  LiquidityPool_Deposited: UserDepositRow[]
+export interface AccountDepositsResponse {
+  LiquidityPool_Deposited: AccountDepositRow[]
+}
+
+export interface AccountCompoundsResponse {
+  LiquidityPool_EarningsCompounded: AccountCompoundRow[]
+}
+
+export interface AccountWithdrawalRequestsResponse {
+  LiquidityPool_WithdrawalRequested: AccountWithdrawalRequestRow[]
+}
+
+export interface AccountWithdrawalClaimsResponse {
+  LiquidityPool_WithdrawalClaimed: AccountWithdrawalClaimRow[]
+}
+
+export interface AccountTransfersResponse {
+  LiquidityPool_AccountTransferred: AccountTransferRow[]
+}
+
+export interface PoolWithdrawalRequestsResponse {
+  LiquidityPool_WithdrawalRequested: PoolWithdrawalRow[]
 }
 
 export interface PoolCompoundsResponse {
@@ -144,4 +195,28 @@ export interface PoolWithdrawalsResponse {
 
 export interface BoostExpiriesResponse {
   LiquidityPool_BoostExpired: BoostExpiredRow[]
+}
+
+/** A borrower's latest loan events (BORROWER_ACTIVITY), newest first. */
+export interface BorrowerActivityResponse {
+  payments: {
+    id: string
+    loanId: string
+    blockTimestamp: number
+    paymentAmount: Numeric
+  }[]
+  extensions: {
+    id: string
+    loanId: string
+    blockTimestamp: number
+    extensionDuration: Numeric
+  }[]
+  repaid: { id: string; loanId: string; blockTimestamp: number }[]
+  collateralWithdrawn: {
+    id: string
+    loanId: string
+    blockTimestamp: number
+    collateralAmount: Numeric
+  }[]
+  defaulted: { id: string; loanId: string; blockTimestamp: number }[]
 }

@@ -3,7 +3,8 @@ import {
   breakDownPayments,
   compareEventIds,
   interestPaidSince,
-  parseEventId
+  parseEventId,
+  recentLoanActivity
 } from '../utils/loanHistory'
 import type { LoanPaymentRow } from '../graphql/types'
 
@@ -130,5 +131,93 @@ describe('interestPaidSince', () => {
     )
     expect(interestPaidSince(out, 2_000)).toBe(60n * E18)
     expect(interestPaidSince(out, 3_001)).toBe(0n)
+  })
+})
+
+describe('recentLoanActivity', () => {
+  const L1 = '0x' + '1'.repeat(64)
+  const L2 = '0x' + '2'.repeat(64)
+  const loans = [
+    { id: L1, createdAt: 1000n, loanAmount: 1000n * E18 },
+    { id: L2, createdAt: 5000n, loanAmount: 250n * E18 }
+  ]
+  const none = {
+    payments: [],
+    extensions: [],
+    repaid: [],
+    collateralWithdrawn: [],
+    defaulted: []
+  }
+
+  it('shows openings from the chain when there is no indexer', () => {
+    const events = recentLoanActivity(loans, undefined, 5)
+    expect(events.map((e) => [e.kind, e.loanId, e.amount])).toEqual([
+      ['opened', L2, 250n * E18],
+      ['opened', L1, 1000n * E18]
+    ])
+  })
+
+  it('merges indexed events, newest first, up to the limit', () => {
+    const events = recentLoanActivity(
+      loans,
+      {
+        ...none,
+        payments: [
+          // The first cycle is paid in the same block the loan opens.
+          {
+            id: '56_50_3',
+            loanId: L2,
+            blockTimestamp: 5000,
+            paymentAmount: '7'
+          },
+          {
+            id: '56_20_1',
+            loanId: L1,
+            blockTimestamp: 2000,
+            paymentAmount: '9'
+          }
+        ],
+        repaid: [{ id: '56_30_0', loanId: L1, blockTimestamp: 3000 }],
+        collateralWithdrawn: [
+          {
+            id: '56_30_1',
+            loanId: L1,
+            blockTimestamp: 3000,
+            collateralAmount: '42'
+          }
+        ]
+      },
+      5
+    )
+    expect(events.map((e) => `${e.kind}@${e.timestamp}`)).toEqual([
+      'payment@5000',
+      'opened@5000',
+      'collateralWithdrawn@3000',
+      'repaid@3000',
+      'payment@2000'
+    ])
+    expect(events[2].amount).toBe(42n)
+  })
+
+  it('carries an extension as a duration', () => {
+    const [event] = recentLoanActivity(
+      [],
+      {
+        ...none,
+        extensions: [
+          {
+            id: '56_9_0',
+            loanId: L1,
+            blockTimestamp: 9000,
+            extensionDuration: String(90 * 86400)
+          }
+        ]
+      },
+      5
+    )
+    expect(event).toMatchObject({
+      kind: 'extended',
+      extensionDuration: BigInt(90 * 86400)
+    })
   })
 })

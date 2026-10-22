@@ -13,7 +13,6 @@ import { useLoans } from '@/src/hooks/useLoans'
 import { useContractTokenConfiguration } from '@/src/hooks/useContractTokenConfiguration'
 import {
   formatAmountWithSymbol,
-  formatDuration,
   formatTimestamp,
   getLoanStatusLabel,
   getLoanStatusVariant,
@@ -31,11 +30,7 @@ import {
   Check
 } from 'lucide-react'
 
-interface LoanHistoryProps {
-  compact?: boolean
-}
-
-export function LoanHistory({ compact = false }: LoanHistoryProps) {
+export function LoanHistory() {
   const { loanHistory, isLoading } = useLoans()
   const { tokenConfig } = useContractTokenConfiguration()
   const [copiedLoanId, setCopiedLoanId] = useState<string | null>(null)
@@ -93,59 +88,6 @@ export function LoanHistory({ compact = false }: LoanHistoryProps) {
         <p className='text-sm text-muted-foreground'>
           You don&apos;t have any completed loans yet.
         </p>
-      </div>
-    )
-  }
-
-  if (compact) {
-    return (
-      <div className='space-y-3'>
-        {loanHistory
-          .filter((loan) => loan)
-          .slice(0, 3)
-          .map((loan) => (
-            <div
-              key={loan.id}
-              className='flex items-center justify-between p-3 bg-muted rounded-lg'
-            >
-              <div className='flex items-center gap-3'>
-                {getStatusIcon(loan.status)}
-                <div>
-                  <p className='font-medium'>
-                    {formatAmountWithSymbol(
-                      loan.loanAmount,
-                      tokenConfig?.loanToken.symbol || 'Token',
-                      tokenConfig?.loanToken.decimals
-                    )}
-                  </p>
-                  <p className='text-sm text-muted-foreground'>
-                    {tokenConfig
-                      ? formatPercentage(
-                          loan.interestApr,
-                          tokenConfig.aprDecimals
-                        ) + '%'
-                      : '...'}{' '}
-                    • {formatDuration(loan.duration)}
-                  </p>
-                </div>
-              </div>
-              <div className='text-right'>
-                <p className='font-medium'>
-                  {formatAmountWithSymbol(
-                    loan.paidAmount,
-                    tokenConfig?.loanToken.symbol || 'Token',
-                    tokenConfig?.loanToken.decimals
-                  )}
-                </p>
-                <p className='text-sm text-muted-foreground'>total paid</p>
-              </div>
-            </div>
-          ))}
-        {loanHistory.length > 3 && (
-          <div className='text-center text-sm text-muted-foreground py-2'>
-            ... and {loanHistory.length - 3} more completed loans
-          </div>
-        )}
       </div>
     )
   }

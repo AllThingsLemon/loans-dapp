@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { getAddress } from 'viem'
 import {
+  accountLineage,
   DAY_S,
   depositEntryKey,
+  inLineage,
+  poolActivity,
+  totalCompounded,
+  totalDeposited,
   distributedSince,
   distributionPerformance,
   sumDepositsByEntry,
@@ -148,5 +153,134 @@ describe('sumDepositsByEntry / depositEntryKey', () => {
   it('has no value for an entry made only by compounding', () => {
     const values = sumDepositsByEntry([deposit(2500n)])
     expect(values.get(depositEntryKey(USDT, 2101075200n, LOCK))).toBeUndefined()
+  })
+})
+
+describe('accountLineage / inLineage', () => {
+  const A = '0x00000000000000000000000000000000000000aa'
+  const B = '0x00000000000000000000000000000000000000bb'
+  const C = '0x00000000000000000000000000000000000000cc'
+  const row = (id: string, user: string) => ({ id, user })
+
+  it('is just the account when nothing was transferred in', () => {
+    const lineage = accountLineage([], A.toUpperCase().replace('0X', '0x'))
+    expect([...lineage]).toEqual([[A, undefined]])
+  })
+
+  it("includes a sender's history up to the transfer, not after", () => {
+    // B moved its whole position to A at block 200; B deposits again later.
+    const lineage = accountLineage([{ id: '56_200_0', from: B, to: A }], A)
+    expect(lineage.get(B)).toBe('56_200_0')
+    const rows = [
+      row('56_100_0', B),
+      row('56_300_0', B),
+      row('56_250_0', A),
+      row('56_120_0', C)
+    ]
+    expect(inLineage(rows, lineage).map((r) => r.id)).toEqual([
+      '56_100_0',
+      '56_250_0'
+    ])
+  })
+
+  it('follows a chain of transfers, each cut off at its own transfer', () => {
+    const lineage = accountLineage(
+      [
+        { id: '56_200_0', from: C, to: B },
+        { id: '56_500_0', from: B, to: A },
+        { id: '56_600_0', from: C, to: B } // after B → A: not A's history
+      ],
+      A
+    )
+    expect([...lineage]).toEqual([
+      [A, undefined],
+      [B, '56_500_0'],
+      [C, '56_200_0']
+    ])
+  })
+})
+
+describe('totalDeposited / totalCompounded / poolActivity', () => {
+  const USDT = '0x55d398326f99059ff775485246999027b3197955'
+  const LEMX = '0x2da91257961b87e69fa13b2e20931d517dc97597'
+  const history = {
+    deposits: [
+      {
+        id: '56_100_1',
+        user: '0xa',
+        blockTimestamp: 1000,
+        token: USDT,
+        tokenAmount: String(1300n * E18),
+        stableTokenValue: String(1300n * E18),
+        expiresAt: '2099865600',
+        lockDuration: '311040000'
+      },
+      {
+        id: '56_300_4',
+        user: '0xa',
+        blockTimestamp: 3000,
+        token: LEMX.toUpperCase().replace('0X', '0x'),
+        tokenAmount: String(170n * E18),
+        stableTokenValue: String(1510n * E18),
+        expiresAt: '2099952000',
+        lockDuration: '311040000'
+      }
+    ],
+    compounds: [
+      {
+        id: '56_200_2',
+        user: '0xa',
+        blockTimestamp: 2000,
+        earningsAmount: String(58n * E18),
+        unlockTime: '2099865600'
+      }
+    ],
+    withdrawalRequests: [
+      {
+        id: '56_400_0',
+        user: '0xa',
+        blockTimestamp: 4000,
+        requestId: '7',
+        amount: String(500n * E18)
+      },
+      {
+        id: '56_500_0',
+        user: '0xa',
+        blockTimestamp: 5000,
+        requestId: '9',
+        amount: String(100n * E18)
+      }
+    ],
+    withdrawalClaims: [
+      { id: '56_450_0', user: '0xa', blockTimestamp: 4500, requestId: '7' }
+    ]
+  }
+
+  it('totals deposits at their deposit-time value, and compounds', () => {
+    expect(totalDeposited(history)).toBe(2810n * E18)
+    expect(totalCompounded(history)).toBe(58n * E18)
+  })
+
+  it('lists deposits, compounds and withdrawals newest first', () => {
+    const rows = poolActivity(history)
+    expect(rows.map((r) => r.kind)).toEqual([
+      'withdrawal',
+      'withdrawal',
+      'deposit',
+      'compound',
+      'deposit'
+    ])
+    expect(rows[2]).toMatchObject({
+      kind: 'deposit',
+      token: LEMX,
+      amount: 1510n * E18,
+      tokenAmount: 170n * E18
+    })
+  })
+
+  it('marks a withdrawal paid once its request is claimed', () => {
+    const [queued, paid] = poolActivity(history)
+    expect(queued).toMatchObject({ kind: 'withdrawal', claimed: false })
+    expect(paid).toMatchObject({ kind: 'withdrawal', claimed: true })
   })
 })

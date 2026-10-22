@@ -9,8 +9,11 @@ import {
   useReadLoansCumulativeLoanValue,
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
-import { useUserDeposits } from '@/src/graphql/hooks'
-import { sumDepositsByEntry } from '@/src/utils/poolHistory'
+import { usePoolAccountHistory } from '@/src/graphql/hooks'
+import {
+  sumDepositsByEntry,
+  type AccountHistory,
+} from '@/src/utils/poolHistory'
 import {
   parseUserStatus,
   parsePoolStatus,
@@ -61,6 +64,11 @@ export interface UseLiquidityDataReturn {
 
   // depositEntryKey → what the depositor put into that entry (excludes compounded earnings)
   originalDepositValues: Map<string, bigint>
+
+  // The account's indexed pool history (deposits, compounds, withdrawals);
+  // undefined while loading or on a chain without an indexer
+  accountHistory: AccountHistory | undefined
+  accountHistoryLoading: boolean
 
   // Map of token address (lowercase) → { symbol, decimals }
   tokenMetadata: Map<string, { symbol: string; decimals: number }>
@@ -253,19 +261,22 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     query: { refetchInterval: 10000 },
   })
 
-  // What each lock entry was funded with, from the indexer. The chain can't
-  // say: an entry's own stableTokenValue includes earnings compounded into
-  // it, and the BSC dataseeds refuse a getLogs over the pool's Deposited
-  // history ("limit exceeded" — none is an archive node). Refreshed every
-  // minute so a deposit merged into an existing entry shows once indexed.
-  const { data: userDeposits, refetch: refetchUserDeposits } = useUserDeposits(
-    liquidityPoolContractAddress,
-    address,
-    { refetchInterval: 60_000 },
-  )
+  // The account's history from the indexer: what each lock entry was funded
+  // with, lifetime deposits and compounds, and the deposit history. The chain
+  // can't say: an entry's own stableTokenValue includes earnings compounded
+  // into it, and the BSC dataseeds refuse a getLogs over the pool's history
+  // ("limit exceeded" — none is an archive node). Refreshed every minute so a
+  // new deposit shows once indexed.
+  const {
+    data: accountHistory,
+    isLoading: accountHistoryLoading,
+    refetch: refetchAccountHistory,
+  } = usePoolAccountHistory(liquidityPoolContractAddress, address, {
+    refetchInterval: 60_000,
+  })
   const originalDepositValues = useMemo(
-    () => sumDepositsByEntry(userDeposits ?? []),
-    [userDeposits],
+    () => sumDepositsByEntry(accountHistory?.deposits ?? []),
+    [accountHistory],
   )
 
   // Parse data
@@ -345,14 +356,18 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     }
   }, [withdrawalRequestsRaw])
 
-  // Fetch symbol + decimals for each unique token address in deposit entries
+  // Fetch symbol + decimals for each token in the deposit entries and the
+  // deposit history (a fully withdrawn deposit's token may be in neither now)
   const uniqueTokenAddresses = useMemo(() => {
     const seen = new Set<string>()
     for (const entry of depositEntries) {
       seen.add(entry.token.toLowerCase())
     }
-    return [...seen] as `0x${string}`[]
-  }, [depositEntries])
+    for (const deposit of accountHistory?.deposits ?? []) {
+      seen.add(deposit.token.toLowerCase())
+    }
+    return [...seen].sort() as `0x${string}`[]
+  }, [depositEntries, accountHistory])
 
   const { data: tokenMetadata = new Map() } = useQuery({
     queryKey: ['tokenMetadata', uniqueTokenAddresses],
@@ -407,11 +422,11 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       refetchUserStatus(),
       refetchPoolStatus(),
       refetchDepositEntries(),
-      refetchUserDeposits(),
+      refetchAccountHistory(),
       refetchLiquidityStatus(),
       refetchWithdrawalRequests(),
     ])
-  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchUserDeposits, refetchLiquidityStatus, refetchWithdrawalRequests])
+  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchAccountHistory, refetchLiquidityStatus, refetchWithdrawalRequests])
 
   return {
     userStatus,
@@ -433,6 +448,8 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     currentAllowance: currentAllowance as bigint | undefined,
     withdrawalRequests,
     originalDepositValues,
+    accountHistory,
+    accountHistoryLoading,
     tokenMetadata,
     liquidityPoolContractAddress,
     isLoading,
