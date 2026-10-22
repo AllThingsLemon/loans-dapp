@@ -4,7 +4,7 @@
  * UI into the test env.
  */
 
-import type { EarningsPulledRow } from '@/src/graphql/types'
+import type { EarningsPulledRow, UserDepositRow } from '@/src/graphql/types'
 import { compareEventIds } from '@/src/utils/loanHistory'
 import { bigintRatioToPct } from '@/src/utils/returns'
 
@@ -104,4 +104,36 @@ export function distributionPerformance(
     if (interestShares > 0n) basePct += bigintRatioToPct(amount, interestShares)
   }
   return { avgPct, basePct }
+}
+
+/**
+ * Ties a deposit to the lock entry it funded. The contract merges deposits
+ * that share token, unlock time and lock duration into one entry; the
+ * Deposited event calls the unlock time `expiresAt`, getUserDepositEntries
+ * calls it `unlockTime`.
+ */
+export const depositEntryKey = (
+  token: string,
+  unlockTime: bigint | number | string,
+  lockDuration: bigint | number | string
+) => `${token.toLowerCase()}:${BigInt(unlockTime)}:${BigInt(lockDuration)}`
+
+/**
+ * What the depositor put into each lock entry: the deposits behind it,
+ * summed, keyed by depositEntryKey. An entry's own stableTokenValue also
+ * counts earnings compounded into it, and an entry created by compounding
+ * alone has no deposits, so it has no key here.
+ */
+export function sumDepositsByEntry(
+  deposits: readonly Pick<
+    UserDepositRow,
+    'token' | 'stableTokenValue' | 'expiresAt' | 'lockDuration'
+  >[]
+): Map<string, bigint> {
+  const values = new Map<string, bigint>()
+  for (const d of deposits) {
+    const key = depositEntryKey(d.token, d.expiresAt, d.lockDuration)
+    values.set(key, (values.get(key) ?? 0n) + BigInt(d.stableTokenValue))
+  }
+  return values
 }

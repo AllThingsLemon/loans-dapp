@@ -23,6 +23,7 @@ import {
 import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
 import { floorToDecimals } from '@/src/utils/format'
+import { depositEntryKey } from '@/src/utils/poolHistory'
 import {
   BarChart3,
   TrendingUp,
@@ -890,7 +891,11 @@ export function LiquidityPerformance({
                 {sortedDepositEntries.map((entry, index) => {
                   const now = BigInt(Math.floor(Date.now() / 1000))
                   const isUnlocked = entry.unlockTime <= now
-                  const originalKey = `${entry.token.toLowerCase()}:${entry.unlockTime}:${entry.lockDuration}`
+                  const originalKey = depositEntryKey(
+                    entry.token,
+                    entry.unlockTime,
+                    entry.lockDuration
+                  )
                   const originalValue =
                     originalDepositValues.get(originalKey) ??
                     entry.stableTokenValue

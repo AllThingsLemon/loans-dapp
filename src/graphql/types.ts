@@ -95,6 +95,17 @@ export interface PoolDepositRow extends EventRow {
   nonEarning: boolean
 }
 
+/** The slice of a deposit that says which lock entry it funded, and with how much. */
+export interface UserDepositRow {
+  id: string
+  token: string
+  /** USD value credited at deposit time. */
+  stableTokenValue: Numeric
+  /** Unix seconds; the lock entry's unlockTime. */
+  expiresAt: Numeric
+  lockDuration: Numeric
+}
+
 export interface PoolCompoundRow extends EventRow {
   user: string
   earningsAmount: Numeric
@@ -117,6 +128,10 @@ export interface BoostExpiredRow extends EventRow {
 
 export interface PoolDepositsResponse {
   LiquidityPool_Deposited: PoolDepositRow[]
+}
+
+export interface UserDepositsResponse {
+  LiquidityPool_Deposited: UserDepositRow[]
 }
 
 export interface PoolCompoundsResponse {

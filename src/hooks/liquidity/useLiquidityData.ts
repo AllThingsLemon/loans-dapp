@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react'
 import { useAccount, useReadContract, usePublicClient } from 'wagmi'
-import { erc20Abi, parseAbiItem } from 'viem'
+import { erc20Abi } from 'viem'
 import { useQuery } from '@tanstack/react-query'
 import {
   liquidityPoolAbi,
@@ -9,6 +9,8 @@ import {
   useReadLoansCumulativeLoanValue,
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
+import { useUserDeposits } from '@/src/graphql/hooks'
+import { sumDepositsByEntry } from '@/src/utils/poolHistory'
 import {
   parseUserStatus,
   parsePoolStatus,
@@ -57,7 +59,7 @@ export interface UseLiquidityDataReturn {
   // Withdrawal queue
   withdrawalRequests: { requestIds: bigint[]; requests: WithdrawalRequest[] }
 
-  // Map of "token:unlockTime:lockDuration" → original stableTokenValue at deposit time
+  // depositEntryKey → what the depositor put into that entry (excludes compounded earnings)
   originalDepositValues: Map<string, bigint>
 
   // Map of token address (lowercase) → { symbol, decimals }
@@ -73,13 +75,6 @@ export interface UseLiquidityDataReturn {
   // Utility
   refetch: () => Promise<void>
 }
-
-// Arg names must track the deployed ABI: the contract calls this field
-// `expiresAt`, while getUserDepositEntries still calls the same value
-// `unlockTime` — the dedup key below relies on them being equal.
-const DEPOSITED_EVENT = parseAbiItem(
-  'event Deposited(address indexed user, address indexed token, uint256 tokenAmount, uint256 stableTokenValue, uint256 liquidityShares, uint256 interestShares, uint256 expiresAt, uint256 lockDuration, bool nonEarning)'
-)
 
 export function useLiquidityData(): UseLiquidityDataReturn {
   const { address } = useAccount()
@@ -258,34 +253,20 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     query: { refetchInterval: 10000 },
   })
 
-  // Fetch Deposited events to recover original stableTokenValue per deposit entry
-  const { data: depositedLogs } = useQuery({
-    queryKey: ['depositedEvents', address, liquidityPoolContractAddress],
-    queryFn: async () => {
-      if (!publicClient || !address || !liquidityPoolContractAddress) return []
-      return publicClient.getLogs({
-        address: liquidityPoolContractAddress,
-        event: DEPOSITED_EVENT,
-        args: { user: address },
-        fromBlock: 0n,
-      })
-    },
-    enabled: !!publicClient && !!address && !!liquidityPoolContractAddress,
-    staleTime: 30_000,
-  })
-
-  const originalDepositValues = useMemo(() => {
-    const map = new Map<string, bigint>()
-    if (!depositedLogs) return map
-    for (const log of depositedLogs) {
-      const { token, stableTokenValue, expiresAt, lockDuration } = log.args
-      if (token && stableTokenValue !== undefined && expiresAt !== undefined && lockDuration !== undefined) {
-        const key = `${token.toLowerCase()}:${expiresAt}:${lockDuration}`
-        map.set(key, (map.get(key) ?? 0n) + stableTokenValue)
-      }
-    }
-    return map
-  }, [depositedLogs])
+  // What each lock entry was funded with, from the indexer. The chain can't
+  // say: an entry's own stableTokenValue includes earnings compounded into
+  // it, and the BSC dataseeds refuse a getLogs over the pool's Deposited
+  // history ("limit exceeded" — none is an archive node). Refreshed every
+  // minute so a deposit merged into an existing entry shows once indexed.
+  const { data: userDeposits, refetch: refetchUserDeposits } = useUserDeposits(
+    liquidityPoolContractAddress,
+    address,
+    { refetchInterval: 60_000 },
+  )
+  const originalDepositValues = useMemo(
+    () => sumDepositsByEntry(userDeposits ?? []),
+    [userDeposits],
+  )
 
   // Parse data
   const userStatus = useMemo(() => {
@@ -426,10 +407,11 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       refetchUserStatus(),
       refetchPoolStatus(),
       refetchDepositEntries(),
+      refetchUserDeposits(),
       refetchLiquidityStatus(),
       refetchWithdrawalRequests(),
     ])
-  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchLiquidityStatus, refetchWithdrawalRequests])
+  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchUserDeposits, refetchLiquidityStatus, refetchWithdrawalRequests])
 
   return {
     userStatus,

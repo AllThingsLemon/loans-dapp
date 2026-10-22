@@ -129,6 +129,39 @@ export const POOL_DEPOSITS = gql`
   }
 `
 
+/*
+ * One depositor's deposits into the pool, for what each of their lock
+ * entries was funded with. `expiresAt` is the entry's unlock time — the
+ * contract merges deposits that share token, unlock time and lock duration
+ * into one entry.
+ */
+export const USER_DEPOSITS = gql`
+  query UserDeposits(
+    $chainId: Int!
+    $srcAddress: String!
+    $user: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_Deposited(
+      where: {
+        chainId: { _eq: $chainId }
+        srcAddress: { _eq: $srcAddress }
+        user: { _eq: $user }
+      }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      token
+      stableTokenValue
+      expiresAt
+      lockDuration
+    }
+  }
+`
+
 export const POOL_COMPOUNDS = gql`
   query PoolCompounds(
     $chainId: Int!
