@@ -4,6 +4,8 @@
  * loan to Defaulted is unit-testable.
  */
 
+import { LOAN_STATUS } from '@/src/constants'
+
 /**
  * The grace window that applies to a specific loan: its creation-time
  * snapshot when present, otherwise the global config value. Loans created
@@ -39,4 +41,104 @@ export function isPastDefault(
 ): boolean {
   const grace = resolveGraceDuration(balloonGraceSnapshot, globalGrace)
   return nowSec >= loanDefaultTimestamp(createdAt, duration, grace)
+}
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+/** The loan fields the payment countdown reads. */
+export interface CountdownLoan {
+  status: number
+  createdAt: bigint
+  /** Loan end: createdAt + duration. */
+  dueTimestamp: bigint
+  loanCycleDuration: bigint
+  transpiredCycles: bigint
+  cyclesAhead: bigint
+  totalCycles: bigint
+  balloonGraceSnapshot: bigint
+}
+
+export interface PaymentCountdown {
+  /** When the countdown reaches zero, in ms. */
+  targetMs: number
+  label: 'Time Until Default' | 'Time to Loan End'
+}
+
+/**
+ * What a loan card's countdown counts to — derived entirely from absolute
+ * timestamps on the loan, so it doesn't shift between renders. Three phases:
+ *
+ *   1. Interest NOT fully paid: the next cycle's payment deadline (capped at
+ *      the loan end date) − 1 day. "Time Until Default".
+ *   2. Interest fully paid, before loan end: createdAt + duration, no buffer.
+ *      "Time to Loan End".
+ *   3. Interest fully paid, past loan end (balloon grace window): loan end +
+ *      grace − 1 day. "Time Until Default".
+ *
+ * The 1-day buffer in phases 1 and 3 is a user-facing warning window, so the
+ * countdown hits zero ahead of the contract's actual default. On testnet
+ * (cycles shorter than a day) the buffer dominates and the timer reads "Make
+ * Payment Now" through the whole active phase — expected, since it's sized
+ * for mainnet cycle lengths.
+ *
+ * "Interest fully paid" means every cycle has been credited: elapsed cycles
+ * plus prepaid ones (cyclesAhead) cover them all. Only an ACTIVE loan is in
+ * phase 2 or 3.
+ */
+export function paymentCountdown(
+  loan: CountdownLoan,
+  globalGrace: bigint,
+  nowMs: number
+): PaymentCountdown {
+  const active = loan.status === LOAN_STATUS.ACTIVE
+  const loanEndMs = Number(loan.dueTimestamp) * 1000
+  const interestPaid =
+    active && loan.transpiredCycles + loan.cyclesAhead >= loan.totalCycles
+  const pastLoanEnd = active && nowMs >= loanEndMs
+
+  if (!interestPaid) {
+    // End of the next cycle the borrower must pay, after any prepayments.
+    const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
+    const nextCycleEndMs =
+      Number(loan.createdAt + nextCycleIndex * loan.loanCycleDuration) * 1000
+    return {
+      targetMs: Math.min(nextCycleEndMs, loanEndMs) - ONE_DAY_MS,
+      label: 'Time Until Default'
+    }
+  }
+  if (!pastLoanEnd) {
+    return { targetMs: loanEndMs, label: 'Time to Loan End' }
+  }
+  // The loan's own grace snapshot (fixed at creation), so a config change
+  // can't shift an existing loan's countdown; resolveGraceDuration falls back
+  // to the global config for pre-upgrade loans, in lockstep with useLoans'
+  // default override.
+  const graceMs =
+    Number(resolveGraceDuration(loan.balloonGraceSnapshot, globalGrace)) * 1000
+  return {
+    targetMs: loanEndMs + graceMs - ONE_DAY_MS,
+    label: 'Time Until Default'
+  }
+}
+
+/**
+ * Active loans in payment order: the soonest countdown first — the same
+ * target each card counts to, so the list reads in the order the timers do.
+ * Loans with nothing left to pay (repaid, collateral not yet withdrawn) go
+ * last. Ties keep the order the loans were opened.
+ */
+export function sortByNextPayment<T extends CountdownLoan>(
+  loans: readonly T[],
+  globalGrace: bigint,
+  nowMs: number
+): T[] {
+  const key = (loan: T) =>
+    loan.status === LOAN_STATUS.ACTIVE
+      ? paymentCountdown(loan, globalGrace, nowMs).targetMs
+      : Infinity
+  return [...loans].sort(
+    (a, b) =>
+      key(a) - key(b) ||
+      (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)
+  )
 }
