@@ -17,7 +17,7 @@ const CYCLE = 30n * DAY
 const T0 = 1_790_000_000n // a loan's createdAt
 const GRACE = 30n * DAY
 
-/** A 12-cycle, 360-day loan opened at `createdAt`, with `paid` cycles covered. */
+/** A 12-cycle, 360-day active loan; override any field. */
 function loan(
   overrides: Partial<CountdownLoan> & { id?: string } = {}
 ): CountdownLoan & { id: string } {
@@ -55,14 +55,14 @@ describe('paymentCountdown', () => {
       GRACE,
       now
     )
-    expect(c.targetMs).toBe(ms(T0 + 6n * CYCLE) - DAY_MS)
+    expect(c?.targetMs).toBe(ms(T0 + 6n * CYCLE) - DAY_MS)
   })
 
   it('caps the next cycle at the loan end', () => {
     const short = loan({ transpiredCycles: 11n })
     short.dueTimestamp = T0 + 12n * CYCLE - 10n * DAY
     const c = paymentCountdown(short, GRACE, now)
-    expect(c.targetMs).toBe(ms(short.dueTimestamp) - DAY_MS)
+    expect(c?.targetMs).toBe(ms(short.dueTimestamp) - DAY_MS)
   })
 
   it('counts to the loan end once all interest is paid', () => {
@@ -86,9 +86,15 @@ describe('paymentCountdown', () => {
     })
     // The loan's own grace snapshot wins over the global config.
     const snapshot = loan({ transpiredCycles: 12n, balloonGraceSnapshot: DAY })
-    expect(paymentCountdown(snapshot, GRACE, late).targetMs).toBe(
+    expect(paymentCountdown(snapshot, GRACE, late)?.targetMs).toBe(
       ms(T0 + 12n * CYCLE + DAY) - DAY_MS
     )
+  })
+
+  it('has nothing due once the loan is repaid', () => {
+    expect(
+      paymentCountdown(loan({ status: LOAN_STATUS.UNLOCKED }), GRACE, now)
+    ).toBeNull()
   })
 })
 
@@ -124,16 +130,15 @@ describe('sortByNextPayment', () => {
 
   it('keeps the order loans were opened when their countdowns tie', () => {
     const loans = [
-      loan({ id: 'b', createdAt: T0 + 1n, transpiredCycles: 2n }),
-      loan({ id: 'a', createdAt: T0, transpiredCycles: 2n }),
+      // Opened a cycle later, one cycle paid: also due at T0 + 90d − 1d.
+      loan({ id: 'second', createdAt: T0 + CYCLE, transpiredCycles: 1n }),
+      loan({ id: 'first', createdAt: T0, transpiredCycles: 2n }),
       loan({ id: 'u2', status: LOAN_STATUS.UNLOCKED, createdAt: T0 + 9n }),
       loan({ id: 'u1', status: LOAN_STATUS.UNLOCKED, createdAt: T0 + 5n })
     ]
-    // a and b differ by a second of createdAt, so their targets differ too;
-    // the tie-break matters for the unlocked pair (both "nothing due").
     expect(sortByNextPayment(loans, GRACE, now).map((l) => l.id)).toEqual([
-      'a',
-      'b',
+      'first',
+      'second',
       'u1',
       'u2'
     ])

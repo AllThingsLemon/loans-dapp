@@ -602,15 +602,11 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
-        // What this card's countdown counts to (see paymentCountdown); the
-        // list is sorted by the same target, so it reads in timer order.
-        const { targetMs, label: countdownLabel } = paymentCountdown(
-          loan,
-          globalGrace,
-          Date.now()
-        )
-        const countdownTarget = new Date(targetMs)
-        const showCountdownTooltip = countdownLabel === 'Time Until Default'
+        // What this card's countdown counts to (see paymentCountdown) — null
+        // when nothing is due. The list is sorted by the same target, so it
+        // reads in timer order.
+        const countdown = paymentCountdown(loan, globalGrace, Date.now())
+        const showCountdownTooltip = countdown?.label === 'Time Until Default'
 
         return (
           <Card key={loan.id}>
@@ -698,7 +694,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {countdownLabel}
+                    {countdown?.label ?? 'Next Payment'}
                     {showCountdownTooltip && (
                       <span className='relative inline-flex'>
                         <button
@@ -729,15 +725,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     )}
                   </p>
                   <div className='font-medium'>
-                    {loan.status === LOAN_STATUS.ACTIVE ? (
+                    {countdown ? (
                       <CountdownTimer
-                        targetDate={countdownTarget}
+                        targetDate={new Date(countdown.targetMs)}
                         compact
                         showIcon={false}
                         animate
                       />
                     ) : (
-                      <span className='text-muted-foreground'>N/A</span>
+                      <span className='text-muted-foreground'>Nothing due</span>
                     )}
                   </div>
                 </div>

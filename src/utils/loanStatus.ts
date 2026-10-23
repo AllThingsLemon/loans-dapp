@@ -1,7 +1,7 @@
 /**
- * Effective loan default timing, shared by useLoans (status override) and
- * the ActiveLoans countdown. Kept pure so the exact moment the UI flips a
- * loan to Defaulted is unit-testable.
+ * Effective loan timing: when a loan defaults (useLoans' status override)
+ * and what each active loan's countdown counts to (the ActiveLoans cards and
+ * their sort order). Kept pure so the exact moments are unit-testable.
  */
 
 import { LOAN_STATUS } from '@/src/constants'
@@ -82,21 +82,20 @@ export interface PaymentCountdown {
  * for mainnet cycle lengths.
  *
  * "Interest fully paid" means every cycle has been credited: elapsed cycles
- * plus prepaid ones (cyclesAhead) cover them all. Only an ACTIVE loan is in
- * phase 2 or 3.
+ * plus prepaid ones (cyclesAhead) cover them all.
+ *
+ * Null when nothing is due: a loan that isn't ACTIVE (repaid, collateral not
+ * yet withdrawn) has no countdown.
  */
 export function paymentCountdown(
   loan: CountdownLoan,
   globalGrace: bigint,
   nowMs: number
-): PaymentCountdown {
-  const active = loan.status === LOAN_STATUS.ACTIVE
+): PaymentCountdown | null {
+  if (loan.status !== LOAN_STATUS.ACTIVE) return null
   const loanEndMs = Number(loan.dueTimestamp) * 1000
-  const interestPaid =
-    active && loan.transpiredCycles + loan.cyclesAhead >= loan.totalCycles
-  const pastLoanEnd = active && nowMs >= loanEndMs
 
-  if (!interestPaid) {
+  if (loan.transpiredCycles + loan.cyclesAhead < loan.totalCycles) {
     // End of the next cycle the borrower must pay, after any prepayments.
     const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
     const nextCycleEndMs =
@@ -106,7 +105,7 @@ export function paymentCountdown(
       label: 'Time Until Default'
     }
   }
-  if (!pastLoanEnd) {
+  if (nowMs < loanEndMs) {
     return { targetMs: loanEndMs, label: 'Time to Loan End' }
   }
   // The loan's own grace snapshot (fixed at creation), so a config change
@@ -124,21 +123,23 @@ export function paymentCountdown(
 /**
  * Active loans in payment order: the soonest countdown first — the same
  * target each card counts to, so the list reads in the order the timers do.
- * Loans with nothing left to pay (repaid, collateral not yet withdrawn) go
- * last. Ties keep the order the loans were opened.
+ * Loans with nothing due (repaid, collateral not yet withdrawn) go last.
+ * Ties keep the order the loans were opened.
  */
 export function sortByNextPayment<T extends CountdownLoan>(
   loans: readonly T[],
   globalGrace: bigint,
   nowMs: number
 ): T[] {
-  const key = (loan: T) =>
-    loan.status === LOAN_STATUS.ACTIVE
-      ? paymentCountdown(loan, globalGrace, nowMs).targetMs
-      : Infinity
-  return [...loans].sort(
-    (a, b) =>
-      key(a) - key(b) ||
-      (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0)
-  )
+  return loans
+    .map((loan) => ({
+      loan,
+      dueMs: paymentCountdown(loan, globalGrace, nowMs)?.targetMs ?? Infinity
+    }))
+    .sort((a, b) => {
+      if (a.dueMs !== b.dueMs) return a.dueMs < b.dueMs ? -1 : 1
+      if (a.loan.createdAt === b.loan.createdAt) return 0
+      return a.loan.createdAt < b.loan.createdAt ? -1 : 1
+    })
+    .map(({ loan }) => loan)
 }
