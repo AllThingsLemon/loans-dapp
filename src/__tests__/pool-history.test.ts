@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest'
+import { getAddress } from 'viem'
 import {
+  accountLineage,
   DAY_S,
+  depositEntryKey,
+  inLineage,
+  totalCompounded,
+  totalDeposited,
+  transactionHistory,
   distributedSince,
   distributionPerformance,
+  sumDepositsByEntry,
   sumShareChanges,
   totalDistributed,
   type ShareChange
@@ -98,5 +106,204 @@ describe('distributionPerformance', () => {
       avgPct: 1,
       basePct: 1
     })
+  })
+})
+
+describe('sumDepositsByEntry / depositEntryKey', () => {
+  // A real BSC depositor (2026-10): three same-day USDT deposits merged into
+  // one 3600-day entry. The entry now reads $2,559.38 on chain, after $59.39
+  // of earnings were compounded into it; they deposited $2,500.
+  const USDT = '0x55d398326f99059ff775485246999027b3197955'
+  const UNLOCK = '2099865600'
+  const LOCK = '311040000'
+  const deposit = (usd: bigint, overrides = {}) => ({
+    token: USDT,
+    stableTokenValue: String(usd * E18),
+    expiresAt: UNLOCK,
+    lockDuration: LOCK,
+    ...overrides
+  })
+
+  it('sums the deposits behind an entry', () => {
+    const values = sumDepositsByEntry([
+      deposit(1300n),
+      deposit(700n),
+      deposit(500n)
+    ])
+    expect(values.get(depositEntryKey(USDT, UNLOCK, LOCK))).toBe(2500n * E18)
+  })
+
+  it('matches the chain entry: checksummed token, bigint unlockTime', () => {
+    const values = sumDepositsByEntry([deposit(1300n), deposit(1200n)])
+    const entryKey = depositEntryKey(getAddress(USDT), 2099865600n, 311040000n)
+    expect(values.get(entryKey)).toBe(2500n * E18)
+  })
+
+  it('keeps entries apart when unlock time, lock or token differ', () => {
+    const values = sumDepositsByEntry([
+      deposit(100n),
+      deposit(200n, { expiresAt: String(BigInt(UNLOCK) + BigInt(DAY_S)) }),
+      deposit(300n, { lockDuration: '31104000' }),
+      deposit(400n, { token: '0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c' })
+    ])
+    expect(values.size).toBe(4)
+    expect(values.get(depositEntryKey(USDT, UNLOCK, LOCK))).toBe(100n * E18)
+  })
+
+  it('has no value for an entry made only by compounding', () => {
+    const values = sumDepositsByEntry([deposit(2500n)])
+    expect(values.get(depositEntryKey(USDT, 2101075200n, LOCK))).toBeUndefined()
+  })
+})
+
+describe('accountLineage / inLineage', () => {
+  const A = '0x00000000000000000000000000000000000000aa'
+  const B = '0x00000000000000000000000000000000000000bb'
+  const C = '0x00000000000000000000000000000000000000cc'
+  const row = (id: string, user: string) => ({ id, user })
+
+  it('is just the account when nothing was transferred in', () => {
+    const lineage = accountLineage([], A.toUpperCase().replace('0X', '0x'))
+    expect([...lineage]).toEqual([[A, undefined]])
+  })
+
+  it("includes a sender's history up to the transfer, not after", () => {
+    // B moved its whole position to A at block 200; B deposits again later.
+    const lineage = accountLineage([{ id: '56_200_0', from: B, to: A }], A)
+    expect(lineage.get(B)).toBe('56_200_0')
+    const rows = [
+      row('56_100_0', B),
+      row('56_300_0', B),
+      row('56_250_0', A),
+      row('56_120_0', C)
+    ]
+    expect(inLineage(rows, lineage).map((r) => r.id)).toEqual([
+      '56_100_0',
+      '56_250_0'
+    ])
+  })
+
+  it('follows a chain of transfers, each cut off at its own transfer', () => {
+    const lineage = accountLineage(
+      [
+        { id: '56_200_0', from: C, to: B },
+        { id: '56_500_0', from: B, to: A },
+        { id: '56_600_0', from: C, to: B } // after B → A: not A's history
+      ],
+      A
+    )
+    expect([...lineage]).toEqual([
+      [A, undefined],
+      [B, '56_500_0'],
+      [C, '56_200_0']
+    ])
+  })
+})
+
+describe('totalDeposited / totalCompounded / transactionHistory', () => {
+  const USDT = '0x55d398326f99059ff775485246999027b3197955'
+  const LEMX = '0x2da91257961b87e69fa13b2e20931d517dc97597'
+  const history = {
+    deposits: [
+      {
+        id: '56_100_1',
+        user: '0xa',
+        blockTimestamp: 1000,
+        token: USDT,
+        tokenAmount: String(1300n * E18),
+        stableTokenValue: String(1300n * E18),
+        expiresAt: '2099865600',
+        lockDuration: '311040000'
+      },
+      {
+        id: '56_300_4',
+        user: '0xa',
+        blockTimestamp: 3000,
+        token: LEMX.toUpperCase().replace('0X', '0x'),
+        tokenAmount: String(170n * E18),
+        stableTokenValue: String(1510n * E18),
+        expiresAt: '2099952000',
+        lockDuration: '311040000'
+      }
+    ],
+    compounds: [
+      {
+        id: '56_200_2',
+        user: '0xa',
+        blockTimestamp: 2000,
+        earningsAmount: String(58n * E18),
+        unlockTime: '2099865600'
+      }
+    ],
+    withdrawalRequests: [
+      {
+        id: '56_400_0',
+        user: '0xa',
+        blockTimestamp: 4000,
+        requestId: '7',
+        amount: String(500n * E18)
+      },
+      {
+        id: '56_500_0',
+        user: '0xa',
+        blockTimestamp: 5000,
+        requestId: '9',
+        amount: String(100n * E18)
+      }
+    ],
+    earningsClaims: [
+      {
+        id: '56_250_0',
+        user: '0xa',
+        blockTimestamp: 2500,
+        amount: String(40n * E18),
+        fee: String(1n * E18)
+      }
+    ],
+    withdrawalClaims: [
+      {
+        id: '56_450_0',
+        user: '0xa',
+        blockTimestamp: 4500,
+        requestId: '7',
+        amount: String(500n * E18),
+        fee: '0'
+      }
+    ]
+  }
+
+  it('totals deposits at their deposit-time value, and compounds', () => {
+    expect(totalDeposited(history)).toBe(2810n * E18)
+    expect(totalCompounded(history)).toBe(58n * E18)
+  })
+
+  it('lists every transaction newest first, grouped into the three types', () => {
+    const rows = transactionHistory(history)
+    expect(rows.map((r) => `${r.type}:${r.kind}`)).toEqual([
+      'withdraw:withdrawalRequest',
+      'withdraw:withdrawalPayout',
+      'withdraw:withdrawalRequest',
+      'deposit:deposit',
+      'claim:claim',
+      'deposit:compound',
+      'deposit:deposit'
+    ])
+    expect(rows[3]).toMatchObject({
+      kind: 'deposit',
+      token: LEMX,
+      amount: 1510n * E18,
+      tokenAmount: 170n * E18
+    })
+    expect(rows[4]).toMatchObject({ amount: 40n * E18, fee: 1n * E18 })
+  })
+
+  it('marks a withdrawal request paid once its payout is claimed', () => {
+    const requests = transactionHistory(history).filter(
+      (r) => r.kind === 'withdrawalRequest'
+    )
+    expect(requests).toMatchObject([
+      { id: '56_500_0', paidAt: undefined },
+      { id: '56_400_0', paidAt: 4500 }
+    ])
   })
 })

@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react'
 import { useAccount, useReadContract, usePublicClient } from 'wagmi'
-import { erc20Abi, parseAbiItem } from 'viem'
+import { erc20Abi } from 'viem'
 import { useQuery } from '@tanstack/react-query'
 import {
   liquidityPoolAbi,
@@ -9,6 +9,11 @@ import {
   useReadLoansCumulativeLoanValue,
 } from '@/src/generated'
 import { useProtocolAddresses } from '@/src/hooks/useProtocolAddresses'
+import { usePoolAccountHistory } from '@/src/graphql/hooks'
+import {
+  sumDepositsByEntry,
+  type AccountHistory,
+} from '@/src/utils/poolHistory'
 import {
   parseUserStatus,
   parsePoolStatus,
@@ -57,8 +62,13 @@ export interface UseLiquidityDataReturn {
   // Withdrawal queue
   withdrawalRequests: { requestIds: bigint[]; requests: WithdrawalRequest[] }
 
-  // Map of "token:unlockTime:lockDuration" → original stableTokenValue at deposit time
+  // depositEntryKey → what the depositor put into that entry (excludes compounded earnings)
   originalDepositValues: Map<string, bigint>
+
+  // The account's indexed pool history (deposits, compounds, withdrawals);
+  // undefined while loading or on a chain without an indexer
+  accountHistory: AccountHistory | undefined
+  accountHistoryLoading: boolean
 
   // Map of token address (lowercase) → { symbol, decimals }
   tokenMetadata: Map<string, { symbol: string; decimals: number }>
@@ -73,13 +83,6 @@ export interface UseLiquidityDataReturn {
   // Utility
   refetch: () => Promise<void>
 }
-
-// Arg names must track the deployed ABI: the contract calls this field
-// `expiresAt`, while getUserDepositEntries still calls the same value
-// `unlockTime` — the dedup key below relies on them being equal.
-const DEPOSITED_EVENT = parseAbiItem(
-  'event Deposited(address indexed user, address indexed token, uint256 tokenAmount, uint256 stableTokenValue, uint256 liquidityShares, uint256 interestShares, uint256 expiresAt, uint256 lockDuration, bool nonEarning)'
-)
 
 export function useLiquidityData(): UseLiquidityDataReturn {
   const { address } = useAccount()
@@ -258,34 +261,23 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     query: { refetchInterval: 10000 },
   })
 
-  // Fetch Deposited events to recover original stableTokenValue per deposit entry
-  const { data: depositedLogs } = useQuery({
-    queryKey: ['depositedEvents', address, liquidityPoolContractAddress],
-    queryFn: async () => {
-      if (!publicClient || !address || !liquidityPoolContractAddress) return []
-      return publicClient.getLogs({
-        address: liquidityPoolContractAddress,
-        event: DEPOSITED_EVENT,
-        args: { user: address },
-        fromBlock: 0n,
-      })
-    },
-    enabled: !!publicClient && !!address && !!liquidityPoolContractAddress,
-    staleTime: 30_000,
+  // The account's history from the indexer: what each lock entry was funded
+  // with, lifetime deposits and compounds, and the deposit history. The chain
+  // can't say: an entry's own stableTokenValue includes earnings compounded
+  // into it, and the BSC dataseeds refuse a getLogs over the pool's history
+  // ("limit exceeded" — none is an archive node). Refreshed every minute so a
+  // new deposit shows once indexed.
+  const {
+    data: accountHistory,
+    isLoading: accountHistoryLoading,
+    refetch: refetchAccountHistory,
+  } = usePoolAccountHistory(liquidityPoolContractAddress, address, {
+    refetchInterval: 60_000,
   })
-
-  const originalDepositValues = useMemo(() => {
-    const map = new Map<string, bigint>()
-    if (!depositedLogs) return map
-    for (const log of depositedLogs) {
-      const { token, stableTokenValue, expiresAt, lockDuration } = log.args
-      if (token && stableTokenValue !== undefined && expiresAt !== undefined && lockDuration !== undefined) {
-        const key = `${token.toLowerCase()}:${expiresAt}:${lockDuration}`
-        map.set(key, (map.get(key) ?? 0n) + stableTokenValue)
-      }
-    }
-    return map
-  }, [depositedLogs])
+  const originalDepositValues = useMemo(
+    () => sumDepositsByEntry(accountHistory?.deposits ?? []),
+    [accountHistory],
+  )
 
   // Parse data
   const userStatus = useMemo(() => {
@@ -364,14 +356,18 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     }
   }, [withdrawalRequestsRaw])
 
-  // Fetch symbol + decimals for each unique token address in deposit entries
+  // Fetch symbol + decimals for each token in the deposit entries and the
+  // deposit history (a fully withdrawn deposit's token may be in neither now)
   const uniqueTokenAddresses = useMemo(() => {
     const seen = new Set<string>()
     for (const entry of depositEntries) {
       seen.add(entry.token.toLowerCase())
     }
-    return [...seen] as `0x${string}`[]
-  }, [depositEntries])
+    for (const deposit of accountHistory?.deposits ?? []) {
+      seen.add(deposit.token.toLowerCase())
+    }
+    return [...seen].sort() as `0x${string}`[]
+  }, [depositEntries, accountHistory])
 
   const { data: tokenMetadata = new Map() } = useQuery({
     queryKey: ['tokenMetadata', uniqueTokenAddresses],
@@ -426,10 +422,11 @@ export function useLiquidityData(): UseLiquidityDataReturn {
       refetchUserStatus(),
       refetchPoolStatus(),
       refetchDepositEntries(),
+      refetchAccountHistory(),
       refetchLiquidityStatus(),
       refetchWithdrawalRequests(),
     ])
-  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchLiquidityStatus, refetchWithdrawalRequests])
+  }, [refetchBalance, refetchAllowance, refetchUserStatus, refetchPoolStatus, refetchDepositEntries, refetchAccountHistory, refetchLiquidityStatus, refetchWithdrawalRequests])
 
   return {
     userStatus,
@@ -451,6 +448,8 @@ export function useLiquidityData(): UseLiquidityDataReturn {
     currentAllowance: currentAllowance as bigint | undefined,
     withdrawalRequests,
     originalDepositValues,
+    accountHistory,
+    accountHistoryLoading,
     tokenMetadata,
     liquidityPoolContractAddress,
     isLoading,

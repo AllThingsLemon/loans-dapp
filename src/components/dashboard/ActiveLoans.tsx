@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import {
@@ -47,7 +47,7 @@ import {
 } from '@/src/utils/decimals'
 import { useToast } from '@/src/hooks/use-toast'
 import { LOAN_STATUS } from '@/src/constants'
-import { resolveGraceDuration } from '@/src/utils/loanStatus'
+import { paymentCountdown, sortByNextPayment } from '@/src/utils/loanStatus'
 import {
   handleContractError,
   type ContractError
@@ -61,6 +61,7 @@ import {
   AlertCircle,
   Copy,
   Check,
+  CheckCircle2,
   Info,
   Loader2
 } from 'lucide-react'
@@ -491,6 +492,14 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
     }
   }
 
+  // Soonest payment first (see sortByNextPayment), for both the full list
+  // and the overview's top three.
+  const globalGrace = loanConfig?.balloonPaymentGraceDuration ?? 0n
+  const sortedLoans = useMemo(
+    () => sortByNextPayment(activeLoans, globalGrace, Date.now()),
+    [activeLoans, globalGrace]
+  )
+
   // Loading takes 2+ sequential RPC rounds (loan IDs, then per-loan data) —
   // without this gate every page load flashes "No Active Loans" at borrowers
   // who do have loans, including overdue ones.
@@ -540,7 +549,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
   if (compact) {
     return (
       <div className='space-y-3'>
-        {activeLoans.slice(0, 3).map((loan) => (
+        {sortedLoans.slice(0, 3).map((loan) => (
           <div
             key={loan.id}
             className='flex items-center justify-between p-3 bg-muted rounded-lg'
@@ -589,62 +598,16 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
 
   return (
     <div className='space-y-4'>
-      {activeLoans.map((loan) => {
+      {sortedLoans.map((loan) => {
         const progress = getPaymentProgress(loan)
         const isOverdue = isLoanOverdue(loan)
         const isInGracePeriod = isLoanInGracePeriod(loan)
 
-        // Countdown target — derived entirely from absolute timestamps on the
-        // loan struct so the value does not shift when the component
-        // re-renders. Three phases:
-        //
-        //   1. Interest NOT fully paid:
-        //      count to the next cycle's payment deadline (capped at the loan
-        //      end date) − 1 day. Label: "Time Until Default".
-        //   2. Interest fully paid, before loan end:
-        //      count to createdAt + duration. No buffer. Label: "Time to Loan End".
-        //   3. Interest fully paid, past loan end (balloon grace window):
-        //      count to loanEnd + balloonGrace − 1 day. Label: "Time Until Default".
-        // The 1-day buffer in Phases 1 and 3 is a user-facing warning window so
-        // the countdown hits zero ahead of the contract's actual default. On
-        // testnet (cycles smaller than a day) the buffer dominates and the
-        // timer reads "Make Payment Now" through the entire active phase —
-        // expected, since this is sized for mainnet cycle lengths.
-        const ONE_DAY_MS = 24 * 60 * 60 * 1000
-        const loanEndMs = Number(loan.dueTimestamp) * 1000
-        // Per-loan grace snapshot (fixed at creation) so a config change
-        // can't shift existing loans' default countdowns; the shared util
-        // handles the pre-upgrade fallback to the global config and keeps
-        // this countdown in lockstep with useLoans' status override.
-        const graceDurationMs =
-          Number(
-            resolveGraceDuration(
-              loan.balloonGraceSnapshot,
-              loanConfig?.balloonPaymentGraceDuration ?? 0n
-            )
-          ) * 1000
-        const pastLoanEnd = isOverdue // isLoanOverdue === "now >= loanEndMs"
-
-        // End of the next cycle the user must pay, accounting for prepayments.
-        const nextCycleIndex = loan.transpiredCycles + loan.cyclesAhead + 1n
-        const nextCycleEndMs =
-          Number(loan.createdAt + nextCycleIndex * loan.loanCycleDuration) *
-          1000
-        const nextPaymentDeadlineMs = Math.min(nextCycleEndMs, loanEndMs)
-
-        let countdownTarget: Date
-        let countdownLabel: string
-        if (!isInGracePeriod) {
-          countdownTarget = new Date(nextPaymentDeadlineMs - ONE_DAY_MS)
-          countdownLabel = 'Time Until Default'
-        } else if (!pastLoanEnd) {
-          countdownTarget = new Date(loanEndMs)
-          countdownLabel = 'Time to Loan End'
-        } else {
-          countdownTarget = new Date(loanEndMs + graceDurationMs - ONE_DAY_MS)
-          countdownLabel = 'Time Until Default'
-        }
-        const showCountdownTooltip = countdownLabel === 'Time Until Default'
+        // What this card's countdown counts to (see paymentCountdown) — null
+        // when nothing is due. The list is sorted by the same target, so it
+        // reads in timer order.
+        const countdown = paymentCountdown(loan, globalGrace, Date.now())
+        const showCountdownTooltip = countdown?.label === 'Time Until Default'
 
         return (
           <Card key={loan.id}>
@@ -732,7 +695,7 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                 <div className='space-y-1'>
                   <p className='text-sm text-muted-foreground flex items-center gap-1'>
                     <Clock className='h-3 w-3' />
-                    {countdownLabel}
+                    {countdown?.label ?? 'Next Payment'}
                     {showCountdownTooltip && (
                       <span className='relative inline-flex'>
                         <button
@@ -763,15 +726,15 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                     )}
                   </p>
                   <div className='font-medium'>
-                    {loan.status === LOAN_STATUS.ACTIVE ? (
+                    {countdown ? (
                       <CountdownTimer
-                        targetDate={countdownTarget}
+                        targetDate={new Date(countdown.targetMs)}
                         compact
                         showIcon={false}
                         animate
                       />
                     ) : (
-                      <span className='text-muted-foreground'>N/A</span>
+                      <span className='text-muted-foreground'>Nothing due</span>
                     )}
                   </div>
                 </div>
@@ -966,32 +929,47 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   </div>
                                 </Label>
                               </div>
-                              {/* Disabled once the interest is paid: there's
-                                  nothing left to pay, and the contract rejects
-                                  a zero payment. Saying so beats a bare 0.00,
-                                  which reads like a missing amount. */}
-                              <div className='flex items-center space-x-2'>
-                                <RadioGroupItem
-                                  value='interest'
-                                  id='interest'
-                                  disabled={loan.remainingInterest === 0n}
-                                />
-                                <Label htmlFor='interest' className='flex-1'>
-                                  <div className='flex items-center justify-between'>
-                                    <span>Pay all remaining interest</span>
-                                    <span className='text-sm text-muted-foreground'>
-                                      {loan.remainingInterest === 0n
-                                        ? 'All interest paid'
-                                        : formatAmountWithSymbol(
-                                            loan.remainingInterest,
-                                            tokenConfig?.loanToken.symbol ||
-                                              'Token',
-                                            tokenConfig?.loanToken.decimals
-                                          )}
+                              {/* Once the interest is paid there's nothing
+                                  left to pay (the contract rejects a zero
+                                  payment), so the row becomes a status: a
+                                  green check in place of the radio, so it
+                                  doesn't read as an option. */}
+                              {loan.remainingInterest === 0n ? (
+                                <div className='flex items-center space-x-2'>
+                                  <CheckCircle2
+                                    className='h-4 w-4 shrink-0 text-green-600'
+                                    aria-hidden
+                                  />
+                                  <div className='flex flex-1 items-center justify-between text-sm font-medium leading-none'>
+                                    <span className='text-muted-foreground'>
+                                      Pay all remaining interest
+                                    </span>
+                                    <span className='text-sm text-green-600'>
+                                      All interest paid
                                     </span>
                                   </div>
-                                </Label>
-                              </div>
+                                </div>
+                              ) : (
+                                <div className='flex items-center space-x-2'>
+                                  <RadioGroupItem
+                                    value='interest'
+                                    id='interest'
+                                  />
+                                  <Label htmlFor='interest' className='flex-1'>
+                                    <div className='flex items-center justify-between'>
+                                      <span>Pay all remaining interest</span>
+                                      <span className='text-sm text-muted-foreground'>
+                                        {formatAmountWithSymbol(
+                                          loan.remainingInterest,
+                                          tokenConfig?.loanToken.symbol ||
+                                            'Token',
+                                          tokenConfig?.loanToken.decimals
+                                        )}
+                                      </span>
+                                    </div>
+                                  </Label>
+                                </div>
+                              )}
                               <div className='flex items-center space-x-2'>
                                 <RadioGroupItem value='balance' id='balance' />
                                 <Label htmlFor='balance' className='flex-1'>

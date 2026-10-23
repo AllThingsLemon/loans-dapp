@@ -95,6 +95,19 @@ export function roundUpToCent(value: bigint, decimals: number): bigint {
 }
 
 /**
+ * Round a token amount down to a whole cent (0.01 of the token), for caps the
+ * user can't exceed: rounding down keeps the capped amount within the limit.
+ * @param value - Amount in the token's smallest unit
+ * @param decimals - Token decimals
+ * @returns The rounded amount, in the same units
+ */
+export function floorToCent(value: bigint, decimals: number): bigint {
+  if (decimals < 2) return value
+  const cent = 10n ** BigInt(decimals - 2)
+  return (value / cent) * cent
+}
+
+/**
  * Format display value with appropriate decimal places
  * @param value - Value to format
  * @param decimals - Number of decimal places

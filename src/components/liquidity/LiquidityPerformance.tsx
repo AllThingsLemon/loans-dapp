@@ -24,6 +24,14 @@ import { useToast } from '@/src/hooks/use-toast'
 import { formatTokenAmount } from '@/src/utils/decimals'
 import { floorToDecimals } from '@/src/utils/format'
 import {
+  depositEntryKey,
+  totalCompounded,
+  totalDeposited,
+  transactionHistory,
+  type PoolTransaction,
+  type TransactionType
+} from '@/src/utils/poolHistory'
+import {
   BarChart3,
   TrendingUp,
   Lock,
@@ -61,7 +69,9 @@ interface LiquidityPerformanceProps {
 const STAT_GLOSSARY: Record<string, string> = {
   // Your Position
   'Total Deposited':
-    'The total principal you have deposited into the liquidity pool across all of your deposit entries.',
+    'Everything you have deposited into the pool, at its value when deposited. Compounded earnings and withdrawals do not change it.',
+  'Current Principal':
+    'What your position holds now: your deposits plus the earnings you have compounded, less withdrawals. Locked plus Unlocked.',
   Locked:
     'Principal still inside its lock period. It keeps earning, but cannot be withdrawn until the lock expires.',
   Unlocked:
@@ -82,7 +92,7 @@ const STAT_GLOSSARY: Record<string, string> = {
   'Total Claimed':
     'Earnings you have already claimed to your wallet over the life of your position.',
   'Lifetime Earnings':
-    'Everything your position has earned: claimable earnings plus what you have already claimed.',
+    'Everything your position has earned: claimable earnings, plus what you have already claimed or compounded.',
   // Pool Overview
   'Total Liquidity Available':
     'Stablecoin in the pool that is not currently lent out — available to fund new loans and withdrawals.',
@@ -243,6 +253,23 @@ function formatDuration(seconds: bigint): string {
   return minutes === 1 ? '1 minute' : `${minutes}-minute`
 }
 
+/** The transaction history's filter pills. */
+const HISTORY_FILTERS: { value: 'all' | TransactionType; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'deposit', label: 'Deposits' },
+  { value: 'claim', label: 'Claims' },
+  { value: 'withdraw', label: 'Withdrawals' }
+]
+
+const TYPE_BADGES: Record<
+  TransactionType,
+  { label: string; variant: 'green' | 'secondary' | 'outline' }
+> = {
+  deposit: { label: 'Deposit', variant: 'green' },
+  claim: { label: 'Claim', variant: 'secondary' },
+  withdraw: { label: 'Withdraw', variant: 'outline' }
+}
+
 interface TransferAccountModal {
   open: boolean
   address: string
@@ -302,6 +329,8 @@ export function LiquidityPerformance({
     stableTokenAddress,
     liquidityPoolContractAddress,
     originalDepositValues,
+    accountHistory,
+    accountHistoryLoading,
     tokenMetadata,
     claimEarnings,
     compoundEarnings,
@@ -362,10 +391,63 @@ export function LiquidityPerformance({
     )
   }, [userStatus, poolStatus])
 
+  // Claimable + claimed + compounded. The chain's totalClaimed only counts
+  // claims; compounded earnings come from the indexer, as reinvested (after
+  // the earnings fee — the event records no fee), while claims count the
+  // amount before the claim fee. Without an indexer, compounds are left out.
   const lifetimeEarnings = useMemo(() => {
     if (!userStatus) return 0n
-    return userStatus.pendingEarnings + userStatus.totalClaimed
-  }, [userStatus])
+    return (
+      userStatus.pendingEarnings +
+      userStatus.totalClaimed +
+      (accountHistory ? totalCompounded(accountHistory) : 0n)
+    )
+  }, [userStatus, accountHistory])
+
+  const transactions = useMemo(
+    () => (accountHistory ? transactionHistory(accountHistory) : []),
+    [accountHistory]
+  )
+  const [historyFilter, setHistoryFilter] = useState<'all' | TransactionType>(
+    'all'
+  )
+  const shownTransactions = useMemo(
+    () =>
+      historyFilter === 'all'
+        ? transactions
+        : transactions.filter((t) => t.type === historyFilter),
+    [transactions, historyFilter]
+  )
+
+  /** The Details cell: what kind of transaction, and its terms or status. */
+  const transactionDetails = (t: PoolTransaction): string => {
+    const lock = (unlockTime: bigint, lockDuration: bigint) =>
+      `${formatDuration(lockDuration)} lock · unlocks ${formatDate(unlockTime)}`
+    const received = (fee: bigint) =>
+      fee > 0n
+        ? ` · received ${formatCurrency(t.amount - fee, decimals, symbol)} after a ${formatCurrency(fee, decimals, symbol)} fee`
+        : ''
+    switch (t.kind) {
+      case 'deposit':
+        return lock(t.unlockTime, t.lockDuration)
+      case 'compound':
+        // The event records the unlock time, not the tier; the bucketed
+        // unlock is at most a day past timestamp + lock, which the year /
+        // day rounding of formatDuration absorbs.
+        return `Compounded earnings · ${lock(
+          t.unlockTime,
+          t.unlockTime - BigInt(t.timestamp)
+        )}`
+      case 'claim':
+        return `Earnings claimed${received(t.fee)}`
+      case 'withdrawalRequest':
+        return t.paidAt
+          ? `Requested · paid out ${formatDate(BigInt(t.paidAt))}`
+          : 'Requested · waiting in the withdrawal queue'
+      case 'withdrawalPayout':
+        return `Paid out${received(t.fee)}`
+    }
+  }
 
   // Interest borrowers have paid that still sits in the Loans contract —
   // this wallet's slice of it, i.e. what "Distribute Earnings" would move
@@ -685,6 +767,20 @@ export function LiquidityPerformance({
               <StatItem
                 label='Total Deposited'
                 value={
+                  accountHistory
+                    ? formatCurrency(
+                        totalDeposited(accountHistory),
+                        decimals,
+                        symbol
+                      )
+                    : accountHistoryLoading
+                      ? 'Loading...'
+                      : '—'
+                }
+              />
+              <StatItem
+                label='Current Principal'
+                value={
                   userStatus
                     ? formatCurrency(
                         userStatus.totalPrincipal,
@@ -802,7 +898,11 @@ export function LiquidityPerformance({
               />
               <StatItem
                 label='Lifetime Earnings'
-                value={formatCurrency(lifetimeEarnings, decimals, symbol)}
+                value={
+                  userStatus && !accountHistoryLoading
+                    ? formatCurrency(lifetimeEarnings, decimals, symbol)
+                    : 'Loading...'
+                }
               />
             </div>
             {userStatus && userStatus.pendingEarnings > 0n && (
@@ -873,10 +973,10 @@ export function LiquidityPerformance({
 
           <div className='border-t' />
 
-          {/* 5. Deposit History */}
+          {/* 5. Current Deposits: the lock entries the position holds now */}
           <div className='space-y-3'>
             <h3 className='text-sm font-semibold flex items-center gap-2'>
-              <Clock className='h-4 w-4' /> Deposit History
+              <Lock className='h-4 w-4' /> Current Deposits
             </h3>
             {sortedDepositEntries.length > 0 ? (
               <div className='space-y-2'>
@@ -890,7 +990,11 @@ export function LiquidityPerformance({
                 {sortedDepositEntries.map((entry, index) => {
                   const now = BigInt(Math.floor(Date.now() / 1000))
                   const isUnlocked = entry.unlockTime <= now
-                  const originalKey = `${entry.token.toLowerCase()}:${entry.unlockTime}:${entry.lockDuration}`
+                  const originalKey = depositEntryKey(
+                    entry.token,
+                    entry.unlockTime,
+                    entry.lockDuration
+                  )
                   const originalValue =
                     originalDepositValues.get(originalKey) ??
                     entry.stableTokenValue
@@ -935,6 +1039,100 @@ export function LiquidityPerformance({
               </p>
             )}
           </div>
+
+          {/* 6. Transaction History: every deposit (compounds included), claim
+              and withdrawal, from the indexer. Hidden on a chain without one. */}
+          {(accountHistory || accountHistoryLoading) && (
+            <div className='space-y-3'>
+              <h3 className='text-sm font-semibold flex items-center gap-2'>
+                <Clock className='h-4 w-4' /> Transaction History
+              </h3>
+              {!accountHistory ? (
+                <p className='text-sm text-muted-foreground'>
+                  Loading history…
+                </p>
+              ) : (
+                <>
+                  <div className='flex flex-wrap gap-2'>
+                    {HISTORY_FILTERS.map(({ value, label }) => (
+                      <Button
+                        key={value}
+                        size='sm'
+                        variant={
+                          historyFilter === value ? 'default' : 'outline'
+                        }
+                        className='rounded-full'
+                        aria-pressed={historyFilter === value}
+                        onClick={() => setHistoryFilter(value)}
+                      >
+                        {label} (
+                        {value === 'all'
+                          ? transactions.length
+                          : transactions.filter((t) => t.type === value).length}
+                        )
+                      </Button>
+                    ))}
+                  </div>
+                  {shownTransactions.length > 0 ? (
+                    <div className='space-y-2'>
+                      <div className='grid grid-cols-[1fr_1fr_1.2fr_2fr] gap-2 text-xs font-medium text-muted-foreground pb-1 border-b'>
+                        <span>Date</span>
+                        <span>Type</span>
+                        <span>Amount</span>
+                        <span>Details</span>
+                      </div>
+                      {shownTransactions.map((t) => {
+                        const meta =
+                          t.kind === 'deposit'
+                            ? tokenMetadata.get(t.token)
+                            : undefined
+                        return (
+                          <div
+                            key={t.id}
+                            className='grid grid-cols-[1fr_1fr_1.2fr_2fr] gap-2 items-center text-sm py-2 border-b border-border/50'
+                          >
+                            <span>{formatDate(BigInt(t.timestamp))}</span>
+                            <span>
+                              <Badge
+                                variant={TYPE_BADGES[t.type].variant}
+                                className='text-xs'
+                              >
+                                {TYPE_BADGES[t.type].label}
+                              </Badge>
+                            </span>
+                            <span>
+                              {formatCurrency(t.amount, decimals, symbol)}
+                              {meta &&
+                                t.kind === 'deposit' &&
+                                t.token !==
+                                  stableTokenAddress?.toLowerCase() && (
+                                  <span className='block text-xs text-muted-foreground'>
+                                    {formatCurrency(
+                                      t.tokenAmount,
+                                      meta.decimals,
+                                      meta.symbol
+                                    )}
+                                  </span>
+                                )}
+                            </span>
+                            <span className='text-xs text-muted-foreground'>
+                              {transactionDetails(t)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className='text-sm text-muted-foreground'>
+                      {historyFilter === 'all'
+                        ? 'No transactions yet.'
+                        : `No ${HISTORY_FILTERS.find((f) => f.value === historyFilter)?.label.toLowerCase()} yet.`}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
