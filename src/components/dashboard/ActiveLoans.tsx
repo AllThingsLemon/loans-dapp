@@ -61,6 +61,7 @@ import {
   AlertCircle,
   Copy,
   Check,
+  CheckCircle2,
   Info,
   Loader2
 } from 'lucide-react'
@@ -928,32 +929,47 @@ export function ActiveLoans({ compact = false }: ActiveLoansProps) {
                                   </div>
                                 </Label>
                               </div>
-                              {/* Disabled once the interest is paid: there's
-                                  nothing left to pay, and the contract rejects
-                                  a zero payment. Saying so beats a bare 0.00,
-                                  which reads like a missing amount. */}
-                              <div className='flex items-center space-x-2'>
-                                <RadioGroupItem
-                                  value='interest'
-                                  id='interest'
-                                  disabled={loan.remainingInterest === 0n}
-                                />
-                                <Label htmlFor='interest' className='flex-1'>
-                                  <div className='flex items-center justify-between'>
-                                    <span>Pay all remaining interest</span>
-                                    <span className='text-sm text-muted-foreground'>
-                                      {loan.remainingInterest === 0n
-                                        ? 'All interest paid'
-                                        : formatAmountWithSymbol(
-                                            loan.remainingInterest,
-                                            tokenConfig?.loanToken.symbol ||
-                                              'Token',
-                                            tokenConfig?.loanToken.decimals
-                                          )}
+                              {/* Once the interest is paid there's nothing
+                                  left to pay (the contract rejects a zero
+                                  payment), so the row becomes a status: a
+                                  green check in place of the radio, so it
+                                  doesn't read as an option. */}
+                              {loan.remainingInterest === 0n ? (
+                                <div className='flex items-center space-x-2'>
+                                  <CheckCircle2
+                                    className='h-4 w-4 shrink-0 text-green-600'
+                                    aria-hidden
+                                  />
+                                  <div className='flex flex-1 items-center justify-between text-sm font-medium leading-none'>
+                                    <span className='text-muted-foreground'>
+                                      Pay all remaining interest
+                                    </span>
+                                    <span className='text-sm text-green-600'>
+                                      All interest paid
                                     </span>
                                   </div>
-                                </Label>
-                              </div>
+                                </div>
+                              ) : (
+                                <div className='flex items-center space-x-2'>
+                                  <RadioGroupItem
+                                    value='interest'
+                                    id='interest'
+                                  />
+                                  <Label htmlFor='interest' className='flex-1'>
+                                    <div className='flex items-center justify-between'>
+                                      <span>Pay all remaining interest</span>
+                                      <span className='text-sm text-muted-foreground'>
+                                        {formatAmountWithSymbol(
+                                          loan.remainingInterest,
+                                          tokenConfig?.loanToken.symbol ||
+                                            'Token',
+                                          tokenConfig?.loanToken.decimals
+                                        )}
+                                      </span>
+                                    </div>
+                                  </Label>
+                                </div>
+                              )}
                               <div className='flex items-center space-x-2'>
                                 <RadioGroupItem value='balance' id='balance' />
                                 <Label htmlFor='balance' className='flex-1'>
