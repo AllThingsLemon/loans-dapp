@@ -128,9 +128,8 @@ export function LoanParameters({
       : 0
   const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
 
-  // What the pool can lend now, rounded down to the cent: the cap the amount
-  // field clamps to, and the "available" hint under it. Unrounded, a clamped
-  // entry showed every decimal of the pool's balance (98.41210412415799).
+  // What the pool can lend now, for the "available" hint: rounded down to
+  // the cent, never overstating it (unrounded it read 98.41210412415799).
   const loanDecimals = tokenConfig?.loanToken.decimals || 18
   const availableAmount =
     availableLiquidity !== undefined
@@ -141,6 +140,13 @@ export function LoanParameters({
           )
         )
       : undefined
+  // An amount above it stays as typed, in red with the hint, so the borrower
+  // re-enters it knowingly rather than having it silently swapped for the
+  // maximum. Compared with the exact balance — the same test that marks the
+  // loan as exceeding pool liquidity and keeps Create disabled.
+  const isAboveAvailable =
+    availableLiquidity !== undefined &&
+    loanAmount > Number(formatUnits(availableLiquidity, loanDecimals))
 
   const maxLoanAmount =
     availableAmount !== undefined && tokenConfig
@@ -306,17 +312,16 @@ export function LoanParameters({
 
                 const numValue = Number(value)
                 // Reject garbage and negatives (a negative passed the old
-                // <= max check and flowed into parseUnits), and clamp
-                // above-max input to the max instead of silently swallowing
-                // the keystroke — a frozen input reads as a broken app.
+                // <= max check and flowed into parseUnits). Above-available
+                // amounts are kept and flagged (isAboveAvailable).
                 if (!Number.isFinite(numValue) || numValue < 0) {
                   return
                 }
-                setLoanAmount(Math.min(numValue, maxLoanAmount))
+                setLoanAmount(numValue)
               }}
               min={minLoanAmount > 0 ? minLoanAmount : undefined}
               max={maxLoanAmount}
-              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400/40 disabled:opacity-50 disabled:cursor-not-allowed' : 'placeholder:text-muted-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+              className={`pl-8 text-lg ${!isDashboard ? 'bg-white/10 border-white/20 text-white placeholder:text-gray-400/40 disabled:opacity-50 disabled:cursor-not-allowed' : 'placeholder:text-muted-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed'} ${isBelowMinimum || isAboveAvailable ? 'border-red-500 ring-1 ring-red-500' : ''} ${isAboveAvailable ? 'text-red-500' : ''}`}
               placeholder={minLoanAmount > 0 ? String(minLoanAmount) : ''}
             />
           </div>
@@ -341,7 +346,11 @@ export function LoanParameters({
                     : '1,000'}{' '}
                   min
                 </span>
-                <span>
+                <span
+                  className={
+                    isAboveAvailable ? 'font-medium text-red-500' : undefined
+                  }
+                >
                   {availableAmount !== undefined
                     ? `$${availableAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available`
                     : 'Loading liquidity...'}
