@@ -44,7 +44,9 @@ import {
   Send,
   Wallet,
   Repeat2,
-  Info
+  Info,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import {
   Tooltip,
@@ -253,6 +255,9 @@ function formatDuration(seconds: bigint): string {
   return minutes === 1 ? '1 minute' : `${minutes}-minute`
 }
 
+/** How many Current Deposits entries show before "View more". */
+const RECENT_DEPOSITS = 3
+
 /** The transaction history's filter pills. */
 const HISTORY_FILTERS: { value: 'all' | TransactionType; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -408,6 +413,8 @@ export function LiquidityPerformance({
     () => (accountHistory ? transactionHistory(accountHistory) : []),
     [accountHistory]
   )
+  // Current Deposits shows the newest few entries until "View more".
+  const [showAllDeposits, setShowAllDeposits] = useState(false)
   const [historyFilter, setHistoryFilter] = useState<'all' | TransactionType>(
     'all'
   )
@@ -484,11 +491,19 @@ export function LiquidityPerformance({
     return Math.min(Math.max(util, 0), 100)
   }, [currentUtilization])
 
+  // Newest first. Entries don't record when they were opened, but each
+  // unlocks one lock duration after it (rounded to the lock bucket), so
+  // unlock − lock orders them by opening day.
   const sortedDepositEntries = useMemo(() => {
+    const opened = (e: (typeof depositEntries)[number]) =>
+      e.unlockTime - e.lockDuration
     return [...depositEntries].sort((a, b) =>
-      Number(a.lockDuration - b.lockDuration)
+      opened(a) === opened(b) ? 0 : opened(a) > opened(b) ? -1 : 1
     )
   }, [depositEntries])
+  const visibleDepositEntries = showAllDeposits
+    ? sortedDepositEntries
+    : sortedDepositEntries.slice(0, RECENT_DEPOSITS)
 
   // Action handlers. Returns true on success so confirm modals \u2014 which stay
   // OPEN while the tx runs (standard modal contract: spinner on the confirm
@@ -973,10 +988,14 @@ export function LiquidityPerformance({
 
           <div className='border-t' />
 
-          {/* 5. Current Deposits: the lock entries the position holds now */}
+          {/* 5. Current Deposits: the lock entries the position holds now,
+              newest first; the most recent few until "View more" */}
           <div className='space-y-3'>
             <h3 className='text-sm font-semibold flex items-center gap-2'>
               <Lock className='h-4 w-4' /> Current Deposits
+              <span className='font-normal text-muted-foreground'>
+                ({sortedDepositEntries.length})
+              </span>
             </h3>
             {sortedDepositEntries.length > 0 ? (
               <div className='space-y-2'>
@@ -987,7 +1006,7 @@ export function LiquidityPerformance({
                   <span>Unlock Date</span>
                   <span>Status</span>
                 </div>
-                {sortedDepositEntries.map((entry, index) => {
+                {visibleDepositEntries.map((entry, index) => {
                   const now = BigInt(Math.floor(Date.now() / 1000))
                   const isUnlocked = entry.unlockTime <= now
                   const originalKey = depositEntryKey(
@@ -1032,6 +1051,26 @@ export function LiquidityPerformance({
                     </div>
                   )
                 })}
+                {sortedDepositEntries.length > RECENT_DEPOSITS && (
+                  <button
+                    type='button'
+                    onClick={() => setShowAllDeposits((all) => !all)}
+                    aria-expanded={showAllDeposits}
+                    className='flex items-center gap-1 pt-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:underline underline-offset-4'
+                  >
+                    {showAllDeposits ? (
+                      <>
+                        View less <ChevronUp className='h-4 w-4' />
+                      </>
+                    ) : (
+                      <>
+                        View more (
+                        {sortedDepositEntries.length - RECENT_DEPOSITS}){' '}
+                        <ChevronDown className='h-4 w-4' />
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             ) : (
               <p className='text-sm text-muted-foreground'>
