@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Coins, Tag } from 'lucide-react'
 import { formatUnits } from 'viem'
 import {
+  floorToCent,
   formatPercentage,
   formatDurationRange,
   formatTokenAmount,
@@ -127,11 +128,23 @@ export function LoanParameters({
       : 0
   const isBelowMinimum = loanAmount > 0 && loanAmount < minLoanAmount
 
-  const maxLoanAmount =
-    availableLiquidity !== undefined && tokenConfig
+  // What the pool can lend now, rounded down to the cent: the cap the amount
+  // field clamps to, and the "available" hint under it. Unrounded, a clamped
+  // entry showed every decimal of the pool's balance (98.41210412415799).
+  const loanDecimals = tokenConfig?.loanToken.decimals || 18
+  const availableAmount =
+    availableLiquidity !== undefined
       ? Number(
-          formatUnits(availableLiquidity, tokenConfig.loanToken.decimals || 18)
+          formatUnits(
+            floorToCent(availableLiquidity, loanDecimals),
+            loanDecimals
+          )
         )
+      : undefined
+
+  const maxLoanAmount =
+    availableAmount !== undefined && tokenConfig
+      ? availableAmount
       : loanConfig?.minLoanAmount
         ? Number(
             formatUnits(
@@ -284,7 +297,6 @@ export function LoanParameters({
               type='number'
               value={loanAmount === 0 ? '' : loanAmount}
               disabled={hasNoLiquidity}
-              onWheel={(e) => e.currentTarget.blur()}
               onChange={(e) => {
                 const value = e.target.value
                 if (value === '') {
@@ -330,8 +342,8 @@ export function LoanParameters({
                   min
                 </span>
                 <span>
-                  {availableLiquidity !== undefined
-                    ? `$${Math.floor(Number(formatUnits(availableLiquidity, tokenConfig?.loanToken.decimals || 18))).toLocaleString()} available`
+                  {availableAmount !== undefined
+                    ? `$${availableAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} available`
                     : 'Loading liquidity...'}
                 </span>
               </div>
