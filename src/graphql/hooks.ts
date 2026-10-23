@@ -15,6 +15,7 @@ import { getGraphQLClient, getGraphQLEndpoint, requestAll } from './client'
 import {
   ACCOUNT_COMPOUNDS,
   ACCOUNT_DEPOSITS,
+  ACCOUNT_EARNINGS_CLAIMS,
   ACCOUNT_TRANSFERS,
   ACCOUNT_WITHDRAWAL_CLAIMS,
   ACCOUNT_WITHDRAWAL_REQUESTS,
@@ -32,6 +33,7 @@ import {
 import type {
   AccountCompoundsResponse,
   AccountDepositsResponse,
+  AccountEarningsClaimsResponse,
   AccountTransfersResponse,
   AccountWithdrawalClaimsResponse,
   AccountWithdrawalRequestsResponse,
@@ -276,10 +278,10 @@ export function usePoolShareChanges(
 }
 
 /**
- * One account's pool history: its deposits, compounds and withdrawal
- * requests and claims, including those of accounts transferred into it before
- * the transfer (see accountLineage). Disabled without an account, or on a
- * chain with no indexer.
+ * One account's pool history: its deposits, compounds, earnings claims, and
+ * withdrawal requests and payouts, including those of accounts transferred
+ * into it before the transfer (see accountLineage). Disabled without an
+ * account, or on a chain with no indexer.
  *
  * `pool` is the LiquidityPool address (Loans.liquidityPool()).
  */
@@ -305,38 +307,50 @@ export function usePoolAccountHistory(
       )
       const lineage = accountLineage(transfers, account!)
       const vars = { chainId, srcAddress, users: [...lineage.keys()] }
-      const [deposits, compounds, withdrawalRequests, withdrawalClaims] =
-        await Promise.all([
-          requestAll(
-            chainId,
-            ACCOUNT_DEPOSITS,
-            vars,
-            (r: AccountDepositsResponse) => r.LiquidityPool_Deposited
-          ),
-          requestAll(
-            chainId,
-            ACCOUNT_COMPOUNDS,
-            vars,
-            (r: AccountCompoundsResponse) => r.LiquidityPool_EarningsCompounded
-          ),
-          requestAll(
-            chainId,
-            ACCOUNT_WITHDRAWAL_REQUESTS,
-            vars,
-            (r: AccountWithdrawalRequestsResponse) =>
-              r.LiquidityPool_WithdrawalRequested
-          ),
-          requestAll(
-            chainId,
-            ACCOUNT_WITHDRAWAL_CLAIMS,
-            vars,
-            (r: AccountWithdrawalClaimsResponse) =>
-              r.LiquidityPool_WithdrawalClaimed
-          )
-        ])
+      const [
+        deposits,
+        compounds,
+        earningsClaims,
+        withdrawalRequests,
+        withdrawalClaims
+      ] = await Promise.all([
+        requestAll(
+          chainId,
+          ACCOUNT_DEPOSITS,
+          vars,
+          (r: AccountDepositsResponse) => r.LiquidityPool_Deposited
+        ),
+        requestAll(
+          chainId,
+          ACCOUNT_COMPOUNDS,
+          vars,
+          (r: AccountCompoundsResponse) => r.LiquidityPool_EarningsCompounded
+        ),
+        requestAll(
+          chainId,
+          ACCOUNT_EARNINGS_CLAIMS,
+          vars,
+          (r: AccountEarningsClaimsResponse) => r.LiquidityPool_EarningsClaimed
+        ),
+        requestAll(
+          chainId,
+          ACCOUNT_WITHDRAWAL_REQUESTS,
+          vars,
+          (r: AccountWithdrawalRequestsResponse) =>
+            r.LiquidityPool_WithdrawalRequested
+        ),
+        requestAll(
+          chainId,
+          ACCOUNT_WITHDRAWAL_CLAIMS,
+          vars,
+          (r: AccountWithdrawalClaimsResponse) =>
+            r.LiquidityPool_WithdrawalClaimed
+        )
+      ])
       return {
         deposits: inLineage(deposits, lineage),
         compounds: inLineage(compounds, lineage),
+        earningsClaims: inLineage(earningsClaims, lineage),
         withdrawalRequests: inLineage(withdrawalRequests, lineage),
         withdrawalClaims: inLineage(withdrawalClaims, lineage)
       }

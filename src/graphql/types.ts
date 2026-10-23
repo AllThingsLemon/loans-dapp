@@ -127,8 +127,17 @@ export interface AccountWithdrawalRequestRow extends AccountRow {
   amount: Numeric
 }
 
+/** A queued withdrawal paid out. `amount` is before the withdrawal fee. */
 export interface AccountWithdrawalClaimRow extends AccountRow {
   requestId: Numeric
+  amount: Numeric
+  fee: Numeric
+}
+
+/** Earnings claimed to the wallet. `amount` is before the claim fee. */
+export interface AccountEarningsClaimRow extends AccountRow {
+  amount: Numeric
+  fee: Numeric
 }
 
 export interface AccountTransferRow {
@@ -175,6 +184,10 @@ export interface AccountWithdrawalRequestsResponse {
 
 export interface AccountWithdrawalClaimsResponse {
   LiquidityPool_WithdrawalClaimed: AccountWithdrawalClaimRow[]
+}
+
+export interface AccountEarningsClaimsResponse {
+  LiquidityPool_EarningsClaimed: AccountEarningsClaimRow[]
 }
 
 export interface AccountTransfersResponse {
