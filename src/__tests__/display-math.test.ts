@@ -5,6 +5,7 @@ import {
   formatTokenAmount,
   formatSignificantValue,
   roundUpToCent,
+  floorToCent,
   significantFractionDigits
 } from '../utils/decimals'
 import {
@@ -322,5 +323,27 @@ describe('roundUpToCent', () => {
 
   it('works for 8-decimal tokens', () => {
     expect(formatTokenAmount(roundUpToCent(1_000_000_001n, 8), 8)).toBe('10.01')
+  })
+})
+
+describe('floorToCent', () => {
+  const E18 = 10n ** 18n
+
+  it("rounds the pool's available balance down to the cent", () => {
+    // What the loan amount field used to show when it clamped: 98.41210412415799
+    const available = 98_412_104_124_157_990_000n
+    expect(formatTokenAmount(floorToCent(available, 18), 18)).toBe('98.41')
+  })
+
+  it('never rounds up, even a hair under the next cent', () => {
+    expect(floorToCent(10n * E18 - 1n, 18)).toBe(999n * 10n ** 16n)
+  })
+
+  it('leaves amounts already on a cent unchanged', () => {
+    expect(floorToCent(1234n * 10n ** 16n, 18)).toBe(1234n * 10n ** 16n)
+  })
+
+  it('works for 8-decimal tokens', () => {
+    expect(formatTokenAmount(floorToCent(1_000_999_999n, 8), 8)).toBe('10')
   })
 })
