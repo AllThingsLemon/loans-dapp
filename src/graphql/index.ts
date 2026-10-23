@@ -50,6 +50,7 @@ export type {
   AccountCompoundRow,
   AccountWithdrawalRequestRow,
   AccountWithdrawalClaimRow,
+  AccountEarningsClaimRow,
   AccountTransferRow,
   BorrowerActivityResponse,
   PoolCompoundsResponse,

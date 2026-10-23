@@ -331,6 +331,36 @@ export const ACCOUNT_WITHDRAWAL_CLAIMS = gql`
       user
       blockTimestamp
       requestId
+      amount
+      fee
+    }
+  }
+`
+
+/* Earnings claimed to the wallet. `amount` is before the claim fee. */
+export const ACCOUNT_EARNINGS_CLAIMS = gql`
+  query AccountEarningsClaims(
+    $chainId: Int!
+    $srcAddress: String!
+    $users: [String!]!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    LiquidityPool_EarningsClaimed(
+      where: {
+        chainId: { _eq: $chainId }
+        srcAddress: { _eq: $srcAddress }
+        user: { _in: $users }
+      }
+      order_by: { id: asc }
+      limit: $limit
+      offset: $offset
+    ) {
+      id
+      user
+      blockTimestamp
+      amount
+      fee
     }
   }
 `

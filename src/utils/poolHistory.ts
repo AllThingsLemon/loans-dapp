@@ -7,6 +7,7 @@
 import type {
   AccountCompoundRow,
   AccountDepositRow,
+  AccountEarningsClaimRow,
   AccountTransferRow,
   AccountWithdrawalClaimRow,
   AccountWithdrawalRequestRow,
@@ -193,6 +194,7 @@ export function inLineage<T extends { id: string; user: string }>(
 export interface AccountHistory {
   deposits: AccountDepositRow[]
   compounds: AccountCompoundRow[]
+  earningsClaims: AccountEarningsClaimRow[]
   withdrawalRequests: AccountWithdrawalRequestRow[]
   withdrawalClaims: AccountWithdrawalClaimRow[]
 }
@@ -205,43 +207,51 @@ export const totalDeposited = (history: AccountHistory) =>
 export const totalCompounded = (history: AccountHistory) =>
   history.compounds.reduce((sum, c) => sum + BigInt(c.earningsAmount), 0n)
 
-export type PoolActivity =
+/** The transaction history's filter groups. */
+export type TransactionType = 'deposit' | 'claim' | 'withdraw'
+
+/**
+ * One transaction the account made in the pool. Compounding counts as a
+ * deposit: it reinvests earnings as a new locked entry. A withdrawal is two
+ * transactions — the request (shares burned, queued) and the payout once
+ * the queue has funded it.
+ */
+export type PoolTransaction = {
+  id: string
+  /** Unix seconds. */
+  timestamp: number
+  /** USD; claims and payouts before their fee. */
+  amount: bigint
+} & (
   | {
       kind: 'deposit'
-      id: string
-      timestamp: number
-      /** USD value when deposited. */
-      amount: bigint
+      type: 'deposit'
       token: string
       tokenAmount: bigint
       lockDuration: bigint
       unlockTime: bigint
     }
+  | { kind: 'compound'; type: 'deposit'; unlockTime: bigint }
+  | { kind: 'claim'; type: 'claim'; fee: bigint }
   | {
-      kind: 'compound'
-      id: string
-      timestamp: number
-      amount: bigint
-      unlockTime: bigint
+      kind: 'withdrawalRequest'
+      type: 'withdraw'
+      /** When the payout was claimed; undefined while still queued. */
+      paidAt?: number
     }
-  | {
-      kind: 'withdrawal'
-      id: string
-      timestamp: number
-      amount: bigint
-      /** Paid out (claimed) yet, or still in the withdrawal queue. */
-      claimed: boolean
-    }
+  | { kind: 'withdrawalPayout'; type: 'withdraw'; fee: bigint }
+)
 
-/** The account's deposits, compounds and withdrawals, newest first. */
-export function poolActivity(history: AccountHistory): PoolActivity[] {
-  const claimed = new Set(
-    history.withdrawalClaims.map((c) => BigInt(c.requestId))
+/** The account's deposits, compounds, claims and withdrawals, newest first. */
+export function transactionHistory(history: AccountHistory): PoolTransaction[] {
+  const paidAt = new Map(
+    history.withdrawalClaims.map((c) => [BigInt(c.requestId), c.blockTimestamp])
   )
-  const rows: PoolActivity[] = [
+  const rows: PoolTransaction[] = [
     ...history.deposits.map(
-      (d): PoolActivity => ({
+      (d): PoolTransaction => ({
         kind: 'deposit',
+        type: 'deposit',
         id: d.id,
         timestamp: d.blockTimestamp,
         amount: BigInt(d.stableTokenValue),
@@ -252,21 +262,43 @@ export function poolActivity(history: AccountHistory): PoolActivity[] {
       })
     ),
     ...history.compounds.map(
-      (c): PoolActivity => ({
+      (c): PoolTransaction => ({
         kind: 'compound',
+        type: 'deposit',
         id: c.id,
         timestamp: c.blockTimestamp,
         amount: BigInt(c.earningsAmount),
         unlockTime: BigInt(c.unlockTime)
       })
     ),
+    ...history.earningsClaims.map(
+      (c): PoolTransaction => ({
+        kind: 'claim',
+        type: 'claim',
+        id: c.id,
+        timestamp: c.blockTimestamp,
+        amount: BigInt(c.amount),
+        fee: BigInt(c.fee)
+      })
+    ),
     ...history.withdrawalRequests.map(
-      (w): PoolActivity => ({
-        kind: 'withdrawal',
+      (w): PoolTransaction => ({
+        kind: 'withdrawalRequest',
+        type: 'withdraw',
         id: w.id,
         timestamp: w.blockTimestamp,
         amount: BigInt(w.amount),
-        claimed: claimed.has(BigInt(w.requestId))
+        paidAt: paidAt.get(BigInt(w.requestId))
+      })
+    ),
+    ...history.withdrawalClaims.map(
+      (c): PoolTransaction => ({
+        kind: 'withdrawalPayout',
+        type: 'withdraw',
+        id: c.id,
+        timestamp: c.blockTimestamp,
+        amount: BigInt(c.amount),
+        fee: BigInt(c.fee)
       })
     )
   ]

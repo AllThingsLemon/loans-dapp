@@ -25,9 +25,11 @@ import { formatTokenAmount } from '@/src/utils/decimals'
 import { floorToDecimals } from '@/src/utils/format'
 import {
   depositEntryKey,
-  poolActivity,
   totalCompounded,
-  totalDeposited
+  totalDeposited,
+  transactionHistory,
+  type PoolTransaction,
+  type TransactionType
 } from '@/src/utils/poolHistory'
 import {
   BarChart3,
@@ -251,6 +253,23 @@ function formatDuration(seconds: bigint): string {
   return minutes === 1 ? '1 minute' : `${minutes}-minute`
 }
 
+/** The transaction history's filter pills. */
+const HISTORY_FILTERS: { value: 'all' | TransactionType; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'deposit', label: 'Deposits' },
+  { value: 'claim', label: 'Claims' },
+  { value: 'withdraw', label: 'Withdrawals' }
+]
+
+const TYPE_BADGES: Record<
+  TransactionType,
+  { label: string; variant: 'green' | 'secondary' | 'outline' }
+> = {
+  deposit: { label: 'Deposit', variant: 'green' },
+  claim: { label: 'Claim', variant: 'secondary' },
+  withdraw: { label: 'Withdraw', variant: 'outline' }
+}
+
 interface TransferAccountModal {
   open: boolean
   address: string
@@ -385,10 +404,50 @@ export function LiquidityPerformance({
     )
   }, [userStatus, accountHistory])
 
-  const depositActivity = useMemo(
-    () => (accountHistory ? poolActivity(accountHistory) : []),
+  const transactions = useMemo(
+    () => (accountHistory ? transactionHistory(accountHistory) : []),
     [accountHistory]
   )
+  const [historyFilter, setHistoryFilter] = useState<'all' | TransactionType>(
+    'all'
+  )
+  const shownTransactions = useMemo(
+    () =>
+      historyFilter === 'all'
+        ? transactions
+        : transactions.filter((t) => t.type === historyFilter),
+    [transactions, historyFilter]
+  )
+
+  /** The Details cell: what kind of transaction, and its terms or status. */
+  const transactionDetails = (t: PoolTransaction): string => {
+    const lock = (unlockTime: bigint, lockDuration: bigint) =>
+      `${formatDuration(lockDuration)} lock · unlocks ${formatDate(unlockTime)}`
+    const received = (fee: bigint) =>
+      fee > 0n
+        ? ` · received ${formatCurrency(t.amount - fee, decimals, symbol)} after a ${formatCurrency(fee, decimals, symbol)} fee`
+        : ''
+    switch (t.kind) {
+      case 'deposit':
+        return lock(t.unlockTime, t.lockDuration)
+      case 'compound':
+        // The event records the unlock time, not the tier; the bucketed
+        // unlock is at most a day past timestamp + lock, which the year /
+        // day rounding of formatDuration absorbs.
+        return `Compounded earnings · ${lock(
+          t.unlockTime,
+          t.unlockTime - BigInt(t.timestamp)
+        )}`
+      case 'claim':
+        return `Earnings claimed${received(t.fee)}`
+      case 'withdrawalRequest':
+        return t.paidAt
+          ? `Requested · paid out ${formatDate(BigInt(t.paidAt))}`
+          : 'Requested · waiting in the withdrawal queue'
+      case 'withdrawalPayout':
+        return `Paid out${received(t.fee)}`
+    }
+  }
 
   // Interest borrowers have paid that still sits in the Loans contract —
   // this wallet's slice of it, i.e. what "Distribute Earnings" would move
@@ -981,82 +1040,96 @@ export function LiquidityPerformance({
             )}
           </div>
 
-          {/* 6. Deposit History: every deposit, compound and withdrawal, from
-              the indexer. Hidden on a chain without one. */}
+          {/* 6. Transaction History: every deposit (compounds included), claim
+              and withdrawal, from the indexer. Hidden on a chain without one. */}
           {(accountHistory || accountHistoryLoading) && (
             <div className='space-y-3'>
               <h3 className='text-sm font-semibold flex items-center gap-2'>
-                <Clock className='h-4 w-4' /> Deposit History
+                <Clock className='h-4 w-4' /> Transaction History
               </h3>
               {!accountHistory ? (
                 <p className='text-sm text-muted-foreground'>
                   Loading history…
                 </p>
-              ) : depositActivity.length > 0 ? (
-                <div className='space-y-2'>
-                  <div className='grid grid-cols-5 text-xs font-medium text-muted-foreground pb-1 border-b'>
-                    <span>Date</span>
-                    <span>Activity</span>
-                    <span>Amount</span>
-                    <span>Lock Duration</span>
-                    <span>Unlock Date</span>
-                  </div>
-                  {depositActivity.map((row) => {
-                    const meta =
-                      row.kind === 'deposit'
-                        ? tokenMetadata.get(row.token)
-                        : undefined
-                    const activity =
-                      row.kind === 'deposit'
-                        ? 'Deposit'
-                        : row.kind === 'compound'
-                          ? 'Compounded earnings'
-                          : row.claimed
-                            ? 'Withdrawal (paid)'
-                            : 'Withdrawal (queued)'
-                    return (
-                      <div
-                        key={row.id}
-                        className='grid grid-cols-5 items-center text-sm py-2 border-b border-border/50'
-                      >
-                        <span>{formatDate(BigInt(row.timestamp))}</span>
-                        <span>{activity}</span>
-                        <span>
-                          {formatCurrency(row.amount, decimals, symbol)}
-                          {meta &&
-                            row.kind === 'deposit' &&
-                            row.token !== stableTokenAddress?.toLowerCase() && (
-                              <span className='block text-xs text-muted-foreground'>
-                                {formatCurrency(
-                                  row.tokenAmount,
-                                  meta.decimals,
-                                  meta.symbol
-                                )}
-                              </span>
-                            )}
-                        </span>
-                        <span>
-                          {row.kind === 'deposit'
-                            ? formatDuration(row.lockDuration)
-                            : row.kind === 'compound'
-                              ? formatDuration(
-                                  row.unlockTime - BigInt(row.timestamp)
-                                )
-                              : '—'}
-                        </span>
-                        <span>
-                          {row.kind === 'withdrawal'
-                            ? '—'
-                            : formatDate(row.unlockTime)}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
               ) : (
-                <p className='text-sm text-muted-foreground'>
-                  No deposits yet.
-                </p>
+                <>
+                  <div className='flex flex-wrap gap-2'>
+                    {HISTORY_FILTERS.map(({ value, label }) => (
+                      <Button
+                        key={value}
+                        size='sm'
+                        variant={
+                          historyFilter === value ? 'default' : 'outline'
+                        }
+                        className='rounded-full'
+                        aria-pressed={historyFilter === value}
+                        onClick={() => setHistoryFilter(value)}
+                      >
+                        {label} (
+                        {value === 'all'
+                          ? transactions.length
+                          : transactions.filter((t) => t.type === value).length}
+                        )
+                      </Button>
+                    ))}
+                  </div>
+                  {shownTransactions.length > 0 ? (
+                    <div className='space-y-2'>
+                      <div className='grid grid-cols-[1fr_1fr_1.2fr_2fr] gap-2 text-xs font-medium text-muted-foreground pb-1 border-b'>
+                        <span>Date</span>
+                        <span>Type</span>
+                        <span>Amount</span>
+                        <span>Details</span>
+                      </div>
+                      {shownTransactions.map((t) => {
+                        const meta =
+                          t.kind === 'deposit'
+                            ? tokenMetadata.get(t.token)
+                            : undefined
+                        return (
+                          <div
+                            key={t.id}
+                            className='grid grid-cols-[1fr_1fr_1.2fr_2fr] gap-2 items-center text-sm py-2 border-b border-border/50'
+                          >
+                            <span>{formatDate(BigInt(t.timestamp))}</span>
+                            <span>
+                              <Badge
+                                variant={TYPE_BADGES[t.type].variant}
+                                className='text-xs'
+                              >
+                                {TYPE_BADGES[t.type].label}
+                              </Badge>
+                            </span>
+                            <span>
+                              {formatCurrency(t.amount, decimals, symbol)}
+                              {meta &&
+                                t.kind === 'deposit' &&
+                                t.token !==
+                                  stableTokenAddress?.toLowerCase() && (
+                                  <span className='block text-xs text-muted-foreground'>
+                                    {formatCurrency(
+                                      t.tokenAmount,
+                                      meta.decimals,
+                                      meta.symbol
+                                    )}
+                                  </span>
+                                )}
+                            </span>
+                            <span className='text-xs text-muted-foreground'>
+                              {transactionDetails(t)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className='text-sm text-muted-foreground'>
+                      {historyFilter === 'all'
+                        ? 'No transactions yet.'
+                        : `No ${HISTORY_FILTERS.find((f) => f.value === historyFilter)?.label.toLowerCase()} yet.`}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -5,9 +5,9 @@ import {
   DAY_S,
   depositEntryKey,
   inLineage,
-  poolActivity,
   totalCompounded,
   totalDeposited,
+  transactionHistory,
   distributedSince,
   distributionPerformance,
   sumDepositsByEntry,
@@ -200,7 +200,7 @@ describe('accountLineage / inLineage', () => {
   })
 })
 
-describe('totalDeposited / totalCompounded / poolActivity', () => {
+describe('totalDeposited / totalCompounded / transactionHistory', () => {
   const USDT = '0x55d398326f99059ff775485246999027b3197955'
   const LEMX = '0x2da91257961b87e69fa13b2e20931d517dc97597'
   const history = {
@@ -251,8 +251,24 @@ describe('totalDeposited / totalCompounded / poolActivity', () => {
         amount: String(100n * E18)
       }
     ],
+    earningsClaims: [
+      {
+        id: '56_250_0',
+        user: '0xa',
+        blockTimestamp: 2500,
+        amount: String(40n * E18),
+        fee: String(1n * E18)
+      }
+    ],
     withdrawalClaims: [
-      { id: '56_450_0', user: '0xa', blockTimestamp: 4500, requestId: '7' }
+      {
+        id: '56_450_0',
+        user: '0xa',
+        blockTimestamp: 4500,
+        requestId: '7',
+        amount: String(500n * E18),
+        fee: '0'
+      }
     ]
   }
 
@@ -261,26 +277,33 @@ describe('totalDeposited / totalCompounded / poolActivity', () => {
     expect(totalCompounded(history)).toBe(58n * E18)
   })
 
-  it('lists deposits, compounds and withdrawals newest first', () => {
-    const rows = poolActivity(history)
-    expect(rows.map((r) => r.kind)).toEqual([
-      'withdrawal',
-      'withdrawal',
-      'deposit',
-      'compound',
-      'deposit'
+  it('lists every transaction newest first, grouped into the three types', () => {
+    const rows = transactionHistory(history)
+    expect(rows.map((r) => `${r.type}:${r.kind}`)).toEqual([
+      'withdraw:withdrawalRequest',
+      'withdraw:withdrawalPayout',
+      'withdraw:withdrawalRequest',
+      'deposit:deposit',
+      'claim:claim',
+      'deposit:compound',
+      'deposit:deposit'
     ])
-    expect(rows[2]).toMatchObject({
+    expect(rows[3]).toMatchObject({
       kind: 'deposit',
       token: LEMX,
       amount: 1510n * E18,
       tokenAmount: 170n * E18
     })
+    expect(rows[4]).toMatchObject({ amount: 40n * E18, fee: 1n * E18 })
   })
 
-  it('marks a withdrawal paid once its request is claimed', () => {
-    const [queued, paid] = poolActivity(history)
-    expect(queued).toMatchObject({ kind: 'withdrawal', claimed: false })
-    expect(paid).toMatchObject({ kind: 'withdrawal', claimed: true })
+  it('marks a withdrawal request paid once its payout is claimed', () => {
+    const requests = transactionHistory(history).filter(
+      (r) => r.kind === 'withdrawalRequest'
+    )
+    expect(requests).toMatchObject([
+      { id: '56_500_0', paidAt: undefined },
+      { id: '56_400_0', paidAt: 4500 }
+    ])
   })
 })
